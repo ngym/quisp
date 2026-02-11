@@ -1,0 +1,27 @@
+var structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback =
+[
+    [ "RuntimeCallback", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a14230c1e53146113a6995020c61d718f", null ],
+    [ "freeAndResetQubit", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a02df0902a530b126d803597090ad033a", null ],
+    [ "gateCNOT", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a694328dfee2ae739e83c3d6a12122edf", null ],
+    [ "gateX", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a7e9896dda9993ade934da63ed7f96615", null ],
+    [ "gateY", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a86e68a9773d56034efe1f04b23669668", null ],
+    [ "gateZ", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#aae0cf87b1a99d75e0e44b132f496a729", null ],
+    [ "getActionIndex", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#ad43087c4721df8f728165ae8468f2919", null ],
+    [ "getNodeInfo", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a3093a8489b87bbaae7ab9bdb8b28bd39", null ],
+    [ "isQubitLocked", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a4955d486460e487f9d7930b1a9f549d2", null ],
+    [ "lockQubit", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#aaad14295811f9e652c5cbcedd1d11bf8", null ],
+    [ "measureQubitRandomly", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#ad6e21ab4c566123614de6a02c179dae6", null ],
+    [ "measureQubitX", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a10a5894c7f7d3678e29c027cb6a00e1a", null ],
+    [ "measureQubitY", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#aab46afb76ae029a26d83efbb581e647f", null ],
+    [ "measureQubitZ", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a64b2f1de7801cb0ac6af55477c56ef3d", null ],
+    [ "purifyX", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a97e0204b8d76f331bc179f3710f0c9fc", null ],
+    [ "purifyY", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a9ef9559cfa480a0b2bd25fff3a1ba911", null ],
+    [ "purifyZ", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a00cfc1c2c4523b6f23d6f5bd3279dd95", null ],
+    [ "sendLinkTomographyResult", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a87af6afd96faf964d59725af1687ab76", null ],
+    [ "sendPurificationResult", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#aa72325c475df23e90798bcbea57f573c", null ],
+    [ "sendSwappingResult", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a1f52ad75628948eb94b6d7f01478f755", null ],
+    [ "left_qubit_index", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#abf8cf632d8a432a81c89a8f3fc8df332", null ],
+    [ "provider", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#a269ef35381e3018c6b7d79d1270b42a8", null ],
+    [ "right_qubit_index", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#ae83ef4c21a83f78d144448f2860f594e", null ],
+    [ "rule_engine", "structquisp_1_1modules_1_1runtime__callback_1_1_runtime_callback.html#ad0bce38201d6c43023002fa1580f7eca", null ]
+];

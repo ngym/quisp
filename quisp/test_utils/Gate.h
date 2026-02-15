@@ -30,10 +30,13 @@ class TempGate : public omnetpp::cGate {
 class TestGate : public omnetpp::cGate {
  public:
   explicit TestGate(cModule *mod, const char *name);
+  explicit TestGate(cModule *mod, const char *name, bool is_connected);
+  void setConnected(bool is_connected);
   std::vector<cMessage *> messages;
 
  protected:
   TempGate temp_gate;
+  bool is_connected_ = true;
   bool deliver(cMessage *msg, const omnetpp::SendOptions &options, simtime_t at) override;
 };
 

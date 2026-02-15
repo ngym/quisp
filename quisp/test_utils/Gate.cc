@@ -10,14 +10,21 @@ using omnetpp::cSimulation;
 TempGate::TempGate() {}
 bool TempGate::deliver(cMessage *msg, const omnetpp::SendOptions &options, simtime_t at) { return true; }
 
-TestGate::TestGate(cModule *mod, const char *name) {
+TestGate::TestGate(cModule *mod, const char *name) : TestGate(mod, name, true) {}
+
+TestGate::TestGate(cModule *mod, const char *name, bool is_connected) : is_connected_(is_connected) {
   desc = new omnetpp::cGate::Desc;
   // only for output gate
   desc->name = new omnetpp::cGate::Name{name, omnetpp::cGate::Type::OUTPUT};
   desc->owner = mod;
   // output gate needs nextGate to be filled. actually temp_gate do nothing.
-  nextGate = &temp_gate;
+  nextGate = is_connected_ ? &temp_gate : nullptr;
   desc->setOutputGate(this);
+}
+
+void TestGate::setConnected(bool is_connected) {
+  is_connected_ = is_connected;
+  nextGate = is_connected_ ? &temp_gate : nullptr;
 }
 
 /**

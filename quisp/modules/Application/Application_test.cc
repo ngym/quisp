@@ -44,6 +44,7 @@ class AppTestTarget : public quisp::modules::Application {
     setComponentType(new TestModuleType("test qnode"));
   }
   virtual ~AppTestTarget() { EVCB.gateDeleted(toRouterGate); }
+  void setToRouterConnected(bool is_connected) { toRouterGate->setConnected(is_connected); }
   std::unordered_map<int, int> getEndNodeWeightMap() { return this->end_node_weight_map; }
   int getAddress() { return this->my_address; }
   bool isInitiator() { return this->is_initiator; }
@@ -137,6 +138,24 @@ TEST(AppTest, Init_Connection_Setup_Message_Send) {
   ASSERT_EQ(pkt->getActual_destAddr(), mock_qnode2->address);
   ASSERT_EQ(pkt->getSrcAddr(), 123);
   ASSERT_EQ(pkt->getDestAddr(), 123);
+}
+
+TEST(AppTest, Init_NotConnected_ToRouter) {
+  auto *sim = prepareSimulation();
+  auto *mock_qnode = new TestQNode{123, 100, true};
+  auto *app = new AppTestTarget{mock_qnode};
+
+  setParDouble(app, "request_generation_interval", 5);
+  setParInt(app, "number_of_bellpair", 10);
+  setParBool(app, "has_specific_recipients", false);
+  app->setToRouterConnected(false);
+
+  sim->registerComponent(app);
+  EXPECT_NO_THROW(app->callInitialize());
+  ASSERT_EQ(app->toRouterGate->messages.size(), 0);
+
+  // Ensure the self-delete event is processed to avoid leaking module state into subsequent tests.
+  sim->run();
 }
 
 TEST(AppTest, Specifying_Empty_As_Recipients) {

@@ -25,9 +25,15 @@ Application::Application() : provider(utils::ComponentProvider{this}), next_conn
 void Application::initialize() {
   initializeLogger(provider);
 
+  bool is_router_connected = false;
+  cGate *to_router_gate = gate("toRouter");
+  if (to_router_gate != nullptr) {
+    is_router_connected = to_router_gate->isConnected();
+  }
+
   // Since we only need this module in EndNode, delete it otherwise.
   // We delete it in the handleMessage because it's the right way not to raise error
-  if (!gate("toRouter")->isConnected()) {
+  if (!is_router_connected) {
     DeleteThisModule *msg = new DeleteThisModule("DeleteThisModule");
     scheduleAt(simTime(), msg);
     return;

@@ -199,6 +199,23 @@ class RuleEngineTestTarget : public quisp::modules::RuleEngine {
   std::unique_ptr<quisp_test::gate::TestGate> router_port_gate;
 };
 
+class RuleEngineRegistrationProbe : public RuleEngineTestTarget {
+ public:
+  using RuleEngineTestTarget::RuleEngineTestTarget;
+
+  bool hasExactHandler(core::events::RuleEventType type, core::events::ProtocolSpec protocol_spec) const {
+    return rule_event_handlers.find({type, protocol_spec}) != rule_event_handlers.end();
+  }
+
+  bool hasProtocolFallbackHandler(core::events::ProtocolSpec protocol_spec) const {
+    return rule_protocol_fallback_handlers.find(static_cast<int>(protocol_spec)) != rule_protocol_fallback_handlers.end();
+  }
+
+  bool hasTypeFallbackHandler(core::events::RuleEventType type) const {
+    return rule_event_type_fallback_handlers.find(static_cast<int>(type)) != rule_event_type_fallback_handlers.end();
+  }
+};
+
 class RuleEngineTest : public testing::Test {
  protected:
   void SetUp() {
@@ -613,6 +630,26 @@ TEST_F(RuleEngineTest, ruleSetForwardingApplicationEventWithUnknownApplicationTy
 
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_protocol");
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"protocol_raw_value\": \"999\""));
+}
+
+TEST(RuleProtocolHandlerRegistrarTest, registerDefaultsRegistersExpectedExactEventHandlers) {
+  RuleEngineRegistrationProbe rule_engine_probe(nullptr, nullptr, nullptr, nullptr);
+
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::BSM_RESULT, core::events::ProtocolSpec::MIM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::BSM_TIMING, core::events::ProtocolSpec::MIM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EPPS_TIMING, core::events::ProtocolSpec::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EMIT_PHOTON_REQUEST, core::events::ProtocolSpec::Unknown));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::SINGLE_CLICK_RESULT, core::events::ProtocolSpec::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::MSM_RESULT, core::events::ProtocolSpec::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::STOP_EMITTING, core::events::ProtocolSpec::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::PURIFICATION_RESULT, core::events::ProtocolSpec::Purification));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::SWAPPING_RESULT, core::events::ProtocolSpec::Swapping));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::RULESET_FORWARDING, core::events::ProtocolSpec::ConnectionManagement));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::RULESET_FORWARDING_APPLICATION, core::events::ProtocolSpec::ConnectionManagement));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::LINK_TOMOGRAPHY_RULESET, core::events::ProtocolSpec::LinkTomography));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::UNKNOWN, core::events::ProtocolSpec::Unknown));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::MSM_v1));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::UNKNOWN));
 }
 
 TEST_F(RuleEngineTest, emitPhotonRequestEventIsHandledByRegistrarWithoutUnknownLog) {

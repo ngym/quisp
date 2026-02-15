@@ -47,6 +47,7 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
   using quisp::modules::ConnectionManager::reserveQnic;
   using quisp::modules::ConnectionManager::respondToRequest;
   using quisp::modules::ConnectionManager::respondToRequest_deprecated;
+  using quisp::modules::ConnectionManager::storeRuleSet;
   using quisp::modules::ConnectionManager::storeRuleSetForApplication;
   bool shouldAcceptConnectionSetupResponseForTest(quisp::messages::ConnectionSetupResponse *pk) {
     return shouldAcceptConnectionSetupResponse(pk);
@@ -66,7 +67,7 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
 
     this->provider.setStrategy(std::make_unique<Strategy>(routing_daemon, hardware_monitor));
   }
-  ConnectionManagerTestTarget() : quisp::modules::ConnectionManager() {
+  ConnectionManagerTestTarget() : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
     setComponentType(new module_type::TestModuleType("test cm"));
     setParInt(this, "address", 5);
     setParInt(this, "total_number_of_qnics", 10);
@@ -80,9 +81,33 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
     this->provider.setStrategy(std::make_unique<Strategy>());
   }
   void receiveMessageForTest(cMessage *msg) { ConnectionManager::handleMessage(msg); }
+  void send(cMessage *msg, const char *gatename, int gateindex = -1) override {
+    if (strcmp(gatename, "RouterPort$o") == 0 || strcmp(gatename, "RouterPort") == 0 || strcmp(gatename, "RouterPort$o[0]") == 0 ||
+        strncmp(gatename, "RouterPort$o[", 13) == 0) {
+      if (!toRouterGate) {
+        toRouterGate = new TestGate(this, "RouterPort$o");
+      }
+      cSimpleModule::send(msg, toRouterGate);
+      return;
+    }
+    cSimpleModule::send(msg, gatename, gateindex);
+  };
+  void send(cMessage *msg, cGate *outputgate) override {
+    if (outputgate == nullptr) {
+      if (!toRouterGate) {
+        toRouterGate = new TestGate(this, "RouterPort$o");
+      }
+      outputgate = toRouterGate;
+    }
+    cSimpleModule::send(msg, outputgate);
+  }
   cGate *gate(const char *gatename, int index = -1) override {
-    if (strcmp(gatename, "RouterPort$o") != 0) {
+    if (strcmp(gatename, "RouterPort$o") != 0 && strcmp(gatename, "RouterPort") != 0 && strcmp(gatename, "RouterPort$o[0]") != 0 &&
+        strncmp(gatename, "RouterPort$o[", 13) != 0) {
       throw cRuntimeError("unknown gate called");
+    }
+    if (!toRouterGate) {
+      toRouterGate = new TestGate(this, gatename == nullptr ? "RouterPort$o" : gatename);
     }
     return toRouterGate;
   };
@@ -654,4 +679,131 @@ TEST(ConnectionManagerTest, StoreRuleSetForApplicationDeduplicatesResponsesBySes
   delete resp_s1_a0_older;
   delete resp_s2_a1_first;
 }
+
+TEST(ConnectionManagerTest, StoreRuleSetForApplicationForwardsOnlyFirstMessagePerAttempt) {
+  auto *sim = prepareSimulation();
+  auto *connection_manager = new ConnectionManagerTestTarget();
+  sim->registerComponent(connection_manager);
+  sim->setContext(connection_manager);
+  connection_manager->callInitialize();
+  auto makeResponse = [](int session_id, int attempt, unsigned long ruleset_id, int application_type) {
+    auto *resp = new ConnectionSetupResponse("ConnectionSetupResponse");
+    resp->setApplicationId(1);
+    resp->setConnection_session_id(session_id);
+    resp->setConnection_attempt(attempt);
+    resp->setRuleSet_id(ruleset_id);
+    resp->setDestAddr(10);
+    resp->setSrcAddr(11);
+    resp->setActual_destAddr(10);
+    resp->setActual_srcAddr(11);
+    resp->setRuleSet(json::parse(R"({"num_rules":1})"));
+    resp->setApplication_type(application_type);
+    return resp;
+  };
+
+  auto *resp_first = makeResponse(200, 3, 31, 7);
+  auto *resp_duplicate = makeResponse(200, 3, 32, 7);
+  auto *resp_later = makeResponse(200, 4, 33, 7);
+
+  EXPECT_NE(connection_manager->toRouterGate, nullptr);
+  EXPECT_NE(connection_manager->gate("RouterPort$o"), nullptr);
+  connection_manager->storeRuleSetForApplication(resp_first);
+  EXPECT_EQ(connection_manager->toRouterGate->messages.size(), 1);
+  auto *forwarded_first =
+      dynamic_cast<InternalRuleSetForwarding_Application *>(connection_manager->toRouterGate->messages.back());
+  ASSERT_NE(forwarded_first, nullptr);
+  EXPECT_EQ(forwarded_first->getRuleSet_id(), 31);
+  EXPECT_EQ(forwarded_first->getApplication_type(), 7);
+
+  connection_manager->storeRuleSetForApplication(resp_duplicate);
+  EXPECT_EQ(connection_manager->toRouterGate->messages.size(), 1);
+  EXPECT_EQ(dynamic_cast<InternalRuleSetForwarding_Application *>(connection_manager->toRouterGate->messages.back())->getRuleSet_id(), 31);
+
+  connection_manager->storeRuleSetForApplication(resp_later);
+  EXPECT_EQ(connection_manager->toRouterGate->messages.size(), 2);
+  auto *forwarded_later =
+      dynamic_cast<InternalRuleSetForwarding_Application *>(connection_manager->toRouterGate->messages.back());
+  ASSERT_NE(forwarded_later, nullptr);
+  EXPECT_EQ(forwarded_later->getRuleSet_id(), 33);
+
+  delete resp_first;
+  delete resp_duplicate;
+  delete resp_later;
+}
+
+TEST(ConnectionManagerTest, StoreRuleSetForRoutingForwardsOnlyFirstMessagePerAttempt) {
+  auto *sim = prepareSimulation();
+  auto *connection_manager = new ConnectionManagerTestTarget();
+  sim->registerComponent(connection_manager);
+  sim->setContext(connection_manager);
+  connection_manager->callInitialize();
+  auto makeResponse = [](int session_id, int attempt, unsigned long ruleset_id) {
+    auto *resp = new ConnectionSetupResponse("ConnectionSetupResponse");
+    resp->setApplicationId(1);
+    resp->setConnection_session_id(session_id);
+    resp->setConnection_attempt(attempt);
+    resp->setRuleSet_id(ruleset_id);
+    resp->setDestAddr(10);
+    resp->setSrcAddr(11);
+    resp->setActual_destAddr(10);
+    resp->setActual_srcAddr(11);
+    resp->setRuleSet(json::parse(R"({"num_rules":1})"));
+    resp->setApplication_type(7);
+    return resp;
+  };
+
+  auto *resp_first = makeResponse(300, 1, 41);
+  auto *resp_duplicate = makeResponse(300, 1, 42);
+  auto *resp_later = makeResponse(300, 2, 43);
+
+  connection_manager->storeRuleSet(resp_first);
+  EXPECT_EQ(connection_manager->toRouterGate->messages.size(), 1);
+  auto *forwarded_first = dynamic_cast<InternalRuleSetForwarding *>(connection_manager->toRouterGate->messages.back());
+  ASSERT_NE(forwarded_first, nullptr);
+  EXPECT_EQ(forwarded_first->getRuleSet_id(), 41);
+
+  connection_manager->storeRuleSet(resp_duplicate);
+  EXPECT_EQ(connection_manager->toRouterGate->messages.size(), 1);
+  EXPECT_EQ(dynamic_cast<InternalRuleSetForwarding *>(connection_manager->toRouterGate->messages.back())->getRuleSet_id(), 41);
+
+  connection_manager->storeRuleSet(resp_later);
+  EXPECT_EQ(connection_manager->toRouterGate->messages.size(), 2);
+  auto *forwarded_later = dynamic_cast<InternalRuleSetForwarding *>(connection_manager->toRouterGate->messages.back());
+  ASSERT_NE(forwarded_later, nullptr);
+  EXPECT_EQ(forwarded_later->getRuleSet_id(), 43);
+
+  delete resp_first;
+  delete resp_duplicate;
+  delete resp_later;
+}
+
+TEST(ConnectionManagerTest, LegacyConnectionSetupResponseBySessionIdIsAlwaysAccepted) {
+  auto *connection_manager = new ConnectionManagerTestTarget();
+  auto makeResponse = [](int session_id, int attempt, unsigned long ruleset_id) {
+    auto *resp = new ConnectionSetupResponse("ConnectionSetupResponse");
+    resp->setApplicationId(1);
+    resp->setConnection_session_id(session_id);
+    resp->setConnection_attempt(attempt);
+    resp->setRuleSet_id(ruleset_id);
+    resp->setRuleSet(json::parse(R"({"num_rules":1})"));
+    resp->setApplication_type(7);
+    return resp;
+  };
+
+  auto *legacy_0 = makeResponse(0, 1, 31);
+  auto *legacy_1 = makeResponse(0, 2, 32);
+  auto *new_attempt = makeResponse(1, 1, 33);
+  auto *same_attempt_retry = makeResponse(1, 1, 34);
+
+  EXPECT_TRUE(connection_manager->shouldAcceptConnectionSetupResponseForTest(legacy_0));
+  EXPECT_TRUE(connection_manager->shouldAcceptConnectionSetupResponseForTest(legacy_1));
+  EXPECT_TRUE(connection_manager->shouldAcceptConnectionSetupResponseForTest(new_attempt));
+  EXPECT_FALSE(connection_manager->shouldAcceptConnectionSetupResponseForTest(same_attempt_retry));
+
+  delete legacy_0;
+  delete legacy_1;
+  delete new_attempt;
+  delete same_attempt_retry;
+}
+
 }  // namespace

@@ -10,6 +10,7 @@
 #include <iterator>
 #include <memory>
 #include <ostream>
+#include <sstream>
 #include <variant>
 #include <stdexcept>
 #include <utility>
@@ -129,8 +130,10 @@ void RuleEngine::logUnknownRuleEvent(const core::events::RuleEvent &event) {
     return;
   }
   std::ostringstream ss;
-  ss << "\"simtime\": " << event.time << ", \"event_number\": " << event.event_number << ", \"event_type\": \"UNKNOWN\", \"msg_name\": \"";
-  ss << event.msg_name << "\", \"msg_type\": \"" << event.msg_type << "\", \"qnode_addr\": " << parentAddress << ", \"parentAddress\": " << parentAddress;
+  ss << "\"simtime\": " << event.time << ", \"event_number\": " << event.event_number << ", \"event_type\": \"UNKNOWN\", \"protocol_spec\": \""
+     << to_string(event.protocol_spec) << "\", \"execution_path\": \"" << to_string(event.execution_path) << "\", \"protocol_raw_value\": \""
+     << event.protocol_raw_value << "\", \"msg_name\": \"" << event.msg_name << "\", \"msg_type\": \"" << event.msg_type << "\", \"qnode_addr\": "
+     << parentAddress << ", \"parentAddress\": " << parentAddress;
   logger->logEvent("unknown_rule_event", ss.str());
 }
 

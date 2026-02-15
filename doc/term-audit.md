@@ -6,8 +6,9 @@ Run these checks before submitting protocol/link vocabulary-related changes:
 # 1) Link/protocol naming conflict that should not appear
 rg -n "MIM Protocol v1 Link|MSM Protocol v1 Link" doc quisp/modules --glob '!term-audit.md'
 
-# 2) Link protocol string expectations for ProtocolSpec/logging
-rg -n "\"protocol_spec\": \"MIM Protocol v1\"|\"protocol_spec\": \"MSM Protocol v1\"" doc quisp
+# 2) ProtocolSpec string expectations for ProtocolSpec/logging
+rg -n -P '(?:\\\"|")protocol_spec(?:\\\"|")\\s*:\\s*(?:\\\"|")(MIM Protocol v1|MSM Protocol v1|Purification|Swapping|LinkTomography|ConnectionManagement|Maintenance|Unknown)' doc quisp/modules
+rg -n -P '(?:\\\"|")protocol_spec(?:\\\"|")\\s*:\\s*(?:\\\"|")[^\"]*Link' doc quisp/modules
 
 # 3) Ensure MSM link reference exists
 rg -n "MSM_Link\\.md" doc

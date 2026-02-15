@@ -332,6 +332,8 @@ TEST_F(RuleEngineTest, unknownRuleEventIsLogged) {
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_event");
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \"UNKNOWN\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"msg_name\": \"raw\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"protocol_spec\": \"Unknown\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"execution_path\": \"Unknown\""));
 }
 
 TEST_F(RuleEngineTest, unknownProtocolForKnownTypeIsLoggedAsUnknownRuleProtocol) {

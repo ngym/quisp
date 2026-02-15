@@ -13,7 +13,7 @@ For this simulation, without loss of generality, we are assuming that
 inter-node entanglement is always generated using an OBSA.
 
 * As a [standalone BSA node](BSA Node.md), appears in a [MIM Link](MIM_Link.md).
-* As a component of a node, appears once in [MM Link](MM_Link.md) and
+* As a component of a node, appears once in [MIM Link](MIM_Link.md) and
   twice in [MSM Link](MSM_Link.md).
 
 

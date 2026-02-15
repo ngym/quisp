@@ -7,7 +7,7 @@ For implementation details, see the corresponding hardware module docs.*
 
 `MSM Link` is a link architecture where each node has an internal link module for entangled-photon mediated entanglement generation.
 In this architecture, the protocol identifier used in protocol dispatching and logs is `MSM Protocol v1`
-(via `ProtocolSpec::MSM_v1`).
+(via `ProtocolType::MSM_v1`).
 
 ## Related modules
 

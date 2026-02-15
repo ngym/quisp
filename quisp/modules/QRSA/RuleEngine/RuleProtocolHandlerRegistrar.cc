@@ -7,8 +7,8 @@
 namespace quisp::modules {
 
 using namespace core::events;
-using EventType = RuleEventType;
-using EventProtocol = ProtocolSpec;
+using EventType = RuleEventKind;
+using EventProtocol = ProtocolType;
 
 void RuleProtocolHandlerRegistrar::registerDefaults(RuleEngine& engine) {
   for (const auto& handler : handlers::createDefaultProtocolHandlers()) {

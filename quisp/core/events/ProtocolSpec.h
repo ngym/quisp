@@ -4,7 +4,7 @@
 
 namespace quisp::core::events {
 
-enum class ProtocolSpec {
+enum class ProtocolType {
   Unknown,
   MIM_v1,
   MSM_v1,
@@ -15,38 +15,41 @@ enum class ProtocolSpec {
   Maintenance,
 };
 
-inline std::string to_string(ProtocolSpec protocol) {
+// Kept for backward compatibility. New code should use ProtocolType.
+using ProtocolSpec = ProtocolType;
+
+inline std::string to_string(ProtocolType protocol) {
   switch (protocol) {
-    case ProtocolSpec::MIM_v1:
+    case ProtocolType::MIM_v1:
       return "MIM Protocol v1";
-    case ProtocolSpec::MSM_v1:
+    case ProtocolType::MSM_v1:
       return "MSM Protocol v1";
-    case ProtocolSpec::Purification:
+    case ProtocolType::Purification:
       return "Purification";
-    case ProtocolSpec::Swapping:
+    case ProtocolType::Swapping:
       return "Swapping";
-    case ProtocolSpec::LinkTomography:
+    case ProtocolType::LinkTomography:
       return "LinkTomography";
-    case ProtocolSpec::ConnectionManagement:
+    case ProtocolType::ConnectionManagement:
       return "ConnectionManagement";
-    case ProtocolSpec::Maintenance:
+    case ProtocolType::Maintenance:
       return "Maintenance";
-    case ProtocolSpec::Unknown:
+    case ProtocolType::Unknown:
     default:
       return "Unknown";
   }
 }
 
-inline ProtocolSpec protocol_from_int(int protocol_hint) {
+inline ProtocolType protocol_from_int(int protocol_hint) {
   // Purification protocol identifiers are small non-negative enum values (see rules::PurType).
   if (protocol_hint >= 0 && protocol_hint <= 10) {
-    return ProtocolSpec::Purification;
+    return ProtocolType::Purification;
   }
-  return ProtocolSpec::Unknown;
+  return ProtocolType::Unknown;
 }
 
-inline ProtocolSpec protocol_from_message_hint(int application_type) {
-  return application_type == 0 ? ProtocolSpec::ConnectionManagement : ProtocolSpec::Unknown;
+inline ProtocolType protocol_from_message_hint(int application_type) {
+  return application_type == 0 ? ProtocolType::ConnectionManagement : ProtocolType::Unknown;
 }
 
 }  // namespace quisp::core::events

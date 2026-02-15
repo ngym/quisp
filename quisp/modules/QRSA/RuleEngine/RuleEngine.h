@@ -97,15 +97,18 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void freeConsumedResource(int qnic_index, IStationaryQubit *qubit, QNIC_type qnic_type);
   void ResourceAllocation(int qnic_type, int qnic_index);
   using RuleEventHandler = std::function<void(const core::events::RuleEvent&)>;
-  using RuleEventType = core::events::RuleEventType;
-  using RuleEventProtocol = core::events::ProtocolSpec;
-  // Dispatch key is (RuleEventType, ProtocolSpec), where ProtocolSpec is protocol classifier:
+  using RuleEventKind = core::events::RuleEventKind;
+  using ProtocolType = core::events::ProtocolType;
+  // Compatibility aliases preserved for phased migration.
+  using RuleEventType = RuleEventKind;
+  using RuleEventProtocol = ProtocolType;
+  // Dispatch key is (RuleEventKind, ProtocolType), where ProtocolType is protocol classifier:
   // e.g. MIM Protocol v1 / MSM Protocol v1, not link architecture labels.
-  using RuleEventDispatchKey = std::pair<RuleEventType, RuleEventProtocol>;
-  void registerRuleEventHandler(RuleEventType event_type, RuleEventHandler handler);
-  void registerRuleEventHandler(RuleEventType event_type, RuleEventProtocol protocol_spec, RuleEventHandler handler);
-  void registerRuleEventTypeFallback(RuleEventType event_type, RuleEventHandler handler);
-  void registerRuleEventProtocolFallback(RuleEventProtocol protocol_spec, RuleEventHandler handler);
+  using RuleEventDispatchKey = std::pair<RuleEventKind, ProtocolType>;
+  void registerRuleEventHandler(RuleEventKind event_type, RuleEventHandler handler);
+  void registerRuleEventHandler(RuleEventKind event_type, ProtocolType protocol_spec, RuleEventHandler handler);
+  void registerRuleEventTypeFallback(RuleEventKind event_type, RuleEventHandler handler);
+  void registerRuleEventProtocolFallback(ProtocolType protocol_spec, RuleEventHandler handler);
   RuleProtocolExecutionContext& protocolExecutionContext();
 
  protected:

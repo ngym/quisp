@@ -10,7 +10,7 @@ namespace handlers {
 class IRuleProtocolHandler {
  public:
   virtual ~IRuleProtocolHandler() = default;
-  virtual core::events::ProtocolSpec protocolSpec() const = 0;
+  virtual core::events::ProtocolType protocolSpec() const = 0;
   virtual void registerHandlers(RuleEngine& engine) = 0;
 };
 

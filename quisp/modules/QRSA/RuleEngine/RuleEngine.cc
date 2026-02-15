@@ -109,19 +109,19 @@ void RuleEngine::handleMessage(cMessage *msg) {
   }
 }
 
-void RuleEngine::registerRuleEventHandler(RuleEventType event_type, RuleEventHandler handler) {
-  registerRuleEventHandler(event_type, RuleEventProtocol::Unknown, std::move(handler));
+void RuleEngine::registerRuleEventHandler(RuleEventKind event_type, RuleEventHandler handler) {
+  registerRuleEventHandler(event_type, ProtocolType::Unknown, std::move(handler));
 }
 
-void RuleEngine::registerRuleEventHandler(RuleEventType event_type, RuleEventProtocol protocol_spec, RuleEventHandler handler) {
+void RuleEngine::registerRuleEventHandler(RuleEventKind event_type, ProtocolType protocol_spec, RuleEventHandler handler) {
   rule_event_handlers[{event_type, protocol_spec}] = std::move(handler);
 }
 
-void RuleEngine::registerRuleEventTypeFallback(RuleEventType event_type, RuleEventHandler handler) {
+void RuleEngine::registerRuleEventTypeFallback(RuleEventKind event_type, RuleEventHandler handler) {
   rule_event_type_fallback_handlers[static_cast<int>(event_type)] = std::move(handler);
 }
 
-void RuleEngine::registerRuleEventProtocolFallback(RuleEventProtocol protocol_spec, RuleEventHandler handler) {
+void RuleEngine::registerRuleEventProtocolFallback(ProtocolType protocol_spec, RuleEventHandler handler) {
   rule_protocol_fallback_handlers[static_cast<int>(protocol_spec)] = std::move(handler);
 }
 
@@ -158,7 +158,7 @@ void RuleEngine::dispatchRuleEvent(const core::events::RuleEvent &event) {
   // Unknown protocol value is tracked separately from unknown event type.
   // unknown protocol => log unknown_rule_protocol even when a handler is not found.
   const auto protocol_unknown = event.protocol_spec == RuleEventProtocol::Unknown;
-  const auto should_log_unknown_protocol = protocol_unknown && event.type != core::events::RuleEventType::UNKNOWN;
+  const auto should_log_unknown_protocol = protocol_unknown && event.type != core::events::RuleEventKind::UNKNOWN;
   auto it = rule_event_handlers.find({event.type, event.protocol_spec});
   if (it != rule_event_handlers.end()) {
     it->second(event);
@@ -186,7 +186,7 @@ void RuleEngine::dispatchRuleEvent(const core::events::RuleEvent &event) {
     return;
   }
 
-  if (event.type == core::events::RuleEventType::UNKNOWN) {
+  if (event.type == core::events::RuleEventKind::UNKNOWN) {
     logUnknownRuleEvent(event);
   } else {
     logUnknownRuleProtocol(event);

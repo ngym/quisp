@@ -33,7 +33,12 @@ class RuntimeInstructionsTest : public testing::Test {
     qubit = new QubitRecord{QNIC_E, 2, 3};
   }
 
-  void TearDown() { delete runtime; }
+  void TearDown() {
+    auto* callback = runtime->callback;
+    delete runtime;
+    delete callback;
+    delete qubit;
+  }
 
  public:
   void execProgram(const Program& p) {
@@ -220,14 +225,14 @@ TEST_F(RuntimeInstructionsTest, BLT) {
 }
 
 TEST_F(RuntimeInstructionsTest, ERROR) {
-  testing::internal::CaptureStdout();
+  testing::internal::CaptureStderr();
   Label passed1{"passed1"}, passed2{"passed2"}, passed3{"passed3"};
   Label l1{"l1"}, l2{"l2"}, l3{"l3"};
   Program p{"",
             {
                 // clang-format off
                 INSTR_SET_RegId_int_{{r0, 1} },
-                INSTR_RET_ReturnCode_{{ReturnCode::ERROR}},
+                INSTR_ERROR_String_{"error"},
                 INSTR_SET_RegId_int_{{r1, 1} },
                 INSTR_SET_RegId_int_{{r2, 1} },
                 // clang-format on
@@ -235,7 +240,8 @@ TEST_F(RuntimeInstructionsTest, ERROR) {
   EXPECT_THROW({ execProgram(p); }, std::runtime_error);
   EXPECT_TRUE(checkRegisters({1, 0, 0, 0, 0}));
   EXPECT_EQ(runtime->return_code, ReturnCode::ERROR);
-  testing::internal::GetCapturedStdout();
+  auto output = testing::internal::GetCapturedStderr();
+  EXPECT_NE(output.find("RuntimeError"), std::string::npos);
 }
 
 TEST_F(RuntimeInstructionsTest, RET) {

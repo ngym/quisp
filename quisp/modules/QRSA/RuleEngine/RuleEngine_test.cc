@@ -215,15 +215,15 @@ class RuleEngineRegistrationProbe : public RuleEngineTestTarget {
  public:
   using RuleEngineTestTarget::RuleEngineTestTarget;
 
-  bool hasExactHandler(core::events::RuleEventType type, core::events::ProtocolSpec protocol_spec) const {
+  bool hasExactHandler(core::events::RuleEventKind type, core::events::ProtocolType protocol_spec) const {
     return rule_event_handlers.find({type, protocol_spec}) != rule_event_handlers.end();
   }
 
-  bool hasProtocolFallbackHandler(core::events::ProtocolSpec protocol_spec) const {
+  bool hasProtocolFallbackHandler(core::events::ProtocolType protocol_spec) const {
     return rule_protocol_fallback_handlers.find(static_cast<int>(protocol_spec)) != rule_protocol_fallback_handlers.end();
   }
 
-  bool hasTypeFallbackHandler(core::events::RuleEventType type) const {
+  bool hasTypeFallbackHandler(core::events::RuleEventKind type) const {
     return rule_event_type_fallback_handlers.find(static_cast<int>(type)) != rule_event_type_fallback_handlers.end();
   }
 };
@@ -343,15 +343,15 @@ TEST_F(RuleEngineTest, unknownProtocolForKnownTypeIsLoggedAsUnknownRuleProtocol)
   sim->registerComponent(rule_engine);
   rule_engine->callInitialize();
 
-  core::events::RuleEvent unknown_protocol_event{core::events::RuleEventType::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false,
-                                                 SimTime(1), 0, core::events::ProtocolSpec::Unknown,
+  core::events::RuleEvent unknown_protocol_event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false,
+                                                 SimTime(1), 0, core::events::ProtocolType::Unknown,
                                                  core::events::ExecutionPath::EntanglementLifecycle};
 
   rule_engine->handleRuleEvent(unknown_protocol_event);
 
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_protocol");
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \""
-                                                     + std::to_string(static_cast<int>(core::events::RuleEventType::BSM_RESULT)) + "\""));
+                                                     + std::to_string(static_cast<int>(core::events::RuleEventKind::BSM_RESULT)) + "\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"protocol_spec\": \"Unknown\""));
 }
 
@@ -365,14 +365,14 @@ TEST_F(RuleEngineTest, dispatchRuleEventPrefersExactHandlerBeforeFallbacks) {
   int exact_calls = 0;
   int type_fallback_calls = 0;
   int protocol_fallback_calls = 0;
-  core::events::RuleEvent event{core::events::RuleEventType::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
-                                core::events::ProtocolSpec::MSM_v1, core::events::ExecutionPath::EntanglementLifecycle};
+  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
+                                core::events::ProtocolType::MSM_v1, core::events::ExecutionPath::EntanglementLifecycle};
 
-  rule_engine->registerRuleEventHandler(core::events::RuleEventType::BSM_RESULT, core::events::ProtocolSpec::MSM_v1,
+  rule_engine->registerRuleEventHandler(core::events::RuleEventKind::BSM_RESULT, core::events::ProtocolType::MSM_v1,
                                         [&exact_calls](const core::events::RuleEvent&) { ++exact_calls; });
-  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventType::BSM_RESULT,
+  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventKind::BSM_RESULT,
                                             [&type_fallback_calls](const core::events::RuleEvent&) { ++type_fallback_calls; });
-  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolSpec::MSM_v1,
+  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolType::MSM_v1,
                                                 [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
   rule_engine->handleRuleEvent(event);
 
@@ -391,12 +391,12 @@ TEST_F(RuleEngineTest, dispatchRuleEventFallsBackByTypeBeforeProtocolFallback) {
 
   int type_fallback_calls = 0;
   int protocol_fallback_calls = 0;
-  core::events::RuleEvent event{core::events::RuleEventType::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
-                                core::events::ProtocolSpec::Maintenance, core::events::ExecutionPath::EntanglementLifecycle};
+  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
+                                core::events::ProtocolType::Maintenance, core::events::ExecutionPath::EntanglementLifecycle};
 
-  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventType::BSM_RESULT,
+  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventKind::BSM_RESULT,
                                             [&type_fallback_calls](const core::events::RuleEvent&) { ++type_fallback_calls; });
-  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolSpec::Maintenance,
+  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolType::Maintenance,
                                                 [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
   rule_engine->handleRuleEvent(event);
 
@@ -413,10 +413,10 @@ TEST_F(RuleEngineTest, dispatchRuleEventFallsBackByProtocolWhenTypeFallbackMissi
   rule_engine->callInitialize();
 
   int protocol_fallback_calls = 0;
-  core::events::RuleEvent event{core::events::RuleEventType::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
-                                core::events::ProtocolSpec::Maintenance, core::events::ExecutionPath::EntanglementLifecycle};
+  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
+                                core::events::ProtocolType::Maintenance, core::events::ExecutionPath::EntanglementLifecycle};
 
-  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolSpec::Maintenance,
+  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolType::Maintenance,
                                                 [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
   rule_engine->handleRuleEvent(event);
 
@@ -649,58 +649,58 @@ TEST_F(RuleEngineTest, ruleSetForwardingApplicationEventWithUnknownApplicationTy
 TEST(RuleProtocolHandlerRegistrarTest, registerDefaultsRegistersExpectedExactEventHandlers) {
   RuleEngineRegistrationProbe rule_engine_probe(nullptr, nullptr, nullptr, nullptr);
 
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::BSM_RESULT, core::events::ProtocolSpec::MIM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::BSM_TIMING, core::events::ProtocolSpec::MIM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EPPS_TIMING, core::events::ProtocolSpec::MSM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EMIT_PHOTON_REQUEST, core::events::ProtocolSpec::MIM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EMIT_PHOTON_REQUEST, core::events::ProtocolSpec::MSM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::SINGLE_CLICK_RESULT, core::events::ProtocolSpec::MSM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::MSM_RESULT, core::events::ProtocolSpec::MSM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::STOP_EMITTING, core::events::ProtocolSpec::MSM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::PURIFICATION_RESULT, core::events::ProtocolSpec::Purification));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::SWAPPING_RESULT, core::events::ProtocolSpec::Swapping));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::RULESET_FORWARDING, core::events::ProtocolSpec::ConnectionManagement));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::RULESET_FORWARDING_APPLICATION, core::events::ProtocolSpec::ConnectionManagement));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::LINK_TOMOGRAPHY_RULESET, core::events::ProtocolSpec::LinkTomography));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::UNKNOWN, core::events::ProtocolSpec::Unknown));
-  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::MSM_v1));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::UNKNOWN));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::BSM_RESULT, core::events::ProtocolType::MIM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::BSM_TIMING, core::events::ProtocolType::MIM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::EPPS_TIMING, core::events::ProtocolType::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::EMIT_PHOTON_REQUEST, core::events::ProtocolType::MIM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::EMIT_PHOTON_REQUEST, core::events::ProtocolType::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::SINGLE_CLICK_RESULT, core::events::ProtocolType::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::MSM_RESULT, core::events::ProtocolType::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::STOP_EMITTING, core::events::ProtocolType::MSM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::PURIFICATION_RESULT, core::events::ProtocolType::Purification));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::SWAPPING_RESULT, core::events::ProtocolType::Swapping));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::RULESET_FORWARDING, core::events::ProtocolType::ConnectionManagement));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::RULESET_FORWARDING_APPLICATION, core::events::ProtocolType::ConnectionManagement));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::LINK_TOMOGRAPHY_RULESET, core::events::ProtocolType::LinkTomography));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventKind::UNKNOWN, core::events::ProtocolType::Unknown));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolType::MSM_v1));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::UNKNOWN));
 }
 
 TEST(RuleProtocolHandlerRegistrarTest, registerDefaultsDoesNotRegisterFallbackHandlers) {
   RuleEngineRegistrationProbe rule_engine_probe(nullptr, nullptr, nullptr, nullptr);
 
-  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::MIM_v1));
-  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::MSM_v1));
-  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::Purification));
-  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::Swapping));
-  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::ConnectionManagement));
-  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::LinkTomography));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::BSM_RESULT));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::BSM_TIMING));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::EPPS_TIMING));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::EMIT_PHOTON_REQUEST));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::SINGLE_CLICK_RESULT));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::MSM_RESULT));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::STOP_EMITTING));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::PURIFICATION_RESULT));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::SWAPPING_RESULT));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::RULESET_FORWARDING));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::RULESET_FORWARDING_APPLICATION));
-  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::LINK_TOMOGRAPHY_RULESET));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolType::MIM_v1));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolType::MSM_v1));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolType::Purification));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolType::Swapping));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolType::ConnectionManagement));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolType::LinkTomography));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::BSM_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::BSM_TIMING));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::EPPS_TIMING));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::EMIT_PHOTON_REQUEST));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::SINGLE_CLICK_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::MSM_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::STOP_EMITTING));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::PURIFICATION_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::SWAPPING_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::RULESET_FORWARDING));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::RULESET_FORWARDING_APPLICATION));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventKind::LINK_TOMOGRAPHY_RULESET));
 }
 
 TEST(RuleProtocolHandlerRegistrarTest, defaultProtocolHandlerListContainsExpectedProtocols) {
   auto handlers = handlers::createDefaultProtocolHandlers();
   ASSERT_EQ(handlers.size(), 5);
-  std::vector<core::events::ProtocolSpec> actual_specs;
+  std::vector<core::events::ProtocolType> actual_specs;
   actual_specs.reserve(handlers.size());
   for (const auto& handler : handlers) {
     actual_specs.push_back(handler->protocolSpec());
   }
-  const std::vector<core::events::ProtocolSpec> expected_specs = {
-      core::events::ProtocolSpec::MIM_v1, core::events::ProtocolSpec::MSM_v1, core::events::ProtocolSpec::Purification,
-      core::events::ProtocolSpec::Swapping, core::events::ProtocolSpec::ConnectionManagement};
+  const std::vector<core::events::ProtocolType> expected_specs = {
+      core::events::ProtocolType::MIM_v1, core::events::ProtocolType::MSM_v1, core::events::ProtocolType::Purification,
+      core::events::ProtocolType::Swapping, core::events::ProtocolType::ConnectionManagement};
 
   auto sorted_actual_specs = actual_specs;
   auto sorted_expected_specs = expected_specs;
@@ -717,8 +717,8 @@ TEST_F(RuleEngineTest, directUnknownRuleEventFromRuleEngineLogsUnknownRuleEvent)
   sim->setContext(rule_engine);
   rule_engine->callInitialize();
 
-  core::events::RuleEvent unknown_event{core::events::RuleEventType::UNKNOWN, core::events::RuleEventChannel::EXTERNAL, false, SimTime(2), 11,
-                                        core::events::ProtocolSpec::Unknown, core::events::ExecutionPath::Unknown};
+  core::events::RuleEvent unknown_event{core::events::RuleEventKind::UNKNOWN, core::events::RuleEventChannel::EXTERNAL, false, SimTime(2), 11,
+                                        core::events::ProtocolType::Unknown, core::events::ExecutionPath::Unknown};
   rule_engine->handleRuleEvent(unknown_event);
 
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_event");

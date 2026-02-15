@@ -80,7 +80,7 @@ as a service via the web, and possibly to open source the simulator.
 # Design Vocabulary / 用語定義
 
 - Link architecture context: `MIM Link`, `MSM Link`.
-- Protocol context: `ProtocolSpec` values (for event dispatch and logs) use:
+- Protocol context: `ProtocolType` values (for event dispatch and logs) use:
   - `MIM Protocol v1`
   - `MSM Protocol v1`
   - `Purification`
@@ -88,7 +88,7 @@ as a service via the web, and possibly to open source the simulator.
   - `LinkTomography`
   - `ConnectionManagement`
   - `Maintenance`
-- RuleEngine dispatch decisions use `RuleEventType` + `ProtocolSpec`.
+- RuleEngine dispatch decisions use `RuleEventKind` + `ProtocolType`.
 
 `MIM Protocol v1` / `MSM Protocol v1` are protocol identifiers only; they should not be used as architecture names.
 `MIM Link` / `MSM Link` are link architecture names.

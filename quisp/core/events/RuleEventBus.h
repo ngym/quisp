@@ -37,7 +37,7 @@ enum class RuleEventChannel {
   INTERNAL_TIMER,
 };
 
-enum class RuleEventType {
+enum class RuleEventKind {
   UNKNOWN,
   BSM_RESULT,
   BSM_TIMING,
@@ -52,6 +52,8 @@ enum class RuleEventType {
   RULESET_FORWARDING,
   RULESET_FORWARDING_APPLICATION
 };
+// Kept for backward compatibility. New code should use RuleEventKind.
+using RuleEventType = RuleEventKind;
 
 using RuleEventPayload = std::variant<std::monostate, messages::BSMTimingNotification *, messages::CombinedBSAresults *,
                                      messages::EPPSTimingNotification *, messages::EmitPhotonRequest *,
@@ -60,12 +62,12 @@ using RuleEventPayload = std::variant<std::monostate, messages::BSMTimingNotific
                                      messages::SingleClickResult *, messages::StopEmitting *, messages::SwappingResult *>;
 
 struct RuleEvent {
-  RuleEventType type = RuleEventType::UNKNOWN;
+  RuleEventKind type = RuleEventKind::UNKNOWN;
   RuleEventChannel channel = RuleEventChannel::UNKNOWN;
   bool keep_source = false;
   ::omnetpp::simtime_t time = SIMTIME_ZERO;
   int64_t event_number = 0;
-  ProtocolSpec protocol_spec = ProtocolSpec::Unknown;
+  ProtocolType protocol_spec = ProtocolType::Unknown;
   ExecutionPath execution_path = ExecutionPath::Unknown;
   std::string protocol_raw_value = "";
   RuleEventPayload payload = std::monostate{};

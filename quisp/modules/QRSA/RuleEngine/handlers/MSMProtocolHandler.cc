@@ -9,11 +9,11 @@
 
 namespace quisp::modules::handlers {
 
-using EventType = core::events::RuleEventType;
-using EventProtocol = core::events::ProtocolSpec;
+using EventType = core::events::RuleEventKind;
+using EventProtocol = core::events::ProtocolType;
 using EventHandler = quisp::modules::RuleEngine::RuleEventHandler;
 
-core::events::ProtocolSpec MSMProtocolHandler::protocolSpec() const { return EventProtocol::MSM_v1; }
+core::events::ProtocolType MSMProtocolHandler::protocolSpec() const { return EventProtocol::MSM_v1; }
 
 void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
   auto register_handler = [&engine](EventType event_type, EventProtocol protocol_spec, EventHandler handler) {

@@ -10,7 +10,7 @@ namespace quisp::modules::handlers {
 
 class MIMProtocolHandler : public IRuleProtocolHandler {
  public:
-  core::events::ProtocolSpec protocolSpec() const override;
+  core::events::ProtocolType protocolSpec() const override;
   void registerHandlers(RuleEngine& engine) override;
 };
 

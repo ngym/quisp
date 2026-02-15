@@ -1,6 +1,6 @@
 ### Protocol handler registration model
 
-RuleEngine のイベント処理は、メッセージ種別 (`RuleEventType`) とプロトコル分類 (`ProtocolSpec`) の2軸で振り分けます。  
+RuleEngine のイベント処理は、メッセージ種別 (`RuleEventKind`) とプロトコル分類 (`ProtocolType`) の2軸で振り分けます。  
 既定の登録は `RuleProtocolHandlerRegistrar` から `handlers::createDefaultProtocolHandlers()` 経由で行い、各ハンドラが `registerHandlers` を実装して `RuleEngine` に自身の経路だけを登録します。
 
 新規プロトコル追加時の手順:
@@ -8,7 +8,7 @@ RuleEngine のイベント処理は、メッセージ種別 (`RuleEventType`) �
 1. `RuleProtocolHandlers/<YourProtocol>ProtocolHandler.h/.cc` を追加
 2. `registerHandlers` 内で `event_type + protocol_spec` の対応を登録
 3. `handlers/RuleProtocolHandlers.h` の `createDefaultProtocolHandlers()` に追加
-4. `RuleEventBus` で `ProtocolSpec` 判定を必要なら追加
+4. `RuleEventBus` で `ProtocolType` 判定を必要なら追加
 
 この構成により、既定経路の追加/変更は `RuleEngine.cc` の変更なしで行えます。
 

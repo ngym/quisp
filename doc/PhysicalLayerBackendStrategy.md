@@ -19,9 +19,9 @@ physical-layer simulation backends in QuISP while preserving current behavior.
 ## Terminology for this document / 用語定義
 
 - `MIM Link` and `MSM Link` are link architecture concepts in the simulation documents.
-- `MIM Protocol v1` and `MSM Protocol v1` are protocol identifiers used by `ProtocolSpec` and structured logs.
+- `MIM Protocol v1` and `MSM Protocol v1` are protocol identifiers used by `ProtocolType` and structured logs.
 
-Constraint: string values stored in `ProtocolSpec::to_string` / log payloads must remain protocol identifiers only (`MIM Protocol v1`, `MSM Protocol v1`) and must not include `"Link"`.
+Constraint: string values stored in `ProtocolType::to_string` / log payloads must remain protocol identifiers only (`MIM Protocol v1`, `MSM Protocol v1`) and must not include `"Link"`.
 
 ## Non-goals (Phase 1) / 非目標（フェーズ1）
 

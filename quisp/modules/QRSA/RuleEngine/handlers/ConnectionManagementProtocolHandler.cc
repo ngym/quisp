@@ -9,11 +9,11 @@
 
 namespace quisp::modules::handlers {
 
-using EventType = core::events::RuleEventType;
-using EventProtocol = core::events::ProtocolSpec;
+using EventType = core::events::RuleEventKind;
+using EventProtocol = core::events::ProtocolType;
 using EventHandler = quisp::modules::RuleEngine::RuleEventHandler;
 
-core::events::ProtocolSpec ConnectionManagementProtocolHandler::protocolSpec() const {
+core::events::ProtocolType ConnectionManagementProtocolHandler::protocolSpec() const {
   return EventProtocol::ConnectionManagement;
 }
 

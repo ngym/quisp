@@ -1,3 +1,17 @@
+### Protocol handler registration model
+
+RuleEngine のイベント処理は、メッセージ種別 (`RuleEventType`) とプロトコル分類 (`ProtocolSpec`) の2軸で振り分けます。  
+既定の登録は `RuleProtocolHandlerRegistrar` から `handlers::createDefaultProtocolHandlers()` 経由で行い、各ハンドラが `registerHandlers` を実装して `RuleEngine` に自身の経路だけを登録します。
+
+新規プロトコル追加時の手順:
+
+1. `RuleProtocolHandlers/<YourProtocol>ProtocolHandler.h/.cc` を追加
+2. `registerHandlers` 内で `event_type + protocol_spec` の対応を登録
+3. `handlers/RuleProtocolHandlers.h` の `createDefaultProtocolHandlers()` に追加
+4. `RuleEventBus` で `ProtocolSpec` 判定を必要なら追加
+
+この構成により、既定経路の追加/変更は `RuleEngine.cc` の変更なしで行えます。
+
 ### MSM Link Architecture details which take part in the RuleEngine
 
 In MSM Link, the RuleEngine receives an EPPSTimingNotification message. Then, the QNode prepares to emit photons from the specified timing with the specified interval. In this setting, the QNode contains an internal BSA, and the emitted photons are sent into there. The BSA performs a Bell state measurement on the emitted photon and one of the entangled photons sent from the EPPS.

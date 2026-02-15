@@ -47,6 +47,7 @@ class TestModuleType : public cModuleType {
   std::string getNedSource() const override { return ""; };
   bool isNetwork() const override { return false; };
   bool isSimple() const override { return true; };
+  std::string getDocumentation() const override { return "test module type"; };
 };
 
 }  // namespace module_type

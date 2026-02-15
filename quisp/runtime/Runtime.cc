@@ -402,6 +402,8 @@ void Runtime::purifyY(RegId result_reg_id, int bitset_index, QubitId qubit_id, Q
 }
 
 bool Runtime::isQubitLocked(IQubitRecord* const qubit) { return callback->isQubitLocked(qubit); }
+const std::set<QNodeAddr>& Runtime::getPartners() const { return partners; }
+bool Runtime::hasPartner(const QNodeAddr& partner_addr) const { return partners.find(partner_addr) != partners.cend(); }
 void Runtime::debugRuntimeState() {
   std::cout << "\n---------runtime-state---------"
             << "\npc: " << pc << ", rule_id: " << rule_id << ", qubit_found: " << (qubit_found ? "true" : "false");
@@ -438,4 +440,16 @@ void Runtime::debugSource(const Program& program) const {
 std::string Runtime::debugInstruction(const InstructionTypes& instr) const {
   return std::visit([](auto& op) { return op.toString(); }, instr);
 }
+
+size_t Runtime::partnerCount() const { return partners.size(); }
+size_t Runtime::qubitCount() const { return qubits.size(); }
+size_t Runtime::messageQueueCount() const {
+  size_t count = 0;
+  for (auto &&it : messages) {
+    count += it.second.size();
+  }
+  return count;
+}
+size_t Runtime::namedQubitCount() const { return named_qubits.size(); }
+bool Runtime::isTerminated() const { return terminated; }
 };  // namespace quisp::runtime

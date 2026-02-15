@@ -12,6 +12,7 @@ class RuntimeManager {
   std::vector<Runtime>::iterator begin();
   std::vector<Runtime>::iterator end();
   std::vector<Runtime>::reference at(size_t);
+  std::vector<Runtime>::const_reference at(size_t) const;
   size_t size() const;
 
  protected:

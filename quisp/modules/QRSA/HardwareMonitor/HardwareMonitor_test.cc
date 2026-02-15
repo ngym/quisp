@@ -45,6 +45,7 @@ class HardwareMonitorTestTarget : public quisp::modules::HardwareMonitor {
   using quisp::modules::HardwareMonitor::initialize;
   using quisp::modules::HardwareMonitor::par;
   HardwareMonitorTestTarget(MockQubit* mock_qubit, MockRoutingDaemon* routing_daemon) : quisp::modules::HardwareMonitor() {
+    setComponentType(new TestModuleType("test hm"));
     setParInt(this, "address", 123);
     setParInt(this, "number_of_qnics_rp", 0);
     setParInt(this, "number_of_qnics_r", 0);
@@ -64,13 +65,14 @@ class HardwareMonitorTestTarget : public quisp::modules::HardwareMonitor {
 };
 
 TEST(HardwareMonitorTestTarget, Init) {
-  prepareSimulation();
+  auto *sim = prepareSimulation();
   auto* mock_routing_daemon = new MockRoutingDaemon;
   auto* mock_qubit = new MockQubit;
   EXPECT_CALL(*mock_routing_daemon, getNumEndNodes()).WillOnce(Return(1));
-  HardwareMonitorTestTarget c{mock_qubit, mock_routing_daemon};
-
-  c.initialize(0);
-  ASSERT_EQ(c.par("address").intValue(), 123);
+  auto *c = new HardwareMonitorTestTarget(mock_qubit, mock_routing_daemon);
+  sim->registerComponent(c);
+  c->initialize(0);
+  ASSERT_EQ(c->par("address").intValue(), 123);
+  c->deleteModule();
 }
 }  // namespace

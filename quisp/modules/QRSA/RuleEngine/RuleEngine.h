@@ -21,9 +21,10 @@
 #include "modules/QRSA/HardwareMonitor/IHardwareMonitor.h"
 #include "modules/QRSA/RealTimeController/IRealTimeController.h"
 #include "modules/QRSA/RoutingDaemon/IRoutingDaemon.h"
+#include "core/events/RuleEventBus.h"
 #include "rules/RuleSet.h"
 #include "runtime/Runtime.h"
-#include "runtime/RuntimeManager.h"
+#include "runtime/RuntimeFacade.h"
 #include "utils/ComponentProvider.h"
 
 using namespace omnetpp;
@@ -83,11 +84,13 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void handlePurificationResult(messages::PurificationResult *purification_result);
   void handleSwappingResult(messages::SwappingResult *swapping_result);
   void handleSingleClickResult(messages::SingleClickResult *click_result);
+  bool handleRuleEvent(const core::events::RuleEvent &event);
   messages::CombinedBSAresults *generateCombinedBSAresults(int qnic_index);
   void executeAllRuleSets();
   void sendEmitPhotonSignalToQnic(QNIC_type qnic_type, int qnic_index, int qubit_index, bool is_first, bool is_last);
   void stopOnGoingPhotonEmission(QNIC_type qnic_type, int qnic_index);
   void freeFailedEntanglementAttemptQubits(QNIC_type qnic_type, int qnic_index);
+  int qubit_index_to_address(IStationaryQubit *qubit, int default_index);
   simtime_t getEmitTimeFromBSMNotification(messages::BSMTimingNotification *notification);
   void schedulePhotonEmission(QNIC_type qnic_type, int qnic_index, messages::BSMTimingNotification *notification);
   void scheduleMSMPhotonEmission(QNIC_type qnic_type, int qnic_index, messages::EPPSTimingNotification *notification);
@@ -96,7 +99,8 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   utils::ComponentProvider provider;
   std::unique_ptr<IQNicStore> qnic_store = nullptr;
 
-  runtime::RuntimeManager runtimes;
+  runtime::RuntimeFacade runtimes;
+  core::events::RuleEventBus event_bus;
   std::unordered_map<std::pair<QNIC_type, int>, messages::EmitPhotonRequest *> emit_photon_timer_map;
   std::unordered_map<std::pair<QNIC_type, int>, std::vector<int>> emitted_photon_order_map;
 

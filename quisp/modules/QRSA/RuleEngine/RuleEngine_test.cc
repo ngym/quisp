@@ -156,7 +156,7 @@ TEST_F(RuleEngineTest, resourceAllocation) {
   EXPECT_EQ(rt.qubits.size(), 1);
 }
 
-TEST_F(RuleEngineTest, freeConsumedResource) {
+TEST_F(RuleEngineTest, freeConsumedResourceFallsBackToQnicIndexWhenQubitNotRegistered) {
   auto* rule_engine = new RuleEngineTestTarget{nullptr, routing_daemon, hardware_monitor, realtime_controller};
   sim->registerComponent(rule_engine);
   rule_engine->callInitialize();
@@ -166,6 +166,26 @@ TEST_F(RuleEngineTest, freeConsumedResource) {
   auto* qubit_record = new QubitRecord(QNIC_E, qnic_index, 1, logger.get());
   qubit_record->setBusy(true);
   qubit->fillParams();
+
+  EXPECT_CALL(*realtime_controller, ReInitialize_StationaryQubit(qubit_record, false)).Times(1).WillOnce(Return());
+  EXPECT_CALL(*dynamic_cast<MockQNicStore*>(rule_engine->qnic_store.get()), getQubitRecord(QNIC_E, qnic_index, qnic_index)).Times(1).WillOnce(Return(qubit_record));
+  rule_engine->freeConsumedResource(qnic_index, qubit, QNIC_E);
+  EXPECT_FALSE(qubit_record->isBusy());
+  delete qubit;
+  delete rule_engine->qnic_store.get();
+}
+
+TEST_F(RuleEngineTest, freeConsumedResourceUsesStationaryAddressWhenQubitRegistered) {
+  auto* rule_engine = new RuleEngineTestTarget{nullptr, routing_daemon, hardware_monitor, realtime_controller};
+  sim->registerComponent(rule_engine);
+  rule_engine->callInitialize();
+  int qnic_index = 7;
+  auto logger = std::make_unique<DisabledLogger>();
+  auto* qubit = new MockQubit(QNIC_E, qnic_index);
+  qubit->fillParams();
+  sim->registerComponent(qubit);
+  auto* qubit_record = new QubitRecord(QNIC_E, qnic_index, 1, logger.get());
+  qubit_record->setBusy(true);
 
   EXPECT_CALL(*realtime_controller, ReInitialize_StationaryQubit(qubit_record, false)).Times(1).WillOnce(Return());
   EXPECT_CALL(*dynamic_cast<MockQNicStore*>(rule_engine->qnic_store.get()), getQubitRecord(QNIC_E, qnic_index, 1)).Times(1).WillOnce(Return(qubit_record));

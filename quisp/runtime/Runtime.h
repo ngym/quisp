@@ -216,6 +216,8 @@ class Runtime {
    * @return false the qubit is not locked
    */
   bool isQubitLocked(IQubitRecord* const);
+  const std::set<QNodeAddr>& getPartners() const;
+  bool hasPartner(const QNodeAddr& partner_addr) const;
 
   /**
    * @brief Get the qubit record by sequence number
@@ -339,6 +341,12 @@ class Runtime {
   void debugSource(const Program& program) const;
   std::string debugInstruction(const InstructionTypes& instr) const;
   //@}
+
+  std::size_t partnerCount() const;
+  std::size_t qubitCount() const;
+  std::size_t messageQueueCount() const;
+  std::size_t namedQubitCount() const;
+  bool isTerminated() const;
 
   /** @name related components */
   //@{

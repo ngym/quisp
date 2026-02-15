@@ -10,6 +10,7 @@
 #include <iterator>
 #include <memory>
 #include <ostream>
+#include <variant>
 #include <stdexcept>
 #include <utility>
 
@@ -77,110 +78,10 @@ void RuleEngine::initialize() {
 void RuleEngine::handleMessage(cMessage *msg) {
   executeAllRuleSets();  // New resource added to QNIC with qnic_type qnic_index.
 
-  if (auto *notification_packet = dynamic_cast<BSMTimingNotification *>(msg)) {
-    if (auto *bsa_results = dynamic_cast<CombinedBSAresults *>(msg)) {
-      handleLinkGenerationResult(bsa_results);
-    }
-    auto type = notification_packet->getQnicType();
-    auto qnic_index = notification_packet->getQnicIndex();
-    stopOnGoingPhotonEmission(type, qnic_index);
-    freeFailedEntanglementAttemptQubits(type, qnic_index);
-    schedulePhotonEmission(type, qnic_index, notification_packet);
-  } else if (auto *pk = dynamic_cast<EmitPhotonRequest *>(msg)) {
-    auto type = pk->getQnicType();
-    auto qnic_index = pk->getQnicIndex();
-    auto number_of_free_emitters = qnic_store->countNumFreeQubits(type, qnic_index);
-    auto qubit_index = qnic_store->takeFreeQubitIndex(type, qnic_index);
-    // If this is MSM, we keep on emmiting photons continuously
-    if (pk->isMSM()) {
-      auto &msm_info = msm_info_map[qnic_index];
-      msm_info.photon_index_counter++;
-      if (number_of_free_emitters != 0) {
-        msm_info.qubit_info_map[msm_info.iteration_index] = qubit_index;
-        sendEmitPhotonSignalToQnic(type, qnic_index, qubit_index, true, true);
-      } else {
-        // send MSMResult to partner node, even if we fail to have BSM happen
-        MSMResult *msm_result = new MSMResult();
-        msm_result->setQnicIndex(msm_info.partner_qnic_index);
-        msm_result->setQnicType(QNIC_RP);
-        msm_result->setPhotonIndex(msm_info.photon_index_counter);
-        msm_result->setSuccess(false);
-        msm_result->setCorrectionOperation(PauliOperator ::I);
-        msm_result->setSrcAddr(parentAddress);
-        msm_result->setDestAddr(msm_info.partner_address);
-        msm_result->setKind(6);
-        send(msm_result, "RouterPort$o");
-      }
-      scheduleAt(simTime() + pk->getIntervalBetweenPhotons(), pk);
-      return;
-      // If not, we emit photons on demand
-    } else {
-      if (number_of_free_emitters == 0) return;
-      auto is_first = pk->isFirst();
-      auto is_last = (number_of_free_emitters == 1);
-      // need to set is_first to false
-      pk->setFirst(false);
-      sendEmitPhotonSignalToQnic(type, qnic_index, qubit_index, is_first, is_last);
-      if (!is_last) {
-        scheduleAt(simTime() + pk->getIntervalBetweenPhotons(), pk);
-      }
-      // early return since this doesn't affect entangled resource
-      // and we don't want to delete these messages
-      return;
-    }
-    // store message from epps to rule engine
-  } else if (auto *notification_packet = dynamic_cast<EPPSTimingNotification *>(msg)) {
-    auto partner_address = notification_packet->getOtherQnicParentAddr();
-    auto partner_qnic_index = notification_packet->getOtherQnicIndex();
-    auto epps_address = notification_packet->getEPPSAddr();
-    auto qnic_index = notification_packet->getQnicIndex();
-    auto &msm_info = msm_info_map[qnic_index];
-    msm_info.partner_address = partner_address;
-    msm_info.epps_address = epps_address;
-    msm_info.partner_qnic_index = partner_qnic_index;
-    msm_info.total_travel_time = notification_packet->getTotalTravelTime();
-    stopOnGoingPhotonEmission(QNIC_RP, qnic_index);
-    scheduleMSMPhotonEmission(QNIC_RP, qnic_index, notification_packet);
-    // handle result incoming from bsa
-  } else if (auto *click_result = dynamic_cast<SingleClickResult *>(msg)) {
-    handleSingleClickResult(click_result);
-    // handle result incoming from partner node
-  } else if (auto *msm_result = dynamic_cast<MSMResult *>(msg)) {
-    handleMSMResult(msm_result);
-  } else if (auto *pk = dynamic_cast<LinkTomographyRuleSet *>(msg)) {
-    auto *ruleset = pk->getRuleSet();
-    runtimes.acceptRuleSet(ruleset->construct());
-  } else if (auto *pkt = dynamic_cast<PurificationResult *>(msg)) {
-    handlePurificationResult(pkt);
-  } else if (auto *pkt = dynamic_cast<SwappingResult *>(msg)) {
-    handleSwappingResult(pkt);
-    // handle self message to check whether partner's result has arrived
-  } else if (auto *pkt = dynamic_cast<InternalRuleSetForwarding *>(msg)) {
-    // add actual process
-    auto serialized_ruleset = pkt->getRuleSet();
-    RuleSet ruleset(0, 0);
-    ruleset.deserialize_json(serialized_ruleset);
-    runtimes.acceptRuleSet(ruleset.construct());
-  } else if (auto *pkt = dynamic_cast<InternalRuleSetForwarding_Application *>(msg)) {
-    if (pkt->getApplication_type() != 0) error("This application is not recognized yet");
-    auto serialized_ruleset = pkt->getRuleSet();
-    RuleSet ruleset(0, 0);
-    ruleset.deserialize_json(serialized_ruleset);
-    runtimes.acceptRuleSet(ruleset.construct());
-  } else if (auto *pkt = dynamic_cast<InternalRuleSetForwarding *>(msg)) {
-    // add actual process
-    auto serialized_ruleset = pkt->getRuleSet();
-    RuleSet ruleset(0, 0);
-    ruleset.deserialize_json(serialized_ruleset);
-    runtimes.acceptRuleSet(ruleset.construct());
-  } else if (auto *pkt = dynamic_cast<InternalRuleSetForwarding_Application *>(msg)) {
-    if (pkt->getApplication_type() != 0) error("This application is not recognized yet");
-    auto serialized_ruleset = pkt->getRuleSet();
-    RuleSet ruleset(0, 0);
-    ruleset.deserialize_json(serialized_ruleset);
-    runtimes.acceptRuleSet(ruleset.construct());
-  } else if (auto *pkt = dynamic_cast<StopEmitting *>(msg)) {
-    handleStopEmitting(pkt);
+  event_bus.publish(msg, simTime());
+  bool keep_message = false;
+  for (auto &&event : event_bus.drain(simTime())) {
+    keep_message = keep_message || handleRuleEvent(event);
   }
 
   for (int i = 0; i < number_of_qnics; i++) {
@@ -194,7 +95,134 @@ void RuleEngine::handleMessage(cMessage *msg) {
   }
 
   executeAllRuleSets();
-  delete msg;
+  if (!keep_message) {
+    delete msg;
+  }
+}
+
+bool RuleEngine::handleRuleEvent(const core::events::RuleEvent &event) {
+  using EventType = core::events::RuleEventType;
+  using messages::BSMTimingNotification;
+  using messages::CombinedBSAresults;
+  using messages::EmitPhotonRequest;
+  using messages::EPPSTimingNotification;
+  using messages::InternalRuleSetForwarding;
+  using messages::InternalRuleSetForwarding_Application;
+  using messages::LinkTomographyRuleSet;
+  using messages::MSMResult;
+  using messages::PurificationResult;
+  using messages::SingleClickResult;
+  using messages::StopEmitting;
+  using messages::SwappingResult;
+
+  switch (event.type) {
+    case EventType::BSM_RESULT:
+      handleLinkGenerationResult(std::get<CombinedBSAresults *>(event.payload));
+      return false;
+    case EventType::BSM_TIMING: {
+      auto *notification_packet = std::get<BSMTimingNotification *>(event.payload);
+      auto type = notification_packet->getQnicType();
+      auto qnic_index = notification_packet->getQnicIndex();
+      stopOnGoingPhotonEmission(type, qnic_index);
+      freeFailedEntanglementAttemptQubits(type, qnic_index);
+      schedulePhotonEmission(type, qnic_index, notification_packet);
+      return false;
+    }
+    case EventType::EMIT_PHOTON_REQUEST: {
+      auto *pk = std::get<EmitPhotonRequest *>(event.payload);
+      auto type = pk->getQnicType();
+      auto qnic_index = pk->getQnicIndex();
+      auto number_of_free_emitters = qnic_store->countNumFreeQubits(type, qnic_index);
+      auto qubit_index = qnic_store->takeFreeQubitIndex(type, qnic_index);
+
+      if (pk->isMSM()) {
+        auto &msm_info = msm_info_map[qnic_index];
+        msm_info.photon_index_counter++;
+        if (number_of_free_emitters != 0) {
+          msm_info.qubit_info_map[msm_info.iteration_index] = qubit_index;
+          sendEmitPhotonSignalToQnic(type, qnic_index, qubit_index, true, true);
+        } else {
+          auto *msm_result = new MSMResult();
+          msm_result->setQnicIndex(msm_info.partner_qnic_index);
+          msm_result->setQnicType(QNIC_RP);
+          msm_result->setPhotonIndex(msm_info.photon_index_counter);
+          msm_result->setSuccess(false);
+          msm_result->setCorrectionOperation(PauliOperator::I);
+          msm_result->setSrcAddr(parentAddress);
+          msm_result->setDestAddr(msm_info.partner_address);
+          msm_result->setKind(6);
+          send(msm_result, "RouterPort$o");
+        }
+        scheduleAt(simTime() + pk->getIntervalBetweenPhotons(), pk);
+      } else {
+        if (number_of_free_emitters == 0) return true;
+        auto is_first = pk->isFirst();
+        auto is_last = (number_of_free_emitters == 1);
+        pk->setFirst(false);
+        sendEmitPhotonSignalToQnic(type, qnic_index, qubit_index, is_first, is_last);
+        if (!is_last) {
+          scheduleAt(simTime() + pk->getIntervalBetweenPhotons(), pk);
+        }
+      }
+      return true;
+    }
+    case EventType::EPPS_TIMING: {
+      auto *notification_packet = std::get<EPPSTimingNotification *>(event.payload);
+      auto partner_address = notification_packet->getOtherQnicParentAddr();
+      auto partner_qnic_index = notification_packet->getOtherQnicIndex();
+      auto epps_address = notification_packet->getEPPSAddr();
+      auto qnic_index = notification_packet->getQnicIndex();
+      auto &msm_info = msm_info_map[qnic_index];
+      msm_info.partner_address = partner_address;
+      msm_info.epps_address = epps_address;
+      msm_info.partner_qnic_index = partner_qnic_index;
+      msm_info.total_travel_time = notification_packet->getTotalTravelTime();
+      stopOnGoingPhotonEmission(QNIC_RP, qnic_index);
+      scheduleMSMPhotonEmission(QNIC_RP, qnic_index, notification_packet);
+      return false;
+    }
+    case EventType::SINGLE_CLICK_RESULT:
+      handleSingleClickResult(std::get<SingleClickResult *>(event.payload));
+      return false;
+    case EventType::MSM_RESULT:
+      handleMSMResult(std::get<MSMResult *>(event.payload));
+      return false;
+    case EventType::LINK_TOMOGRAPHY_RULESET: {
+      auto *pk = std::get<LinkTomographyRuleSet *>(event.payload);
+      auto *ruleset = pk->getRuleSet();
+      runtimes.submitRuleSet(ruleset->construct());
+      return false;
+    }
+    case EventType::PURIFICATION_RESULT:
+      handlePurificationResult(std::get<PurificationResult *>(event.payload));
+      return false;
+    case EventType::SWAPPING_RESULT:
+      handleSwappingResult(std::get<SwappingResult *>(event.payload));
+      return false;
+    case EventType::RULESET_FORWARDING: {
+      auto *pkt = std::get<InternalRuleSetForwarding *>(event.payload);
+      auto serialized_ruleset = pkt->getRuleSet();
+      RuleSet ruleset(0, 0);
+      ruleset.deserialize_json(serialized_ruleset);
+      runtimes.submitRuleSet(ruleset.construct());
+      return false;
+    }
+    case EventType::RULESET_FORWARDING_APPLICATION: {
+      auto *pkt = std::get<InternalRuleSetForwarding_Application *>(event.payload);
+      if (pkt->getApplication_type() != 0) error("This application is not recognized yet");
+      auto serialized_ruleset = pkt->getRuleSet();
+      RuleSet ruleset(0, 0);
+      ruleset.deserialize_json(serialized_ruleset);
+      runtimes.submitRuleSet(ruleset.construct());
+      return false;
+    }
+    case EventType::STOP_EMITTING:
+      handleStopEmitting(std::get<StopEmitting *>(event.payload));
+      return false;
+    case EventType::UNKNOWN:
+    default:
+      return false;
+  }
 }
 
 void RuleEngine::schedulePhotonEmission(QNIC_type type, int qnic_index, BSMTimingNotification *notification) {
@@ -333,9 +361,7 @@ void RuleEngine::handlePurificationResult(PurificationResult *result) {
   auto measurement_result = result->getMeasurementResult();
   auto purification_protocol = result->getProtocol();
   std::vector<int> message_content = {sequence_number, measurement_result, purification_protocol};
-  auto runtime = runtimes.findById(ruleset_id);
-  if (runtime == nullptr) return;
-  runtime->assignMessageToRuleSet(shared_rule_tag, message_content);
+  runtimes.assignMessageToRuleSet(ruleset_id, shared_rule_tag, message_content);
 }
 
 void RuleEngine::handleSwappingResult(SwappingResult *result) {
@@ -345,42 +371,41 @@ void RuleEngine::handleSwappingResult(SwappingResult *result) {
   auto correction_frame = result->getCorrectionFrame();
   auto new_partner_addr = result->getNewPartner();
   std::vector<int> message_content = {sequence_number, correction_frame, new_partner_addr};
-  auto runtime = runtimes.findById(ruleset_id);
-  if (runtime == nullptr) return;
-  runtime->assignMessageToRuleSet(shared_rule_tag, message_content);
+  runtimes.assignMessageToRuleSet(ruleset_id, shared_rule_tag, message_content);
 }
 
 // Invoked whenever a new resource (entangled with neighbor) has been created.
 // Allocates those resources to a particular ruleset, from top to bottom (all of it).
 void RuleEngine::ResourceAllocation(int qnic_type, int qnic_index) {
-  for (auto &runtime : runtimes) {
-    auto &partners = runtime.partners;
-    for (auto &partner_addr : partners) {
-      auto range = bell_pair_store.getBellPairsRange((QNIC_type)qnic_type, qnic_index, partner_addr.val);
-      for (auto it = range.first; it != range.second; ++it) {
-        auto qubit_record = it->second;
-
-        // 3. if the qubit is not allocated yet, and the qubit has not been allocated to this rule,
-        // if the qubit has already been assigned to the rule, the qubit is not allocatable to that rule
-        if (!qubit_record->isAllocated()) {  //&& !qubit_record->isRuleApplied((*rule)->rule_id
-          qubit_record->setAllocated(true);
-          runtime.assignQubitToRuleSet(partner_addr, qubit_record);
-        }
-      }
-    }
-  }
+  runtimes.allocateResources(bell_pair_store, static_cast<QNIC_type>(qnic_type), qnic_index);
 }
 
 void RuleEngine::executeAllRuleSets() { runtimes.exec(); }
 
 void RuleEngine::freeConsumedResource(int qnic_index /*Not the address!!!*/, IStationaryQubit *qubit, QNIC_type qnic_type) {
-  auto *qubit_record = qnic_store->getQubitRecord(qnic_type, qnic_index, qubit->par("stationary_qubit_address"));
+  int qubit_address = qubit_index_to_address(qubit, qnic_index);
+  auto *qubit_record = qnic_store->getQubitRecord(qnic_type, qnic_index, qubit_address);
   realtime_controller->ReInitialize_StationaryQubit(qubit_record, false);
   qubit_record->setBusy(false);
   if (qubit_record->isAllocated()) {
     qubit_record->setAllocated(false);
   }
   bell_pair_store.eraseQubit(qubit_record);
+}
+
+int RuleEngine::qubit_index_to_address(IStationaryQubit *qubit, int default_index) {
+  if (qubit->getSimulation() == nullptr) {
+    return default_index;
+  }
+  auto stationary_qubit_address = qubit->findPar("stationary_qubit_address");
+  if (stationary_qubit_address != -1) {
+    return qubit->par(stationary_qubit_address).intValue();
+  }
+  auto qnic_address = qubit->findPar("qnic_address");
+  if (qnic_address != -1) {
+    return qubit->par(qnic_address).intValue();
+  }
+  return default_index;
 }
 
 }  // namespace quisp::modules

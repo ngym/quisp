@@ -1,9 +1,12 @@
 QUISP_VERSION=0.3.0
 CXXFLAGS = -std=c++17
 
-OBJS := $(filter-out test_util/% %_test.o,$(OBJS))
+OBJS := $(filter-out test_utils/% %_test.o,$(OBJS))
 OBJS := $(filter-out %unit_test_main.o,$(OBJS))
 MSGC:=$(MSGC) --msg6
+
+LDFLAGS := $(strip $(shell printf '%s' "$(LDFLAGS)" | sed \
+  's#-Wl,-no_warn_duplicate_libraries##g; s#-no_warn_duplicate_libraries,-L/opt/homebrew/Cellar/tcl-tk/8.6.14/lib##g; s# -L/opt/homebrew/Cellar/tcl-tk/8.6.14/lib##g'))
 
 # you can pass the file path you want to check as SRCS environment variable. see the example below.
 # $ SRCS=./quisp/modules/Application.cc make tidy # checks only Application.cc

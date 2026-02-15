@@ -49,6 +49,7 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
   using quisp::modules::ConnectionManager::respondToRequest_deprecated;
   ConnectionManagerTestTarget(IRoutingDaemon *routing_daemon, IHardwareMonitor *hardware_monitor)
       : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
+    setComponentType(new module_type::TestModuleType("test cm"));
     setParInt(this, "address", 5);
     setParInt(this, "total_number_of_qnics", 10);
     this->setName("connection_manager_test_target");
@@ -60,14 +61,13 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
     setParInt(this, "seed_cm", 0);
 
     this->provider.setStrategy(std::make_unique<Strategy>(routing_daemon, hardware_monitor));
-    setComponentType(new module_type::TestModuleType("test cm"));
   }
   ConnectionManagerTestTarget() : quisp::modules::ConnectionManager() {
+    setComponentType(new module_type::TestModuleType("test cm"));
     setParInt(this, "address", 5);
     setParInt(this, "total_number_of_qnics", 10);
     this->setName("connection_manager_test_target");
     this->provider.setStrategy(std::make_unique<Strategy>());
-    setComponentType(new module_type::TestModuleType("test cm"));
   }
   cGate *gate(const char *gatename, int index = -1) override {
     if (strcmp(gatename, "RouterPort$o") != 0) {
@@ -80,8 +80,11 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
 };
 
 TEST(ConnectionManagerTest, Init) {
-  ConnectionManagerTestTarget c;
-  ASSERT_EQ(c.par("address").intValue(), 5);
+  auto *sim = prepareSimulation();
+  auto *c = new ConnectionManagerTestTarget{};
+  sim->registerComponent(c);
+  EXPECT_EQ(c->par("address").intValue(), 5);
+  c->deleteModule();
 }
 
 TEST(ConnectionManagerTest, parsePurType) {

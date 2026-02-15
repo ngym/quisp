@@ -76,6 +76,7 @@ class StaticEnv : public omnetpp::cEnvir {
 
   // UI functions (see also protected ones)
   void bubble(cComponent *component, const char *text) override {}
+  std::ostream &getOutputStream() override { return std::cout; }
   std::string gets(const char *prompt, const char *defaultreply = nullptr) override;
   cEnvir &flush() {
     ::fflush(stdout);
@@ -87,9 +88,9 @@ class StaticEnv : public omnetpp::cEnvir {
   cRNG *getRNG(int k) override;
 
   // output vectors
-  void *registerOutputVector(const char *modulename, const char *vectorname) override { return nullptr; }
+  void *registerOutputVector(const char *modulename, const char *vectorname, opp_string_map *attributes = nullptr) override { return nullptr; }
   void deregisterOutputVector(void *vechandle) override {}
-  void setVectorAttribute(void *vechandle, const char *name, const char *value) override {}
+  void setVectorAttribute(void *vechandle, const char *name, const char *value) {}
   bool recordInOutputVector(void *vechandle, simtime_t t, double value) override { return false; }
 
   // output scalars

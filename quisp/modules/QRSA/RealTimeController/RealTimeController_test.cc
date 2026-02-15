@@ -45,9 +45,12 @@ class RTCTestTarget : public quisp::modules::RealTimeController {
 };
 
 TEST(RealTimeControllerTest, Init) {
-  RTCTestTarget c{nullptr};
-  c.initialize();
-  ASSERT_EQ(c.par("address").intValue(), 123);
+  auto *sim = prepareSimulation();
+  auto *c = new RTCTestTarget(nullptr);
+  sim->registerComponent(c);
+  c->initialize();
+  ASSERT_EQ(c->par("address").intValue(), 123);
+  c->deleteModule();
 }
 TEST(RealTimeControllerTest, EmitPhoton) {
   prepareSimulation();

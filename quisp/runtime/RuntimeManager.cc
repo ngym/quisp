@@ -30,6 +30,7 @@ void RuntimeManager::exec() {
 std::vector<Runtime>::iterator RuntimeManager::begin() { return runtimes.begin(); }
 std::vector<Runtime>::iterator RuntimeManager::end() { return runtimes.end(); }
 std::vector<Runtime>::reference RuntimeManager::at(size_t index) { return runtimes.at(index); }
+std::vector<Runtime>::const_reference RuntimeManager::at(size_t index) const { return runtimes.at(index); }
 size_t RuntimeManager::size() const { return runtimes.size(); }
 
 }  // namespace quisp::runtime

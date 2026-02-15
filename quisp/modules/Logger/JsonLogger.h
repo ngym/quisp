@@ -17,6 +17,7 @@ class JsonLogger : public ILogger {
   void logPacket(const std::string& event_type, omnetpp::cMessage const* const msg) override;
   void logQubitState(quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index, bool is_busy, bool is_allocated) override;
   void logBellPairInfo(const std::string& event_type, int partner_addr, quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index) override;
+  void logEvent(const std::string& event_type, const std::string& event_payload_json) override;
   void setModule(omnetpp::cModule const* const mod) override;
   void setQNodeAddress(int addr) override;
 

@@ -4,27 +4,25 @@
 #include "RuntimeStateStore.h"
 #include "RuleSet.h"
 #include "test.h"
+#include "modules/QRSA/RuleEngine/QubitRecord/QubitRecord.h"
 
 namespace {
 using namespace quisp::runtime;
-using namespace quisp::modules;
 using namespace quisp::modules::qubit_record;
+using quisp::modules::QNIC_E;
 using namespace quisp_test;
 using namespace testing;
 
 class RuntimeFacadeTest : public testing::Test {
  protected:
   void SetUp() {
-    auto cb = std::make_unique<MockRuntimeCallback>();
-    callback = cb.get();
-    facade = new RuntimeFacade(std::move(cb));
+    facade = new RuntimeFacade(std::make_unique<MockRuntimeCallback>());
   }
   void TearDown() {
     delete facade;
   }
 
   RuntimeFacade* facade;
-  MockRuntimeCallback* callback = nullptr;
 };
 
 TEST_F(RuntimeFacadeTest, SubmitRuleSetAndFindById) {
@@ -38,10 +36,11 @@ TEST_F(RuntimeFacadeTest, SubmitRuleSetAndFindById) {
 
 TEST_F(RuntimeFacadeTest, SnapshotReflectsRuntimeResources) {
   const auto partner_addr = QNodeAddr{1};
+  const int shared_rule_tag = 99;
   QubitId q0{0};
   Program cond{"cond", {INSTR_GET_QUBIT_QubitId_QNodeAddr_int_{{q0, partner_addr, 0}}, INSTR_RET_ReturnCode_{{ReturnCode::COND_PASSED}}}};
   Program action{"action", {}};
-  Rule rule{"", -1, -1, cond, action};
+  Rule rule{"", -1, shared_rule_tag, cond, action};
   Program terminated{"", {INSTR_RET_ReturnCode_{{ReturnCode::RS_TERMINATED}}}};
   RuleSet rs{"snapshot", {rule}, terminated};
   rs.id = 101;
@@ -53,7 +52,7 @@ TEST_F(RuntimeFacadeTest, SnapshotReflectsRuntimeResources) {
   auto* qubit_record = new QubitRecord(QNIC_E, 0, 0);
   runtime->assignQubitToRuleSet(partner_addr, qubit_record);
   MessageRecord msg = {7, 8, 9};
-  runtime->assignMessageToRuleSet(-1, msg);
+  runtime->assignMessageToRuleSet(shared_rule_tag, msg);
 
   auto snapshot = facade->snapshotState(0);
   EXPECT_EQ(snapshot.terminated, false);

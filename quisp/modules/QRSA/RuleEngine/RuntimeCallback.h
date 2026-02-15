@@ -180,6 +180,14 @@ struct RuntimeCallback : public quisp::runtime::Runtime::ICallBack {
     return ss.str();
   }
 
+  void logEvent(const std::string& event_type, const std::string& event_payload_json) override {
+    auto* log = rule_engine->getLogger();
+    if (log == nullptr) {
+      return;
+    }
+    log->logEvent(event_type, event_payload_json);
+  }
+
   RuleEngine *rule_engine;
   utils::ComponentProvider &provider;
   int right_qubit_index = -1;

@@ -24,3 +24,9 @@ class SomeModule: public cSimpleModule, public LoggerBase {
 };
 
 ```
+
+Structured events can be emitted with `logEvent`.
+
+```cpp
+logEvent("unknown_rule_event", "{\"simtime\": 1.0, \"event_type\": \"UNKNOWN\", \"msg_name\": \"raw\"}");
+```

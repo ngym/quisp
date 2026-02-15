@@ -1,6 +1,7 @@
 #include "Runtime.h"
 
 #include <omnetpp.h>
+#include <sstream>
 
 namespace quisp::runtime {
 
@@ -51,7 +52,9 @@ void Runtime::exec() {
   cleanup();
   debugging = ruleset.debugging;
   if (debugging) {
-    std::cout << "Run RuleSet: " << ruleset.name << "\n";
+    std::ostringstream ss;
+    ss << "Run RuleSet: " << ruleset.name;
+    if (callback != nullptr) callback->logEvent("runtime_ruleset_start", ss.str());
   }
   for (auto& rule : ruleset.rules) {
     rule_id = rule.id;
@@ -61,10 +64,16 @@ void Runtime::exec() {
     while (true) {
       if (debugging) {
         debugRuntimeState();
-        std::cout << "Run Rule(" << rule.id << "): " << rule.name << ", " << callback->getNodeInfo() << "\n";
+        std::ostringstream ss;
+        ss << "Run Rule(" << rule.id << "): " << rule.name;
+        if (callback != nullptr) callback->logEvent("runtime_rule_start", ss.str());
       }
       execProgram(rule.condition);
-      if (debugging) std::cout << return_code << std::endl;
+      if (debugging) {
+        std::ostringstream ss;
+        ss << "runtime_return_code: " << return_code;
+        if (callback != nullptr) callback->logEvent("runtime_return_code", ss.str());
+      }
       if (return_code == ReturnCode::COND_FAILED) {
         break;
       }
@@ -98,9 +107,12 @@ void Runtime::execProgram(const Program& program) {
   }
 
   if (return_code == ReturnCode::ERROR) {
-    std::cout << "Uncaught Error >>>>>> " << callback->getNodeInfo() << std::endl;
-    debugRuntimeState();
-    debugSource(program);
+    std::ostringstream ss;
+    ss << "\"return_code\": \"" << static_cast<int>(return_code)
+       << "\", \"program_name\": \"" << program.name << "\"";
+    if (callback != nullptr) {
+      callback->logEvent("runtime_uncaught_error", ss.str());
+    }
     throw std::runtime_error("uncaught error");
   }
 }
@@ -405,36 +417,39 @@ bool Runtime::isQubitLocked(IQubitRecord* const qubit) { return callback->isQubi
 const std::set<QNodeAddr>& Runtime::getPartners() const { return partners; }
 bool Runtime::hasPartner(const QNodeAddr& partner_addr) const { return partners.find(partner_addr) != partners.cend(); }
 void Runtime::debugRuntimeState() {
-  std::cout << "\n---------runtime-state---------"
-            << "\npc: " << pc << ", rule_id: " << rule_id << ", qubit_found: " << (qubit_found ? "true" : "false");
-  std::cout << "\nReg0: " << registers[0].value << ", Reg1: " << registers[1].value << ", Reg2: " << registers[2].value << ", Reg3: " << registers[3].value
-            << ", Reg4: " << registers[4].value << "\n----------memory------------\n";
+  std::ostringstream ss;
+  ss << "---------runtime-state---------"
+     << "\npc: " << pc << ", rule_id: " << rule_id << ", qubit_found: " << (qubit_found ? "true" : "false");
+  ss << "\nReg0: " << registers[0].value << ", Reg1: " << registers[1].value << ", Reg2: " << registers[2].value << ", Reg3: " << registers[3].value
+     << ", Reg4: " << registers[4].value << "\n----------memory------------\n";
   for (auto it : memory) {
-    std::cout << "  " << it.first << ": " << it.second << "\n";
+    ss << "  " << it.first << ": " << it.second << "\n";
   }
-  std::cout << "\n----------qubits---------\n";
+  ss << "\n----------qubits---------\n";
   for (auto& [key, qubit] : qubits) {
     //// (partner's qnode addr, assigned RuleId) => [local half of the bell pair qubit record]
     auto& [partner_addr, rule_id] = key;
-    auto locked = callback->isQubitLocked(qubit);
-    std::cout << "  Qubit(qnic:" << qubit->getQNicIndex() << ", qubit_index:" << qubit->getQubitIndex() << "):" << partner_addr << " rule_id:" << rule_id << ", locked:" << locked
-              << ", busy:" << qubit->isBusy() << "\n";
+    auto locked = callback ? callback->isQubitLocked(qubit) : false;
+    ss << "  Qubit(qnic:" << qubit->getQNicIndex() << ", qubit_index:" << qubit->getQubitIndex() << "):" << partner_addr << " rule_id:" << rule_id
+       << ", locked:" << locked << ", busy:" << qubit->isBusy() << "\n";
   }
 
-  std::cout << "\n--------named-qubits---------\n";
+  ss << "\n--------named-qubits---------\n";
   for (auto& [qubit_id, qubit] : named_qubits) {
-    std::cout << "  QubitId(" << qubit_id.val << "): Qubit(qnic: " << qubit->getQNicIndex() << ", index: " << qubit->getQubitIndex() << "):\n";
+    ss << "  QubitId(" << qubit_id.val << "): Qubit(qnic: " << qubit->getQNicIndex() << ", index: " << qubit->getQubitIndex() << "):\n";
   }
-  std::cout << "----------------------------------------\n\n" << std::endl;
+  ss << "----------------------------------------";
+  if (callback != nullptr) callback->logEvent("runtime_debug_state", ss.str());
 }
 
 void Runtime::debugSource(const Program& program) const {
   auto len = program.opcodes.size();
-  std::cout << program.name << " " << callback->getNodeInfo() << "\n";
+  std::ostringstream ss;
+  ss << program.name << "\n";
   for (int i = 0; i < len; i++) {
-    std::cout << (i == pc ? "  >>" : "    ") << std::to_string(i) << ": " << std::visit([](auto& op) { return op.toString(); }, program.opcodes[i]) << "\n";
+    ss << (i == pc ? "  >>" : "    ") << std::to_string(i) << ": " << std::visit([](auto& op) { return op.toString(); }, program.opcodes[i]) << "\n";
   }
-  std::cout << std::flush;
+  if (callback != nullptr) callback->logEvent("runtime_source_debug", ss.str());
 }
 
 std::string Runtime::debugInstruction(const InstructionTypes& instr) const {

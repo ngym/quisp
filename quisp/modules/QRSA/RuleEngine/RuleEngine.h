@@ -4,6 +4,7 @@
  */
 #pragma once
 
+#include <functional>
 #include <unordered_map>
 #include <vector>
 
@@ -38,6 +39,8 @@ namespace quisp::modules {
 using qnic_store::IQNicStore;
 using qubit_record::IQubitRecord;
 
+class RuleProtocolHandlerRegistrar;
+
 struct SwappingResultData {
   unsigned long ruleset_id;
   int shared_tag;
@@ -57,6 +60,7 @@ struct SwappingResultData {
 
 class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
  public:
+  friend class RuleProtocolHandlerRegistrar;
   friend runtime_callback::RuntimeCallback;
   RuleEngine();
   ~RuleEngine();
@@ -75,6 +79,9 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void freeResource(int qnic_index, int qubit_index, QNIC_type qnic_type);
   void freeConsumedResource(int qnic_index, IStationaryQubit *qubit, QNIC_type qnic_type);
   void ResourceAllocation(int qnic_type, int qnic_index);
+  using RuleEventHandler = std::function<void(const core::events::RuleEvent&)>;
+  using RuleEventType = core::events::RuleEventType;
+  void registerRuleEventHandler(RuleEventType event_type, RuleEventHandler handler);
 
  protected:
   void initialize() override;
@@ -84,7 +91,10 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void handlePurificationResult(messages::PurificationResult *purification_result);
   void handleSwappingResult(messages::SwappingResult *swapping_result);
   void handleSingleClickResult(messages::SingleClickResult *click_result);
-  bool handleRuleEvent(const core::events::RuleEvent &event);
+  void handleRuleEvent(const core::events::RuleEvent &event);
+  void logUnknownRuleEvent(const core::events::RuleEvent &event);
+  void registerRuleEventHandlers();
+  void dispatchRuleEvent(const core::events::RuleEvent &event);
   messages::CombinedBSAresults *generateCombinedBSAresults(int qnic_index);
   void executeAllRuleSets();
   void sendEmitPhotonSignalToQnic(QNIC_type qnic_type, int qnic_index, int qubit_index, bool is_first, bool is_last);
@@ -101,6 +111,7 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
 
   runtime::RuntimeFacade runtimes;
   core::events::RuleEventBus event_bus;
+  std::unordered_map<int, RuleEventHandler> rule_event_handlers;
   std::unordered_map<std::pair<QNIC_type, int>, messages::EmitPhotonRequest *> emit_photon_timer_map;
   std::unordered_map<std::pair<QNIC_type, int>, std::vector<int>> emitted_photon_order_map;
 

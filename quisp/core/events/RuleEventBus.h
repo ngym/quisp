@@ -3,9 +3,13 @@
 #include <omnetpp/cmessage.h>
 #include <omnetpp/simtime_t.h>
 
+#include <functional>
 #include <cstdint>
-#include <variant>
+#include <optional>
+#include <unordered_map>
+#include <string>
 #include <vector>
+#include <variant>
 
 namespace quisp::messages {
 class BSMTimingNotification;
@@ -23,6 +27,12 @@ class SwappingResult;
 }  // namespace quisp::messages
 
 namespace quisp::core::events {
+
+enum class RuleEventChannel {
+  UNKNOWN,
+  EXTERNAL,
+  INTERNAL_TIMER,
+};
 
 enum class RuleEventType {
   UNKNOWN,
@@ -48,19 +58,31 @@ using RuleEventPayload = std::variant<std::monostate, messages::BSMTimingNotific
 
 struct RuleEvent {
   RuleEventType type = RuleEventType::UNKNOWN;
+  RuleEventChannel channel = RuleEventChannel::UNKNOWN;
+  bool keep_source = false;
   ::omnetpp::simtime_t time = SIMTIME_ZERO;
   int64_t event_number = 0;
   RuleEventPayload payload = std::monostate{};
+  std::string msg_name = "";
+  std::string msg_type = "";
 };
 
 class RuleEventBus {
  public:
+  using RuleEventTranslator = std::function<std::optional<RuleEvent>(::omnetpp::cMessage *msg, ::omnetpp::simtime_t now)>;
+
+  RuleEventBus();
+  void registerTranslator(const std::string &message_class_name, RuleEventTranslator translator);
+  RuleEvent toRuleEvent(::omnetpp::cMessage *msg, ::omnetpp::simtime_t now);
   void publish(::omnetpp::cMessage *msg, ::omnetpp::simtime_t now);
   void publish(const RuleEvent &event);
   std::vector<RuleEvent> drain(::omnetpp::simtime_t now);
 
  private:
+  void registerDefaultTranslators();
+
   std::vector<RuleEvent> event_queue;
+  std::unordered_map<std::string, RuleEventTranslator> translators;
 };
 
 }  // namespace quisp::core::events

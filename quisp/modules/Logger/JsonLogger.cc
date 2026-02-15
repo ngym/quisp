@@ -81,4 +81,9 @@ void JsonLogger::logBellPairInfo(const std::string& event_type, int partner_addr
                 current_time, event_type, qnode_address, partner_addr, qnic_type, qnic_index, qubit_index);
 }
 
+void JsonLogger::logEvent(const std::string& event_type, const std::string& event_payload_json) {
+  auto current_time = omnetpp::simTime();
+  _logger->info("\"simtime\": {}, \"event_type\": \"{}\", \"event_payload\": {}", current_time, event_type, event_payload_json);
+}
+
 }  // namespace quisp::modules::Logger

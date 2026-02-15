@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <deque>
 #include <iostream>
+#include <string>
 #include <stdexcept>
 #include <tuple>
 #include <unordered_map>
@@ -88,6 +89,7 @@ class Runtime {
                                     const int sequence_number, const int frame_correction) = 0;
     // Debugging
     virtual std::string getNodeInfo() { return ""; };
+    virtual void logEvent(const std::string&, const std::string&) {}
   };
 
   Runtime();

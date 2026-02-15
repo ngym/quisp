@@ -13,6 +13,7 @@ class LoggerBase {
   LoggerBase();
   ~LoggerBase();
   void initializeLogger(utils::ComponentProvider& provider);
+  quisp::modules::Logger::ILogger* getLogger() { return logger; }
 
  protected:
   ILogger* logger = nullptr;

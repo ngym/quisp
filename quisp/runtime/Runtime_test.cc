@@ -1,5 +1,6 @@
 #include "Runtime.h"
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include "modules/QRSA/QRSA.h"
@@ -224,6 +225,12 @@ TEST_F(RuntimeTest, AssignQubit) {
   runtime->rule_id = 1;
   EXPECT_EQ(runtime->getQubitByPartnerAddr(partner_addr2, 0), qubit2);
   EXPECT_EQ(runtime->getQubitByPartnerAddr(partner_addr2, 1), qubit3);
+}
+
+TEST_F(RuntimeTest, UncaughtErrorPathLogsRuntimeEvent) {
+  Program error_program{"", {INSTR_RET_ReturnCode_{{ReturnCode::ERROR}}}};
+  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", _)).Times(1);
+  EXPECT_THROW(runtime->execProgram(error_program), std::runtime_error);
 }
 
 }  // namespace

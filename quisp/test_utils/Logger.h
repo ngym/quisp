@@ -1,6 +1,7 @@
 #pragma once
 #include <modules/Logger/ILogger.h>
 #include <iostream>
+#include <string>
 namespace quisp_test::Logger {
 using quisp::modules::Logger::ILogger;
 class TestLogger : public ILogger {
@@ -13,8 +14,16 @@ class TestLogger : public ILogger {
   };
 
   void logBellPairInfo(const std::string& event_type, int partner_addr, quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index) override{};
+  void logEvent(const std::string& event_type, const std::string& event_payload_json) override {
+    log_event_type = event_type;
+    log_event_payload = event_payload_json;
+    log_event_count++;
+  };
 
   void setModule(omnetpp::cModule const* const mod) override {}
   void setQNodeAddress(int addr) override {}
+  std::string log_event_type;
+  std::string log_event_payload;
+  int log_event_count = 0;
 };
 }  // namespace quisp_test::Logger

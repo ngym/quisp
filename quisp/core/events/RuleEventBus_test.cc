@@ -123,6 +123,18 @@ TEST(RuleEventBusTest, KeepsOrderByTimeThenEventNumberInDrain) {
   EXPECT_EQ(events[3].event_number, 10);
 }
 
+TEST(RuleEventBusTest, UnknownMessageAndNullMessageAreHandled) {
+  RuleEventBus bus;
+  cMessage plain("plain");
+  bus.publish(&plain, SimTime(1));
+  bus.publish(nullptr, SimTime(1));
+
+  auto events = bus.drain(SimTime(1));
+  ASSERT_EQ(events.size(), 1);
+  EXPECT_EQ(events[0].type, RuleEventType::UNKNOWN);
+  EXPECT_TRUE(std::holds_alternative<std::monostate>(events[0].payload));
+}
+
 TEST(RuleEventBusTest, DrainsOnlyEventsBeforeOrAtCurrentTime) {
   RuleEventBus bus;
   bus.publish(RuleEvent{RuleEventType::BSM_RESULT, SimTime(3), 1});
@@ -140,4 +152,3 @@ TEST(RuleEventBusTest, DrainsOnlyEventsBeforeOrAtCurrentTime) {
 }
 
 }  // namespace
-

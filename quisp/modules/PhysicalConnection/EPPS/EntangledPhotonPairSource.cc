@@ -1,8 +1,26 @@
 #include "EntangledPhotonPairSource.h"
 #include "PhotonicQubit_m.h"
+#include "modules/Backend/PhysicalServiceFacade.h"
+#include "modules/QNIC/StationaryQubit/QubitId.h"
 
 using quisp::messages::PhotonicQubit;
+using quisp::modules::backend::PhysicalServiceFacade;
+using quisp::modules::backend::QubitHandle;
+using quisp::modules::qubit_id::QubitId;
 using namespace omnetpp;
+
+namespace {
+
+QubitHandle makeHandle(const quisp::backends::IQubit* qubit) {
+  if (qubit == nullptr) throw cRuntimeError("EntangledPhotonPairSource::makeHandle: null qubit");
+  const auto* id = qubit->getId();
+  if (id == nullptr) throw cRuntimeError("EntangledPhotonPairSource::makeHandle: qubit has no id");
+  const auto* qid = dynamic_cast<const QubitId*>(id);
+  if (qid == nullptr) throw cRuntimeError("EntangledPhotonPairSource::makeHandle: unsupported qubit id type");
+  return QubitHandle{qid->node_addr, qid->qnic_index, qid->qnic_type, qid->qubit_addr};
+}
+
+}  // namespace
 
 namespace quisp::modules {
 
@@ -50,8 +68,17 @@ void EntangledPhotonPairSource::emitPhotons() {
   auto *right_photon = new PhotonicQubit("RightPhoton");
   auto *left_photon_ref = backend->getShortLiveQubit();
   auto *right_photon_ref = backend->getShortLiveQubit();
-  left_photon_ref->noiselessH();
-  left_photon_ref->noiselessCNOT(right_photon_ref);
+  auto source_handle = makeHandle(left_photon_ref);
+  auto target_handle = makeHandle(right_photon_ref);
+  PhysicalServiceFacade service{backend};
+  auto hadamard = service.applyGate("H", {source_handle});
+  if (!hadamard.success) {
+    throw cRuntimeError("EntangledPhotonPairSource::emitPhotons: hadamard failed");
+  }
+  auto cnot = service.applyGate("CNOT", {source_handle, target_handle});
+  if (!cnot.success) {
+    throw cRuntimeError("EntangledPhotonPairSource::emitPhotons: cnot failed");
+  }
   left_photon->setQubitRef(left_photon_ref);
   right_photon->setQubitRef(right_photon_ref);
 

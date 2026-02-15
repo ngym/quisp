@@ -77,7 +77,8 @@ struct BackendContext {
 
 struct QubitHandle {
   int node_id;
-  int qnic_id;
+  int qnic_index;
+  int qnic_type;
   int qubit_index;
 };
 
@@ -89,6 +90,7 @@ struct OperationResult {
   bool qubit_lost;
   bool relaxed_to_ground;
   bool excited_to_plus;
+  bool measured_plus;
 };
 
 class IPhysicalBackend {
@@ -97,7 +99,10 @@ class IPhysicalBackend {
   virtual OperationResult applyNoise(const BackendContext&, QubitHandle) = 0;
   virtual OperationResult applyGate(const BackendContext&, const std::string& gate,
                                     const std::vector<QubitHandle>& qubits) = 0;
+  virtual OperationResult applyNoiselessGate(const BackendContext&, const std::string& gate,
+                                            const std::vector<QubitHandle>& qubits) = 0;
   virtual OperationResult measure(const BackendContext&, QubitHandle, MeasureBasis) = 0;
+  virtual OperationResult measureNoiseless(const BackendContext&, QubitHandle, MeasureBasis, bool forced_plus) = 0;
   virtual OperationResult generateEntanglement(const BackendContext&, QubitHandle,
                                                QubitHandle) = 0;
 };
@@ -111,6 +116,15 @@ Notes / 補足:
 
 ## Delivery Plan (PR-by-PR) / 段階導入計画（PR単位）
 
+### 実行状況（2026-02-15）
+
+- `backend_type` の直文字分岐を切替器に集約し、`physical_backend_type` パラメータを追加（空文字時は既存 `backend_type` を後方互換で参照）。
+- `error_basis` を `GraphStateBackend` と同値として初期化経路に採用。
+- `Backend` テストで `physical_backend_type` の初期化成功/失敗ケースを追加。
+- `qutip` をサブモジュール化する準備として `.gitmodules` にエントリを追加（本体統合は次のPRで実装）。
+- `IPhysicalBackend` / `PhysicalServiceFacade` / `ErrorBasisBackend` を実装し、`StationaryQubit` の `measureX/Y/Z` を `PhysicalServiceFacade` 経由に変更（挙動非変更）。
+- `StationaryQubit` の `measureX/Y/Z`, `gateX/Y/Z/H/S/Sdg/CNOT`, `generateEntangledPhoton`, `measureRandomPauliBasis` を `PhysicalServiceFacade` 経由に変更（挙動非変更）。
+
 ### PR-1: Introduce seam with no behavior change / 挙動非変更で境界を導入
 
 - Add `IPhysicalBackend` and `PhysicalServiceFacade`.
@@ -119,8 +133,8 @@ Notes / 補足:
   - 現行ロジックへ委譲する `ErrorBasisBackend` アダプタを追加。
 - Route one narrow call path through the facade (e.g., measurement path).
   - まずは限定経路（例: 測定処理）を Facade 経由にする。
-- Add configuration key in `.ini`: `**.physicalBackend = "error_basis"` (default).
-  - `.ini` に設定キー `**.physicalBackend = "error_basis"`（既定値）を追加。
+- Add configuration key in `.ini`: `**.physical_backend_type = "error_basis"` (default fallback: empty -> `backend_type`).
+  - `.ini` に設定キー `**.physical_backend_type = "error_basis"`（既定値: 空文字列なら `backend_type` を参照）を追加。
 
 **Acceptance criteria / 受け入れ条件**
 - Existing scenarios produce equivalent outcomes with default config.
@@ -134,6 +148,8 @@ Notes / 補足:
   - 残りの物理操作も Facade 経由に統一。
 - Remove direct physical-operation calls from upper modules where feasible.
   - 可能な範囲で上位モジュールから物理操作の直接呼び出しを排除。
+  - `StationaryQubit` の `measure`/`gate`/`generateEntanglement`、`EPPS` の `emitPhotons` は `PhysicalServiceFacade` 経由化済み（進行中）。
+  - `BSA` の `measureSuccessfully` で `noiseless*` 系呼び出しを `PhysicalServiceFacade` 経由の `applyNoiselessGate`/`measureNoiseless` に置換済み。
 - Add backend name + seed + key params to logs for reproducibility.
   - 再現性のため、バックエンド名・シード・主要パラメータをログ出力。
 

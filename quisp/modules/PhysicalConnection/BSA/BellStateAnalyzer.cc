@@ -5,13 +5,31 @@
 #include "BellStateAnalyzer.h"
 
 #include <omnetpp/cexception.h>
+#include <stdexcept>
 #include <vector>
+
+#include "modules/Backend/PhysicalServiceFacade.h"
+#include "modules/QNIC/StationaryQubit/QubitId.h"
 
 using namespace omnetpp;
 using namespace quisp::messages;
 using namespace quisp::physical::types;
+using quisp::modules::backend::PhysicalServiceFacade;
+using quisp::modules::backend::MeasureBasis;
+using quisp::modules::backend::QubitHandle;
 
 namespace quisp::modules {
+
+namespace {
+QubitHandle makeHandle(const quisp::backends::IQubit* qubit) {
+  if (qubit == nullptr) throw std::runtime_error("BellStateAnalyzer::makeHandle: null qubit");
+  const auto* id = qubit->getId();
+  if (id == nullptr) throw std::runtime_error("BellStateAnalyzer::makeHandle: qubit has no id");
+  const auto* qid = dynamic_cast<const quisp::modules::qubit_id::QubitId*>(id);
+  if (qid == nullptr) throw std::runtime_error("BellStateAnalyzer::makeHandle: unsupported qubit id type");
+  return QubitHandle{qid->node_addr, qid->qnic_index, qid->qnic_type, qid->qubit_addr};
+}
+}  // namespace
 
 /** @class BellStateAnalyzer BellStateAnalyzer.cc
  *
@@ -201,13 +219,29 @@ void BellStateAnalyzer::measureSuccessfully(PhotonRecord &p, PhotonRecord &q, bo
   else
     no_error_count++;
 
-  p_ref->noiselessX();
-  if (!is_psi_plus) {
-    p_ref->noiselessZ();
+  auto p_handle = makeHandle(p_ref);
+  auto q_handle = makeHandle(q_ref);
+  PhysicalServiceFacade service{backend};
+
+  auto x_gate = service.applyNoiselessGate("X", {p_handle});
+  if (!x_gate.success) {
+    throw std::runtime_error("BellStateAnalyzer::measureSuccessfully: noiseless X failed");
   }
-  p_ref->noiselessCNOT(q_ref);
-  p_ref->noiselessMeasureX(backends::abstract::EigenvalueResult::PLUS_ONE);
-  q_ref->noiselessMeasureZ(backends::abstract::EigenvalueResult::PLUS_ONE);
+  if (!is_psi_plus) {
+    auto z_gate = service.applyNoiselessGate("Z", {p_handle});
+    if (!z_gate.success) {
+      throw std::runtime_error("BellStateAnalyzer::measureSuccessfully: noiseless Z failed");
+    }
+  }
+  auto entangled = service.applyNoiselessGate("CNOT", {p_handle, q_handle});
+  if (!entangled.success) {
+    throw std::runtime_error("BellStateAnalyzer::measureSuccessfully: noiseless CNOT failed");
+  }
+  auto x_measure = service.measureNoiseless(p_handle, MeasureBasis::X, true);
+  auto z_measure = service.measureNoiseless(q_handle, MeasureBasis::Z, true);
+  if (!x_measure.success || !z_measure.success) {
+    throw std::runtime_error("BellStateAnalyzer::measureSuccessfully: noiseless Bell measurement failed");
+  }
 }
 
 void BellStateAnalyzer::finish() {

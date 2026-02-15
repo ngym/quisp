@@ -76,7 +76,8 @@ TEST_F(JsonLoggerTest, ConnRejectTest) {
 TEST_F(JsonLoggerTest, UnknownPacket) {
   auto* packet = new cMessage();
   logger->logPacket("test", packet);
-  EXPECT_EQ(log_stream.str(), "{\"simtime\": 0, \"event_type\": \"test\", \"address\": \"-1\", \"msg\": \"unknown class\": \"globalOwningContext.\"}\n");
+  EXPECT_EQ(log_stream.str(),
+            "{\"simtime\": 0, \"event_type\": \"test\", \"address\": \"-1\", \"msg_type\": \"Unknown\", \"msg_full_path\": \"globalOwningContext.\"}\n");
 }
 
 TEST_F(JsonLoggerTest, StructuredEvent) {

@@ -1,5 +1,6 @@
 #include "JsonLogger.h"
 #include <sstream>
+#include <iomanip>
 #include "messages/connection_setup_messages_m.h"
 
 namespace quisp::modules::Logger {
@@ -35,6 +36,44 @@ void JsonLogger::logQubitState(quisp::modules::QNIC_type qnic_type, int qnic_ind
 }
 
 std::string JsonLogger::format(omnetpp::cMessage const* const msg) {
+  auto escape_json = [](const std::string& value) {
+    std::ostringstream os;
+    for (char ch : value) {
+      switch (ch) {
+        case '"':
+          os << "\\\"";
+          break;
+        case '\\':
+          os << "\\\\";
+          break;
+        case '\b':
+          os << "\\b";
+          break;
+        case '\f':
+          os << "\\f";
+          break;
+        case '\n':
+          os << "\\n";
+          break;
+        case '\r':
+          os << "\\r";
+          break;
+        case '\t':
+          os << "\\t";
+          break;
+        default:
+          if (static_cast<unsigned char>(ch) < 0x20) {
+            os << "\\u" << std::hex << std::setfill('0') << std::setw(4) << static_cast<int>(static_cast<unsigned char>(ch)) << std::dec;
+          } else {
+            os << ch;
+          }
+      }
+    }
+    return os.str();
+  };
+  if (msg == nullptr) {
+    return "\"msg_type\": \"Unknown\", \"msg_full_path\": \"\"";
+  }
   if (auto* req = dynamic_cast<const quisp::messages::ConnectionSetupRequest*>(msg)) {
     std::stringstream os;
     os << "\"msg_type\": \"ConnectionSetupRequest\"";
@@ -72,7 +111,7 @@ std::string JsonLogger::format(omnetpp::cMessage const* const msg) {
     return os.str();
   }
 
-  return "\"msg\": \"unknown class\": \"" + msg->getFullPath() + "\"";
+  return "\"msg_type\": \"Unknown\", \"msg_full_path\": \"" + escape_json(msg->getFullPath()) + "\"";
 }
 
 void JsonLogger::logBellPairInfo(const std::string& event_type, int partner_addr, quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index) {

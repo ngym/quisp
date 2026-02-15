@@ -21,7 +21,9 @@ class PhysicalServiceFacade {
 
   OperationResult applyNoise(QubitHandle qubit);
   OperationResult applyGate(const std::string& gate, const std::vector<QubitHandle>& qubits);
+  OperationResult applyNoiselessGate(const std::string& gate, const std::vector<QubitHandle>& qubits);
   OperationResult measure(QubitHandle qubit, MeasureBasis basis);
+  OperationResult measureNoiseless(QubitHandle qubit, MeasureBasis basis, bool forced_plus);
   OperationResult generateEntanglement(QubitHandle source_qubit, QubitHandle target_qubit);
 
   EigenvalueResult measureX(QubitHandle qubit);

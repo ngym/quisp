@@ -11,6 +11,7 @@
 #include <unsupported/Eigen/KroneckerProduct>
 #include <unsupported/Eigen/MatrixFunctions>
 #include "backends/interfaces/IQubit.h"
+#include "modules/Backend/PhysicalServiceFacade.h"
 #include "omnetpp/cexception.h"
 
 using namespace Eigen;
@@ -22,6 +23,27 @@ using quisp::types::MeasurementOutcome;
 using quisp::types::MeasureXResult;
 using quisp::types::MeasureYResult;
 using quisp::types::MeasureZResult;
+using quisp::modules::backend::PhysicalServiceFacade;
+using quisp::modules::backend::QubitHandle;
+
+namespace {
+
+QubitHandle makeHandle(const quisp::backends::IQubit* qubit);
+
+QubitHandle makeHandle(const quisp::modules::StationaryQubit& qubit) {
+  return makeHandle(qubit.getBackendQubitRef());
+}
+
+QubitHandle makeHandle(const quisp::backends::IQubit* qubit) {
+  if (qubit == nullptr) throw cRuntimeError("StationaryQubit::makeHandle: null backend qubit");
+  const auto* id = qubit->getId();
+  if (id == nullptr) throw cRuntimeError("StationaryQubit::makeHandle: backend qubit has no id");
+  const auto* qid = dynamic_cast<const quisp::modules::qubit_id::QubitId*>(id);
+  if (qid == nullptr) throw cRuntimeError("StationaryQubit::makeHandle: unsupported backend qubit id type");
+  return QubitHandle{qid->node_addr, qid->qnic_index, qid->qnic_type, qid->qubit_addr};
+}
+
+}  // namespace
 
 namespace quisp::modules {
 
@@ -128,25 +150,74 @@ void StationaryQubit::handleMessage(cMessage *msg) {
   }
 }
 
-EigenvalueResult StationaryQubit::measureX() { return qubit_ref->measureX(); }
+EigenvalueResult StationaryQubit::measureX() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  return service.measureX(handle);
+}
 
-EigenvalueResult StationaryQubit::measureY() { return qubit_ref->measureY(); }
+EigenvalueResult StationaryQubit::measureY() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  return service.measureY(handle);
+}
 
-EigenvalueResult StationaryQubit::measureZ() { return qubit_ref->measureZ(); }
+EigenvalueResult StationaryQubit::measureZ() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  return service.measureZ(handle);
+}
 
-void StationaryQubit::gateHadamard() { qubit_ref->gateH(); }
+void StationaryQubit::gateHadamard() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  auto result = service.applyGate("H", {handle});
+  if (!result.success) throw cRuntimeError("StationaryQubit::gateHadamard failed");
+}
 
-void StationaryQubit::gateX() { qubit_ref->gateX(); }
+void StationaryQubit::gateX() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  auto result = service.applyGate("X", {handle});
+  if (!result.success) throw cRuntimeError("StationaryQubit::gateX failed");
+}
 
-void StationaryQubit::gateZ() { qubit_ref->gateZ(); }
+void StationaryQubit::gateZ() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  auto result = service.applyGate("Z", {handle});
+  if (!result.success) throw cRuntimeError("StationaryQubit::gateZ failed");
+}
 
-void StationaryQubit::gateY() { qubit_ref->gateY(); }
+void StationaryQubit::gateY() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  auto result = service.applyGate("Y", {handle});
+  if (!result.success) throw cRuntimeError("StationaryQubit::gateY failed");
+}
 
-void StationaryQubit::gateS() { qubit_ref->gateS(); }
+void StationaryQubit::gateS() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  auto result = service.applyGate("S", {handle});
+  if (!result.success) throw cRuntimeError("StationaryQubit::gateS failed");
+}
 
-void StationaryQubit::gateSdg() { qubit_ref->gateSdg(); }
+void StationaryQubit::gateSdg() {
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
+  auto result = service.applyGate("Sdg", {handle});
+  if (!result.success) throw cRuntimeError("StationaryQubit::gateSdg failed");
+}
 
-void StationaryQubit::gateCNOT(IStationaryQubit *target_qubit) { qubit_ref->gateCNOT(check_and_cast<StationaryQubit *>(target_qubit)->qubit_ref); }
+void StationaryQubit::gateCNOT(IStationaryQubit *target_qubit) {
+  auto* target = check_and_cast<StationaryQubit *>(target_qubit);
+  PhysicalServiceFacade service{backend};
+  auto source_handle = makeHandle(*this);
+  auto target_handle = makeHandle(*target);
+  auto result = service.applyGate("CNOT", {source_handle, target_handle});
+  if (!result.success) throw cRuntimeError("StationaryQubit::gateCNOT failed");
+}
 
 // This is invoked whenever a photon is emitted out from this particular qubit.
 void StationaryQubit::setBusy() {
@@ -216,8 +287,13 @@ PhotonicQubit *StationaryQubit::generateEntangledPhoton() {
   Enter_Method("generateEntangledPhoton()");
   auto *photon = new PhotonicQubit("Photon");
   auto *photon_ref = backend->getShortLiveQubit();
-  qubit_ref->noiselessH();
-  qubit_ref->noiselessCNOT(photon_ref);
+  auto source_handle = makeHandle(*this);
+  auto target_handle = makeHandle(photon_ref);
+  PhysicalServiceFacade service{backend};
+  auto result = service.generateEntanglement(source_handle, target_handle);
+  if (!result.success) {
+    throw cRuntimeError("StationaryQubit::generateEntangledPhoton failed");
+  }
   photon->setQubitRef(photon_ref);
   return photon;
 }
@@ -249,14 +325,16 @@ backends::IQubit *StationaryQubit::getBackendQubitRef() const { return qubit_ref
 MeasurementOutcome StationaryQubit::measureRandomPauliBasis() {
   auto rand = dblrand();
   auto outcome = MeasurementOutcome();
+  PhysicalServiceFacade service{backend};
+  auto handle = makeHandle(*this);
   if (rand < 1.0 / 3) {
-    outcome.outcome_is_plus = qubit_ref->measureX() == EigenvalueResult::PLUS_ONE;
+    outcome.outcome_is_plus = service.measureX(handle) == EigenvalueResult::PLUS_ONE;
     outcome.basis = 'X';
   } else if (rand < 2.0 / 3) {
-    outcome.outcome_is_plus = qubit_ref->measureY() == EigenvalueResult::PLUS_ONE;
+    outcome.outcome_is_plus = service.measureY(handle) == EigenvalueResult::PLUS_ONE;
     outcome.basis = 'Y';
   } else {
-    outcome.outcome_is_plus = qubit_ref->measureZ() == EigenvalueResult::PLUS_ONE;
+    outcome.outcome_is_plus = service.measureZ(handle) == EigenvalueResult::PLUS_ONE;
     outcome.basis = 'Z';
   }
   outcome.GOD_clean = 'F';  // need to fix this to properly track the error

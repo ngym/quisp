@@ -44,3 +44,13 @@ Examples of protocol metadata values are:
 
 - `\"protocol_spec\": \"MIM Protocol v1\"`
 - `\"protocol_spec\": \"MSM Protocol v1\"`
+
+Runtime event contract (core event types):
+
+- `runtime_error`: `{ "message": string, "instruction": string }`
+- `runtime_uncaught_error`: `{ "return_code": "3", "program_name": string }`
+- `runtime_debug_state`: `{ "runtime state dump" }`
+- `runtime_debug_source`: `{ "program source dump" }`
+- `runtime_debug_qubit`: `{ "qubit_id": int, "found": bool, ... }`
+- `runtime_debug_string`: `{ "message": string }`
+- `runtime_debug_reg`: `{ "register": int, "value": int }`

@@ -2,6 +2,7 @@
 #include <modules/common_types.h>
 #include <omnetpp.h>
 #include <memory>
+#include <string>
 #include "RNG.h"
 #include "backends/GraphState/Qubit.h"
 #include "backends/QubitConfiguration.h"
@@ -24,6 +25,8 @@ class BackendContainer : public omnetpp::cSimpleModule, GraphStateBackend::ICall
   void willUpdate(GraphStateBackend& backend) override;
 
  protected:
+  std::string getSelectedBackendType() const;
+  std::unique_ptr<IQuantumBackend> createBackend(const std::string& backend_type);
   std::unique_ptr<StationaryQubitConfiguration> getDefaultQubitErrorModelConfiguration();
   std::unique_ptr<IQuantumBackend> backend = nullptr;
 };

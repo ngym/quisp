@@ -33,9 +33,19 @@ OperationResult PhysicalServiceFacade::applyGate(const std::string& gate, const 
   return backend_->applyGate(makeContext(), gate, qubits);
 }
 
+OperationResult PhysicalServiceFacade::applyNoiselessGate(const std::string& gate, const std::vector<QubitHandle>& qubits) {
+  if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
+  return backend_->applyNoiselessGate(makeContext(), gate, qubits);
+}
+
 OperationResult PhysicalServiceFacade::measure(QubitHandle qubit, MeasureBasis basis) {
   if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
   return backend_->measure(makeContext(), qubit, basis);
+}
+
+OperationResult PhysicalServiceFacade::measureNoiseless(QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
+  if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
+  return backend_->measureNoiseless(makeContext(), qubit, basis, forced_plus);
 }
 
 OperationResult PhysicalServiceFacade::generateEntanglement(QubitHandle source_qubit, QubitHandle target_qubit) {

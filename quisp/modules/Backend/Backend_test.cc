@@ -71,8 +71,21 @@ TEST_F(BackendContainerTest, callGsBackendInitialize) {
   EXPECT_NE(backend->backend, nullptr);
 }
 
+TEST_F(BackendContainerTest, callBackendInitializeWithPhysicalBackendAlias) {
+  setParStr(backend, "physical_backend_type", "error_basis");
+  EXPECT_EQ(backend->backend, nullptr);
+  backend->callInitialize();
+  EXPECT_NE(backend->backend, nullptr);
+}
+
 TEST_F(BackendContainerTest, callInitializeWithInvalidBackend) {
   setParStr(backend, "backend_type", "SomeInvalidBackend");
+  EXPECT_EQ(backend->backend, nullptr);
+  EXPECT_THROW(backend->callInitialize(), omnetpp::cRuntimeError);
+}
+
+TEST_F(BackendContainerTest, callInitializeWithInvalidPhysicalBackend) {
+  setParStr(backend, "physical_backend_type", "SomeInvalidBackend");
   EXPECT_EQ(backend->backend, nullptr);
   EXPECT_THROW(backend->callInitialize(), omnetpp::cRuntimeError);
 }

@@ -9,13 +9,30 @@ BackendContainer::BackendContainer() {}
 BackendContainer::~BackendContainer() {}
 
 void BackendContainer::initialize() {
-  auto backend_type = std::string(par("backend_type").stringValue());
-  if (backend_type == "GraphStateBackend") {
-    auto config = getDefaultQubitErrorModelConfiguration();
-    backend = std::make_unique<GraphStateBackend>(std::make_unique<RNG>(this), std::move(config), static_cast<GraphStateBackend::ICallback*>(this));
-  } else {
-    throw omnetpp::cRuntimeError("Unknown backend type: %s", backend_type.c_str());
+  auto backend_type = getSelectedBackendType();
+  backend = createBackend(backend_type);
+}
+
+std::string BackendContainer::getSelectedBackendType() const {
+  std::string physical_backend_type;
+  if (hasPar("physical_backend_type")) {
+    physical_backend_type = par("physical_backend_type").stringValue();
   }
+  if (physical_backend_type.empty()) {
+    if (hasPar("backend_type")) {
+      return std::string(par("backend_type").stringValue());
+    }
+    return "GraphStateBackend";
+  }
+  return physical_backend_type;
+}
+
+std::unique_ptr<IQuantumBackend> BackendContainer::createBackend(const std::string& backend_type) {
+  if (backend_type == "GraphStateBackend" || backend_type == "error_basis") {
+    auto config = getDefaultQubitErrorModelConfiguration();
+    return std::make_unique<GraphStateBackend>(std::make_unique<RNG>(this), std::move(config), static_cast<GraphStateBackend::ICallback*>(this));
+  }
+  throw omnetpp::cRuntimeError("Unknown backend type: %s. Supported types are: GraphStateBackend, error_basis", backend_type.c_str());
 }
 
 std::unique_ptr<StationaryQubitConfiguration> BackendContainer::getDefaultQubitErrorModelConfiguration() {

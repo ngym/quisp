@@ -7,6 +7,7 @@ simple Backend
         @class(BackendContainer);
         @display("p=30,40;");
         string backend_type = default("GraphStateBackend");
+        string physical_backend_type = default("");
 
         // Default characteristics of qubits in the hardware
         double memory_error_rate = default(0);

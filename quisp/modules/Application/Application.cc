@@ -15,7 +15,7 @@ using namespace quisp::messages;
 namespace quisp {
 namespace modules {
 
-Application::Application() : provider(utils::ComponentProvider{this}) {}
+Application::Application() : provider(utils::ComponentProvider{this}), next_connection_session_id(0) {}
 
 /**
  * \brief Initialize module.
@@ -57,6 +57,8 @@ ConnectionSetupRequest *Application::createConnectionSetupRequest(int dest_addr,
   pk->setActual_destAddr(dest_addr);
   pk->setDestAddr(my_address);
   pk->setSrcAddr(my_address);
+  pk->setConnection_session_id(next_connection_session_id++);
+  pk->setConnection_attempt(0);
   pk->setNum_measure(num_of_required_resources);
   pk->setKind(7);
   return pk;

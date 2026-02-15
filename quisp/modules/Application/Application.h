@@ -33,6 +33,7 @@ class Application : public IApplication, public Logger::LoggerBase {
   int id; /*!< Application id, which can be used if a user tried to simulate multiple applications on a single network */
   int my_address;
   bool is_initiator;
+  int next_connection_session_id;
 
   std::unordered_map<int, int> end_node_weight_map;
 

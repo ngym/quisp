@@ -10,6 +10,7 @@
 #include <omnetpp.h>
 #include <queue>
 #include <vector>
+#include <unordered_map>
 
 #include "IConnectionManager.h"
 
@@ -64,6 +65,11 @@ class ConnectionManager : public IConnectionManager, public Logger::LoggerBase {
   int num_of_qnics;
   std::map<int, std::queue<messages::ConnectionSetupRequest *>> connection_setup_buffer;  // key is qnic address
   std::map<int, int> connection_retry_count;  // key is qnic address
+  struct ConnectionSetupResponseState {
+    int latest_attempt = -1;
+    bool accepted_for_latest_attempt = false;
+  };
+  std::unordered_map<int, ConnectionSetupResponseState> connection_setup_response_state;
   std::vector<int> reserved_qnics = {};  // reserved qnic address table
   std::vector<cMessage *> request_send_timing;  // self message, notification for sending out request
   bool simultaneous_es_enabled;
@@ -98,6 +104,8 @@ class ConnectionManager : public IConnectionManager, public Logger::LoggerBase {
   void reserveQnic(int qnic_address);
   void releaseQnic(int qnic_address);
   bool isQnicBusy(int qnic_address);
+  bool shouldAcceptConnectionSetupResponse(messages::ConnectionSetupResponse *pk);
+  bool isLegacyConnectionSessionResponse(messages::ConnectionSetupResponse *pk);
 
   static rules::PurType parsePurType(const std::string &pur_type);
 

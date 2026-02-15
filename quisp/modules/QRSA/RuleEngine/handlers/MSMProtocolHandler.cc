@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "../RuleEngine.h"
+#include "../RuleProtocolExecutionContext.h"
 #include "messages/classical_messages.h"
 
 namespace quisp::modules::handlers {
@@ -79,15 +80,15 @@ void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
   register_handler(EventType::EMIT_PHOTON_REQUEST, EventProtocol::MSM_v1, emit_photon_handler);
 
   register_handler(EventType::SINGLE_CLICK_RESULT, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent& event) {
-    engine.handleSingleClickResult(std::get<messages::SingleClickResult *>(event.payload));
+    engine.protocolExecutionContext().handleSingleClickResult(std::get<messages::SingleClickResult *>(event.payload));
   });
 
   register_handler(EventType::MSM_RESULT, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent& event) {
-    engine.handleMSMResult(std::get<messages::MSMResult *>(event.payload));
+    engine.protocolExecutionContext().handleMSMResult(std::get<messages::MSMResult *>(event.payload));
   });
 
   register_handler(EventType::STOP_EMITTING, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent& event) {
-    engine.handleStopEmitting(std::get<messages::StopEmitting *>(event.payload));
+    engine.protocolExecutionContext().handleStopEmitting(std::get<messages::StopEmitting *>(event.payload));
   });
 }
 

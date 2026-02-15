@@ -6,6 +6,7 @@
 
 #include <functional>
 #include <unordered_map>
+#include <memory>
 #include <vector>
 #include <utility>
 
@@ -42,6 +43,7 @@ using qnic_store::IQNicStore;
 using qubit_record::IQubitRecord;
 
 class RuleProtocolHandlerRegistrar;
+class RuleProtocolExecutionContext;
 namespace handlers {
 class MIMProtocolHandler;
 class MSMProtocolHandler;
@@ -70,6 +72,7 @@ struct SwappingResultData {
 class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
  public:
   friend class RuleProtocolHandlerRegistrar;
+  friend class RuleProtocolExecutionContext;
   friend class handlers::MIMProtocolHandler;
   friend class handlers::MSMProtocolHandler;
   friend class handlers::PurificationProtocolHandler;
@@ -103,6 +106,7 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void registerRuleEventHandler(RuleEventType event_type, RuleEventProtocol protocol_spec, RuleEventHandler handler);
   void registerRuleEventTypeFallback(RuleEventType event_type, RuleEventHandler handler);
   void registerRuleEventProtocolFallback(RuleEventProtocol protocol_spec, RuleEventHandler handler);
+  RuleProtocolExecutionContext& protocolExecutionContext();
 
  protected:
   void initialize() override;
@@ -132,6 +136,7 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   std::unique_ptr<IQNicStore> qnic_store = nullptr;
 
   runtime::RuntimeFacade runtimes;
+  std::unique_ptr<RuleProtocolExecutionContext> protocol_execution_context;
   core::events::RuleEventBus event_bus;
   struct RuleEventDispatchKeyHash {
     size_t operator()(RuleEventDispatchKey const& key) const {

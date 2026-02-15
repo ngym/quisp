@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "../RuleEngine.h"
+#include "../RuleProtocolExecutionContext.h"
 #include "messages/classical_messages.h"
 
 namespace quisp::modules::handlers {
@@ -20,7 +21,7 @@ void MIMProtocolHandler::registerHandlers(RuleEngine& engine) {
   };
 
   register_handler(EventType::BSM_RESULT, EventProtocol::MIM_v1, [&engine](const core::events::RuleEvent& event) {
-    engine.handleLinkGenerationResult(std::get<messages::CombinedBSAresults *>(event.payload));
+    engine.protocolExecutionContext().handleLinkGenerationResult(std::get<messages::CombinedBSAresults *>(event.payload));
   });
 
   register_handler(EventType::BSM_TIMING, EventProtocol::MIM_v1, [&engine](const core::events::RuleEvent& event) {

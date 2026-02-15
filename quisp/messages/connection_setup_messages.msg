@@ -8,6 +8,8 @@ packet ConnectionSetupRequest extends Header
     int application_id @getter(getApplicationId) @setter(setApplicationId);
     int actual_destAddr;
     int actual_srcAddr;
+    int connection_session_id;
+    int connection_attempt;
     int num_measure;
     int number_of_required_Bellpairs;
     int stack_of_QNodeIndexes[];
@@ -20,6 +22,8 @@ packet RejectConnectionSetupRequest extends Header
     int application_id @getter(getApplicationId) @setter(setApplicationId);
     int actual_destAddr;
     int actual_srcAddr;
+    int connection_session_id;
+    int connection_attempt;
     int number_of_required_Bellpairs;
 }
 
@@ -28,6 +32,8 @@ packet ConnectionSetupResponse extends Header
     int application_id @getter(getApplicationId) @setter(setApplicationId);
     int actual_srcAddr;
     int actual_destAddr;
+    int connection_session_id;
+    int connection_attempt;
     unsigned long RuleSet_id;
     json ruleSet;
     int application_type;

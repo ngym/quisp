@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "../RuleEngine.h"
+#include "../RuleProtocolExecutionContext.h"
 #include "messages/purification_messages_m.h"
 
 namespace quisp::modules::handlers {
@@ -20,7 +21,7 @@ void PurificationProtocolHandler::registerHandlers(RuleEngine& engine) {
   };
 
   register_handler(EventType::PURIFICATION_RESULT, EventProtocol::Purification, [&engine](const core::events::RuleEvent& event) {
-    engine.handlePurificationResult(std::get<messages::PurificationResult *>(event.payload));
+    engine.protocolExecutionContext().handlePurificationResult(std::get<messages::PurificationResult *>(event.payload));
   });
 }
 

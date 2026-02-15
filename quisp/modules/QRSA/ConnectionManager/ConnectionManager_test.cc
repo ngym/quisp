@@ -47,6 +47,10 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
   using quisp::modules::ConnectionManager::reserveQnic;
   using quisp::modules::ConnectionManager::respondToRequest;
   using quisp::modules::ConnectionManager::respondToRequest_deprecated;
+  using quisp::modules::ConnectionManager::storeRuleSetForApplication;
+  bool shouldAcceptConnectionSetupResponseForTest(quisp::messages::ConnectionSetupResponse *pk) {
+    return shouldAcceptConnectionSetupResponse(pk);
+  }
   ConnectionManagerTestTarget(IRoutingDaemon *routing_daemon, IHardwareMonitor *hardware_monitor)
       : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
     setComponentType(new module_type::TestModuleType("test cm"));
@@ -57,7 +61,7 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
     setParBool(this, "entanglement_swapping_with_purification", false);
     setParInt(this, "num_remote_purification", 1);
     setParStr(this, "purification_type_cm", "SINGLE_SELECTION_X_PURIFICATION");
-    setParDouble(this, "threshold_fidelity", 0);
+    setParDouble(this, "threshold_fidelity", 0.0);
     setParInt(this, "seed_cm", 0);
 
     this->provider.setStrategy(std::make_unique<Strategy>(routing_daemon, hardware_monitor));
@@ -66,9 +70,16 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
     setComponentType(new module_type::TestModuleType("test cm"));
     setParInt(this, "address", 5);
     setParInt(this, "total_number_of_qnics", 10);
+    setParBool(this, "simultaneous_es_enabled", false);
+    setParBool(this, "entanglement_swapping_with_purification", false);
+    setParInt(this, "num_remote_purification", 1);
+    setParStr(this, "purification_type_cm", "SINGLE_SELECTION_X_PURIFICATION");
+    setParDouble(this, "threshold_fidelity", 0.0);
+    setParInt(this, "seed_cm", 0);
     this->setName("connection_manager_test_target");
     this->provider.setStrategy(std::make_unique<Strategy>());
   }
+  void receiveMessageForTest(cMessage *msg) { ConnectionManager::handleMessage(msg); }
   cGate *gate(const char *gatename, int index = -1) override {
     if (strcmp(gatename, "RouterPort$o") != 0) {
       throw cRuntimeError("unknown gate called");
@@ -603,5 +614,44 @@ TEST(ConnectionManagerTest, QnicReservation) {
   EXPECT_EQ(connection_manager->reserved_qnics.size(), 0);
   EXPECT_FALSE(connection_manager->isQnicBusy(qnic_address));
   EXPECT_FALSE(connection_manager->isQnicBusy(qnic_address2));
+}
+
+TEST(ConnectionManagerTest, StoreRuleSetForApplicationDeduplicatesResponsesBySessionAndAttempt) {
+  auto *connection_manager = new ConnectionManagerTestTarget();
+  auto makeResponse = [](int session_id, int attempt, unsigned long ruleset_id) {
+    auto *resp = new ConnectionSetupResponse("ConnectionSetupResponse");
+    resp->setApplicationId(1);
+    resp->setConnection_session_id(session_id);
+    resp->setConnection_attempt(attempt);
+    resp->setRuleSet_id(ruleset_id);
+    resp->setDestAddr(10);
+    resp->setSrcAddr(11);
+    resp->setActual_destAddr(10);
+    resp->setActual_srcAddr(11);
+    resp->setRuleSet(json::parse(R"({"num_rules":1})"));
+    resp->setApplication_type(7);
+    return resp;
+  };
+
+  auto *resp_s1_a1_first = makeResponse(100, 1, 11);
+  auto *resp_s1_a1_duplicate = makeResponse(100, 1, 12);
+  auto *resp_s1_a2_first = makeResponse(100, 2, 13);
+  auto *resp_s1_a2_duplicate = makeResponse(100, 2, 14);
+  auto *resp_s1_a0_older = makeResponse(100, 0, 15);
+  auto *resp_s2_a1_first = makeResponse(101, 1, 21);
+
+  EXPECT_TRUE(connection_manager->shouldAcceptConnectionSetupResponseForTest(resp_s1_a1_first));
+  EXPECT_FALSE(connection_manager->shouldAcceptConnectionSetupResponseForTest(resp_s1_a1_duplicate));
+  EXPECT_TRUE(connection_manager->shouldAcceptConnectionSetupResponseForTest(resp_s1_a2_first));
+  EXPECT_FALSE(connection_manager->shouldAcceptConnectionSetupResponseForTest(resp_s1_a2_duplicate));
+  EXPECT_FALSE(connection_manager->shouldAcceptConnectionSetupResponseForTest(resp_s1_a0_older));
+  EXPECT_TRUE(connection_manager->shouldAcceptConnectionSetupResponseForTest(resp_s2_a1_first));
+
+  delete resp_s1_a1_first;
+  delete resp_s1_a1_duplicate;
+  delete resp_s1_a2_first;
+  delete resp_s1_a2_duplicate;
+  delete resp_s1_a0_older;
+  delete resp_s2_a1_first;
 }
 }  // namespace

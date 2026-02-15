@@ -4,6 +4,7 @@
 #include <utility>
 
 #include "../RuleEngine.h"
+#include "../RuleProtocolExecutionContext.h"
 #include "messages/link_generation_messages_m.h"
 
 namespace quisp::modules::handlers {
@@ -20,7 +21,7 @@ void SwappingProtocolHandler::registerHandlers(RuleEngine& engine) {
   };
 
   register_handler(EventType::SWAPPING_RESULT, EventProtocol::Swapping, [&engine](const core::events::RuleEvent& event) {
-    engine.handleSwappingResult(std::get<messages::SwappingResult *>(event.payload));
+    engine.protocolExecutionContext().handleSwappingResult(std::get<messages::SwappingResult *>(event.payload));
   });
 }
 

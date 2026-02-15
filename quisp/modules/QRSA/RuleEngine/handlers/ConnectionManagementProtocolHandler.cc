@@ -1,12 +1,11 @@
 #include "ConnectionManagementProtocolHandler.h"
 
 #include <functional>
-#include <nlohmann/json.hpp>
 #include <utility>
 
 #include "../RuleEngine.h"
+#include "../RuleProtocolExecutionContext.h"
 #include "messages/classical_messages.h"
-#include "rules/RuleSet.h"
 
 namespace quisp::modules::handlers {
 
@@ -23,34 +22,22 @@ void ConnectionManagementProtocolHandler::registerHandlers(RuleEngine& engine) {
     engine.registerRuleEventHandler(event_type, protocol_spec, std::move(handler));
   };
 
-  const auto submit_forwarded_ruleset = [&engine](const std::string& serialized_ruleset) {
-    rules::RuleSet ruleset(0, 0);
-    ruleset.deserialize_json(nlohmann::json::parse(serialized_ruleset));
-    engine.runtimes.submitRuleSet(ruleset.construct());
-  };
-
-  register_handler(EventType::RULESET_FORWARDING, EventProtocol::ConnectionManagement, [&engine, submit_forwarded_ruleset](const core::events::RuleEvent& event) {
+  register_handler(
+      EventType::RULESET_FORWARDING, EventProtocol::ConnectionManagement, [&engine](const core::events::RuleEvent& event) {
     auto *pkt = std::get<messages::InternalRuleSetForwarding *>(event.payload);
-    auto serialized_ruleset = pkt->getRuleSet().dump();
-    submit_forwarded_ruleset(serialized_ruleset);
+    engine.protocolExecutionContext().handleRuleSetForwarding(pkt);
   });
 
   register_handler(EventType::LINK_TOMOGRAPHY_RULESET, EventProtocol::LinkTomography,
-                   [&engine, submit_forwarded_ruleset](const core::events::RuleEvent& event) {
+                   [&engine](const core::events::RuleEvent& event) {
                      auto *pk = std::get<messages::LinkTomographyRuleSet *>(event.payload);
-                     auto *ruleset = pk->getRuleSet();
-                     engine.runtimes.submitRuleSet(ruleset->construct());
+                     engine.protocolExecutionContext().handleLinkTomographyRuleSet(pk);
                    });
 
   register_handler(EventType::RULESET_FORWARDING_APPLICATION, EventProtocol::ConnectionManagement,
-                   [&engine, submit_forwarded_ruleset](const core::events::RuleEvent& event) {
+                   [&engine](const core::events::RuleEvent& event) {
                      auto *pkt = std::get<messages::InternalRuleSetForwarding_Application *>(event.payload);
-                     auto application_type = pkt->getApplication_type();
-                     if (application_type != 0) {
-                       return;
-                     }
-                     auto serialized_ruleset = pkt->getRuleSet().dump();
-                     submit_forwarded_ruleset(serialized_ruleset);
+                     engine.protocolExecutionContext().handleRuleSetForwardingApplication(pkt);
                    });
 }
 

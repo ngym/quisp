@@ -16,6 +16,7 @@
 #include <utility>
 
 #include "QNicStore/QNicStore.h"
+#include "RuleProtocolExecutionContext.h"
 #include "RuntimeCallback.h"
 #include "messages/BSA_ipc_messages_m.h"
 #include "messages/QNode_ipc_messages_m.h"
@@ -34,7 +35,10 @@ using namespace messages;
 using qnic_store::QNicStore;
 using runtime_callback::RuntimeCallback;
 
-RuleEngine::RuleEngine() : provider(utils::ComponentProvider{this}), runtimes(std::make_unique<RuntimeCallback>(this)) {
+RuleEngine::RuleEngine()
+    : provider(utils::ComponentProvider{this}),
+      runtimes(std::make_unique<RuntimeCallback>(this)),
+      protocol_execution_context(std::make_unique<RuleProtocolExecutionContext>(*this)) {
   registerRuleEventHandlers();
 }
 
@@ -194,6 +198,10 @@ void RuleEngine::handleRuleEvent(const core::events::RuleEvent &event) {
   dispatchRuleEvent(event);
 }
 
+RuleProtocolExecutionContext& RuleEngine::protocolExecutionContext() {
+  return *protocol_execution_context;
+}
+
 void RuleEngine::schedulePhotonEmission(QNIC_type type, int qnic_index, BSMTimingNotification *notification) {
   auto first_photon_emit_time = getEmitTimeFromBSMNotification(notification);
   const auto timer_it = emit_photon_timer_map.find({type, qnic_index});
@@ -247,114 +255,27 @@ void RuleEngine::freeFailedEntanglementAttemptQubits(QNIC_type type, int qnic_in
 }
 
 void RuleEngine::handleSingleClickResult(SingleClickResult *click_result) {
-  auto qnic_index = click_result->getQnicIndex();
-  auto &msm_info = msm_info_map[qnic_index];
-  auto qubit_index = msm_info.qubit_info_map[msm_info.iteration_index];
-  MSMResult *msm_result = new MSMResult();
-  msm_result->setQnicIndex(msm_info.partner_qnic_index);
-  msm_result->setQnicType(QNIC_RP);
-  msm_result->setPhotonIndex(msm_info.photon_index_counter);
-  msm_result->setSuccess(click_result->getClickResult().success);
-  msm_result->setCorrectionOperation(click_result->getClickResult().correction_operation);
-  msm_result->setSrcAddr(parentAddress);
-  msm_result->setDestAddr(msm_info.partner_address);
-  msm_result->setKind(6);
-  if (click_result->getClickResult().success) {
-    msm_info.qubit_postprocess_info[msm_info.photon_index_counter].qubit_index = qubit_index;
-    msm_info.qubit_postprocess_info[msm_info.photon_index_counter].correction_operation = click_result->getClickResult().correction_operation;
-    msm_info.iteration_index++;
-  } else {
-    realtime_controller->ReInitialize_StationaryQubit(qnic_index, qubit_index, QNIC_RP, false);
-    qnic_store->setQubitBusy(QNIC_RP, qnic_index, qubit_index, false);
-  }
-  send(msm_result, "RouterPort$o");
+  protocol_execution_context->handleSingleClickResult(click_result);
 }
 
 void RuleEngine::handleMSMResult(MSMResult *msm_result) {
-  auto qnic_index = msm_result->getQnicIndex();
-  auto &msm_info = msm_info_map[qnic_index];
-  auto qubit_itr = msm_info.qubit_postprocess_info.find(msm_result->getPhotonIndex());
-  // local: fail | partner: success/fail
-  // qubit on photon index is not included in msm_info
-  if (qubit_itr == msm_info.qubit_postprocess_info.end()) {
-    return;
-  }
-  QubitInfo qubit_info = qubit_itr->second;
-  auto qubit_index = qubit_info.qubit_index;
-  // local: success | partner: fail
-  // qubit on photon index is included in msm_info but the partner sends fail
-  if (!msm_result->getSuccess()) {
-    realtime_controller->ReInitialize_StationaryQubit(qnic_index, qubit_index, QNIC_RP, false);
-    qnic_store->setQubitBusy(QNIC_RP, qnic_index, qubit_index, false);
-  }
-  // local: success | partner: success
-  // qubit on photon index is included in msm_info and the partner sends success
-  else {
-    auto *qubit_record = qnic_store->getQubitRecord(QNIC_RP, qnic_index, qubit_index);
-    // condition whether to apply Z gate or not
-    bool is_phi_minus = qubit_info.correction_operation != msm_result->getCorrectionOperation();
-    // restrict correction operation only on one side
-    bool is_younger_address = parentAddress < msm_info.partner_address;
-    if (is_phi_minus && is_younger_address) realtime_controller->applyZGate(qubit_record);
-    bell_pair_store.insertEntangledQubit(msm_info.partner_address, qubit_record);
-  }
+  protocol_execution_context->handleMSMResult(msm_result);
 }
 
 void RuleEngine::handleLinkGenerationResult(CombinedBSAresults *bsa_result) {
-  auto type = bsa_result->getQnicType();
-  auto qnic_index = bsa_result->getQnicIndex();
-  auto num_success = bsa_result->getSuccessCount();
-  auto partner_address = bsa_result->getNeighborAddress();
-  auto &emitted_indices = emitted_photon_order_map[{type, qnic_index}];
-  for (int i = num_success - 1; i >= 0; i--) {
-    auto emitted_index = bsa_result->getSuccessfulPhotonIndices(i);
-    auto qubit_index = emitted_indices[emitted_index];
-    auto *qubit_record = qnic_store->getQubitRecord(type, qnic_index, qubit_index);
-    auto iterator = emitted_indices.begin();
-    std::advance(iterator, emitted_index);
-    bell_pair_store.insertEntangledQubit(partner_address, qubit_record);
-    emitted_indices.erase(iterator);
-
-    auto correction_operation = bsa_result->getCorrectionOperationList(i);
-    if (correction_operation == PauliOperator::X) {
-      realtime_controller->applyXGate(qubit_record);
-    } else if (correction_operation == PauliOperator::Z) {
-      realtime_controller->applyZGate(qubit_record);
-    } else if (correction_operation == PauliOperator::Y) {
-      realtime_controller->applyYGate(qubit_record);
-    }
-  }
+  protocol_execution_context->handleLinkGenerationResult(bsa_result);
 }
 
 void RuleEngine::handleStopEmitting(StopEmitting *stop_emit) {
-  int qnic_index = stop_emit->getQnic_address();
-  auto &msm_info = msm_info_map[qnic_index];
-  // only do the following procedure for MSM links
-  if (msm_info.photon_index_counter == 0) return;
-  StopEPPSEmission *stop_epps_emission = new StopEPPSEmission();
-  stop_epps_emission->setSrcAddr(parentAddress);
-  stop_epps_emission->setDestAddr(msm_info.epps_address);
-  send(stop_epps_emission, "RouterPort$o");
+  protocol_execution_context->handleStopEmitting(stop_emit);
 }
 
 void RuleEngine::handlePurificationResult(PurificationResult *result) {
-  auto ruleset_id = result->getRulesetId();
-  auto shared_rule_tag = result->getSharedRuleTag();
-  auto sequence_number = result->getSequenceNumber();
-  auto measurement_result = result->getMeasurementResult();
-  auto purification_protocol = result->getProtocol();
-  std::vector<int> message_content = {sequence_number, measurement_result, purification_protocol};
-  runtimes.assignMessageToRuleSet(ruleset_id, shared_rule_tag, message_content);
+  protocol_execution_context->handlePurificationResult(result);
 }
 
 void RuleEngine::handleSwappingResult(SwappingResult *result) {
-  auto ruleset_id = result->getRulesetId();
-  auto shared_rule_tag = result->getSharedRuleTag();
-  auto sequence_number = result->getSequenceNumber();
-  auto correction_frame = result->getCorrectionFrame();
-  auto new_partner_addr = result->getNewPartner();
-  std::vector<int> message_content = {sequence_number, correction_frame, new_partner_addr};
-  runtimes.assignMessageToRuleSet(ruleset_id, shared_rule_tag, message_content);
+  protocol_execution_context->handleSwappingResult(result);
 }
 
 // Invoked whenever a new resource (entangled with neighbor) has been created.

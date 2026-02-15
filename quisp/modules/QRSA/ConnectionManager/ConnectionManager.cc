@@ -163,6 +163,36 @@ PurType ConnectionManager::parsePurType(const std::string &pur_type) {
   return PurType::INVALID;
 }
 
+bool ConnectionManager::isLegacyConnectionSessionResponse(ConnectionSetupResponse *pk) {
+  return pk->getConnection_session_id() <= 0;
+}
+
+bool ConnectionManager::shouldAcceptConnectionSetupResponse(ConnectionSetupResponse *pk) {
+  if (isLegacyConnectionSessionResponse(pk)) {
+    return true;
+  }
+
+  int session_id = pk->getConnection_session_id();
+  int attempt = pk->getConnection_attempt();
+
+  auto &state = connection_setup_response_state[session_id];
+  if (attempt < state.latest_attempt) {
+    return false;
+  }
+
+  if (attempt > state.latest_attempt) {
+    state.latest_attempt = attempt;
+    state.accepted_for_latest_attempt = false;
+  }
+
+  if (state.accepted_for_latest_attempt) {
+    return false;
+  }
+
+  state.accepted_for_latest_attempt = true;
+  return true;
+}
+
 /**
  * This function is called to handle the ConnectionSetupResponse at the intermediate node.
  * The only job here is to unpack the RuleSets, feed them to the RuleEngine via Router, and start the connection running.
@@ -171,6 +201,10 @@ PurType ConnectionManager::parsePurType(const std::string &pur_type) {
  * \param pk the received ConnectionSetupResponse.
  **/
 void ConnectionManager::storeRuleSet(ConnectionSetupResponse *pk) {
+  if (!shouldAcceptConnectionSetupResponse(pk)) {
+    return;
+  }
+
   InternalRuleSetForwarding *pk_internal = new InternalRuleSetForwarding("InternalRuleSetForwarding");
   pk_internal->setDestAddr(pk->getDestAddr());
   pk_internal->setSrcAddr(pk->getDestAddr());
@@ -187,6 +221,10 @@ void ConnectionManager::storeRuleSet(ConnectionSetupResponse *pk) {
  *
  **/
 void ConnectionManager::storeRuleSetForApplication(ConnectionSetupResponse *pk) {
+  if (!shouldAcceptConnectionSetupResponse(pk)) {
+    return;
+  }
+
   InternalRuleSetForwarding_Application *pk_internal = new InternalRuleSetForwarding_Application("InternalRuleSetForwardingApplication");
   pk_internal->setDestAddr(pk->getDestAddr());
   pk_internal->setSrcAddr(pk->getDestAddr());  // Should be original Src here?
@@ -205,6 +243,8 @@ void ConnectionManager::rejectRequest(ConnectionSetupRequest *req) {
     int destination_address = req->getStack_of_QNodeIndexes(i);
     RejectConnectionSetupRequest *packet = new RejectConnectionSetupRequest("RejectConnSetup");
     packet->setApplicationId(application_id);
+    packet->setConnection_session_id(req->getConnection_session_id());
+    packet->setConnection_attempt(req->getConnection_attempt());
     packet->setKind(6);
     packet->setDestAddr(destination_address);
     packet->setSrcAddr(my_address);
@@ -252,6 +292,8 @@ void ConnectionManager::respondToRequest(ConnectionSetupRequest *req) {
   for (auto [owner_address, rs] : rulesets) {
     ConnectionSetupResponse *pkt = new ConnectionSetupResponse("ConnectionSetupResponse");
     pkt->setApplicationId(application_id);
+    pkt->setConnection_session_id(req->getConnection_session_id());
+    pkt->setConnection_attempt(req->getConnection_attempt());
     pkt->setRuleSet(rs);
     pkt->setSrcAddr(my_address);
     pkt->setDestAddr(owner_address);
@@ -468,6 +510,10 @@ void ConnectionManager::initiateApplicationRequest(int qnic_address) {
 
 void ConnectionManager::scheduleRequestRetry(int qnic_address) {
   connection_retry_count[qnic_address]++;
+  auto &request_queue = connection_setup_buffer[qnic_address];
+  if (!request_queue.empty()) {
+    request_queue.front()->setConnection_attempt(request_queue.front()->getConnection_attempt() + 1);
+  }
   int upper_bound = (1 << connection_retry_count[qnic_address]) - 1;
   int k = intuniform(0, upper_bound);
   EV << "upper bound = " << upper_bound << endl;

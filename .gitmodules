@@ -11,6 +11,3 @@
 	path = spdlog
 	url = https://github.com/gabime/spdlog.git
 
-[submodule "qutip"]
-	path = qutip
-	url = https://github.com/qutip/qutip.git

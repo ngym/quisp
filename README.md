@@ -168,6 +168,9 @@ need are:
 * QUISP requires [OMNeT++](https://omnetpp.org/) and
 * an external C++ library, [Eigen](http://eigen.tuxfamily.org/), to
   work.
+* Python users should install Python dependencies from
+  `requirements.txt` before running Python-side tools:
+  `python3 -m pip install -r requirements.txt`
 * To contribute to QuISP development, you will also need to be
   familiar with at least the basics of [git](https://git-scm.com/).
 * We recommend the use of [Doxygen](http://www.doxygen.nl/) for source
@@ -177,6 +180,19 @@ need are:
 Depending on your local setup and how you intend to use QuISP, you may
 also need various tools (a C++ compiler, make, an X Windows server,
 Docker, ffmpeg for making videos, etc.), documented in the installation notes.
+
+To verify that `qutip` and `qutip.qip` are available after dependency
+installation, run:
+
+```bash
+python3 scripts/check_qutip_import.py
+```
+
+or
+
+```bash
+python3 -c "import qutip, qutip_qip, qutip.qip; print('ok')"
+```
 
 ## Trying it out on the web
 

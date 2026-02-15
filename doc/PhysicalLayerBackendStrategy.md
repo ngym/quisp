@@ -121,7 +121,7 @@ Notes / 補足:
 - `backend_type` の直文字分岐を切替器に集約し、`physical_backend_type` パラメータを追加（空文字時は既存 `backend_type` を後方互換で参照）。
 - `error_basis` を `GraphStateBackend` と同値として初期化経路に採用。
 - `Backend` テストで `physical_backend_type` の初期化成功/失敗ケースを追加。
-- `qutip` をサブモジュール化する準備として `.gitmodules` にエントリを追加（本体統合は次のPRで実装）。
+- `qutip` はサブモジュール依存から外し、`requirements.txt` の `qutip` / `qutip-qip` で管理する前提へ切り替え（`qutip.qip` 利用時は `qutip-qip` が必須）。
 - `IPhysicalBackend` / `PhysicalServiceFacade` / `ErrorBasisBackend` を実装し、`StationaryQubit` の `measureX/Y/Z` を `PhysicalServiceFacade` 経由に変更（挙動非変更）。
 - `StationaryQubit` の `measureX/Y/Z`, `gateX/Y/Z/H/S/Sdg/CNOT`, `generateEntangledPhoton`, `measureRandomPauliBasis` を `PhysicalServiceFacade` 経由に変更（挙動非変更）。
 
@@ -217,6 +217,14 @@ Notes / 補足:
 - **Risk:** Event ordering issues with async execution.
   - **Mitigation:** Keep calls synchronous in OMNeT++ event context.
   - **対策:** OMNeT++ のイベント文脈で同期呼び出しを維持する。
+
+## Dependency migration note / 依存移行メモ
+
+- `qutip`/`qutip_qip` の供給元はサブモジュールではなく `requirements.txt` に統一する。
+- `qutip` はこの時点でリポジトリ管理対象から除外し、pip 依存として扱う。
+- 既定運用は `qutip >=` 指定（今後 CI で安定後に固定化）。
+- 検証コマンド:
+  - `python3 scripts/check_qutip_import.py`
 
 ## Definition of Done (for initial migration) / 完了条件（初期移行）
 

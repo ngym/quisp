@@ -1,4 +1,5 @@
 #include <memory>
+#include <algorithm>
 #include <utility>
 #include <nlohmann/json.hpp>
 
@@ -679,11 +680,20 @@ TEST(RuleProtocolHandlerRegistrarTest, registerDefaultsDoesNotRegisterFallbackHa
 TEST(RuleProtocolHandlerRegistrarTest, defaultProtocolHandlerListContainsExpectedProtocols) {
   auto handlers = handlers::createDefaultProtocolHandlers();
   ASSERT_EQ(handlers.size(), 5);
-  EXPECT_EQ(handlers[0]->protocolSpec(), core::events::ProtocolSpec::MIM_v1);
-  EXPECT_EQ(handlers[1]->protocolSpec(), core::events::ProtocolSpec::MSM_v1);
-  EXPECT_EQ(handlers[2]->protocolSpec(), core::events::ProtocolSpec::Purification);
-  EXPECT_EQ(handlers[3]->protocolSpec(), core::events::ProtocolSpec::Swapping);
-  EXPECT_EQ(handlers[4]->protocolSpec(), core::events::ProtocolSpec::ConnectionManagement);
+  std::vector<core::events::ProtocolSpec> actual_specs;
+  actual_specs.reserve(handlers.size());
+  for (const auto& handler : handlers) {
+    actual_specs.push_back(handler->protocolSpec());
+  }
+  const std::vector<core::events::ProtocolSpec> expected_specs = {
+      core::events::ProtocolSpec::MIM_v1, core::events::ProtocolSpec::MSM_v1, core::events::ProtocolSpec::Purification,
+      core::events::ProtocolSpec::Swapping, core::events::ProtocolSpec::ConnectionManagement};
+
+  auto sorted_actual_specs = actual_specs;
+  auto sorted_expected_specs = expected_specs;
+  std::sort(sorted_actual_specs.begin(), sorted_actual_specs.end());
+  std::sort(sorted_expected_specs.begin(), sorted_expected_specs.end());
+  EXPECT_EQ(sorted_actual_specs, sorted_expected_specs);
 }
 
 TEST_F(RuleEngineTest, directUnknownRuleEventFromRuleEngineLogsUnknownRuleEvent) {

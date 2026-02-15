@@ -741,7 +741,37 @@ TEST_F(RuleEngineTest, emitPhotonRequestEventIsHandledByRegistrarWithoutUnknownL
   EXPECT_EQ(qnic_store_stub->take_free_qubit_calls, 1);
 
   rule_engine->qnic_store.reset();
-	// do not delete rule_engine directly here (OMNeT++ module lifecycle handled by simulation environment)
+  // do not delete rule_engine directly here (OMNeT++ module lifecycle handled by simulation environment)
+}
+
+TEST_F(RuleEngineTest, emitPhotonRequestEventWithNoFreeQubitsForNonMSMPathSkipsEmission) {
+  auto logger = std::make_unique<RuleEngineEventLogger>();
+  auto* raw_logger = logger.get();
+  auto* rule_engine = new RuleEngineTestTarget{nullptr, routing_daemon, hardware_monitor, realtime_controller, qnic_specs, std::move(logger)};
+  sim->registerComponent(rule_engine);
+  rule_engine->callInitialize();
+
+  auto emit_request = new EmitPhotonRequest();
+  emit_request->setQnicType(QNIC_E);
+  emit_request->setQnicIndex(0);
+  emit_request->setIntervalBetweenPhotons(SimTime(2));
+  emit_request->setMSM(false);
+  emit_request->setFirst(true);
+
+  auto* qnic_store_stub = new TestQNicStoreStub();
+  qnic_store_stub->count_num_free_return = 0;
+  rule_engine->qnic_store.reset(qnic_store_stub);
+  EXPECT_CALL(*realtime_controller, EmitPhoton(_, _, _, _)).Times(0);
+
+  rule_engine->handleMessage(emit_request);
+
+  EXPECT_EQ(raw_logger->log_event_count, 0);
+  EXPECT_EQ(raw_logger->last_event_type, "");
+  EXPECT_EQ(qnic_store_stub->count_num_free_calls, 1);
+  EXPECT_EQ(qnic_store_stub->take_free_qubit_calls, 0);
+
+  rule_engine->qnic_store.reset();
+  // do not delete rule_engine directly here (OMNeT++ module lifecycle handled by simulation environment)
 }
 
 }  // namespace

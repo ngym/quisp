@@ -39,12 +39,12 @@ void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
     auto type = pk->getQnicType();
     auto qnic_index = pk->getQnicIndex();
     auto number_of_free_emitters = engine.qnic_store->countNumFreeQubits(type, qnic_index);
-    auto qubit_index = engine.qnic_store->takeFreeQubitIndex(type, qnic_index);
 
     if (pk->isMSM()) {
       auto &msm_info = engine.msm_info_map[qnic_index];
       msm_info.photon_index_counter++;
       if (number_of_free_emitters != 0) {
+        auto qubit_index = engine.qnic_store->takeFreeQubitIndex(type, qnic_index);
         msm_info.qubit_info_map[msm_info.iteration_index] = qubit_index;
         engine.sendEmitPhotonSignalToQnic(type, qnic_index, qubit_index, true, true);
       } else {
@@ -61,6 +61,10 @@ void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
       }
       engine.scheduleAt(simTime() + pk->getIntervalBetweenPhotons(), pk);
     } else {
+      if (number_of_free_emitters == 0) {
+        return;
+      }
+      auto qubit_index = engine.qnic_store->takeFreeQubitIndex(type, qnic_index);
       auto is_first = pk->isFirst();
       auto is_last = (number_of_free_emitters == 1);
       pk->setFirst(false);

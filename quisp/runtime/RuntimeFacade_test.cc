@@ -63,4 +63,18 @@ TEST_F(RuntimeFacadeTest, SnapshotReflectsRuntimeResources) {
   EXPECT_EQ(snapshot.named_qubits, 0);
 }
 
+TEST_F(RuntimeFacadeTest, AssignMessageToMissingRulesetIsNoop) {
+  RuleSet rs{"rs", {}, Program{"", {}}};
+  rs.id = 102;
+  facade->submitRuleSet(rs);
+  MessageRecord msg = {1, 2, 3};
+  facade->assignMessageToRuleSet(9999, 0, msg);
+
+  auto snapshot = facade->snapshotState(0);
+  EXPECT_EQ(snapshot.terminated, false);
+  EXPECT_EQ(snapshot.active_partners, 0);
+  EXPECT_EQ(snapshot.qubit_resources, 0);
+  EXPECT_EQ(snapshot.message_queues, 0);
+}
+
 }  // namespace

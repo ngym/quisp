@@ -10,6 +10,7 @@
 #include "IRuleEngine.h"
 #include "QubitRecord/QubitRecord.h"
 #include "RuleEngine.h"
+#include "handlers/RuleProtocolHandlers.h"
 #include "messages/purification_messages_m.h"
 #include "modules/PhysicalConnection/BSA/types.h"
 #include "modules/Logger/DisabledLogger.h"
@@ -673,6 +674,16 @@ TEST(RuleProtocolHandlerRegistrarTest, registerDefaultsDoesNotRegisterFallbackHa
   EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::RULESET_FORWARDING));
   EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::RULESET_FORWARDING_APPLICATION));
   EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::LINK_TOMOGRAPHY_RULESET));
+}
+
+TEST(RuleProtocolHandlerRegistrarTest, defaultProtocolHandlerListContainsExpectedProtocols) {
+  auto handlers = handlers::createDefaultProtocolHandlers();
+  ASSERT_EQ(handlers.size(), 5);
+  EXPECT_EQ(handlers[0]->protocolSpec(), core::events::ProtocolSpec::MIM_v1);
+  EXPECT_EQ(handlers[1]->protocolSpec(), core::events::ProtocolSpec::MSM_v1);
+  EXPECT_EQ(handlers[2]->protocolSpec(), core::events::ProtocolSpec::Purification);
+  EXPECT_EQ(handlers[3]->protocolSpec(), core::events::ProtocolSpec::Swapping);
+  EXPECT_EQ(handlers[4]->protocolSpec(), core::events::ProtocolSpec::ConnectionManagement);
 }
 
 TEST_F(RuleEngineTest, directUnknownRuleEventFromRuleEngineLogsUnknownRuleEvent) {

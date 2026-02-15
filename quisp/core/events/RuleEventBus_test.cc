@@ -227,6 +227,28 @@ TEST_F(RuleEventBusTestFixture, ConvertsWithTranslatorPreservesEventMetadata) {
   EXPECT_TRUE(emit_event.keep_source);
 }
 
+TEST_F(RuleEventBusTestFixture, ConvertsEmitPhotonRequestToMSMProtocolWhenMSMFlagSet) {
+  RuleEventBus bus;
+  EmitPhotonRequest emit_msg;
+  emit_msg.setMSM(true);
+
+  auto emit_event = bus.toRuleEvent(&emit_msg, SimTime(6));
+  EXPECT_EQ(emit_event.type, RuleEventType::EMIT_PHOTON_REQUEST);
+  EXPECT_EQ(emit_event.protocol_spec, ProtocolSpec::MSM_v1);
+  EXPECT_EQ(emit_event.execution_path, ExecutionPath::EntanglementLifecycle);
+}
+
+TEST_F(RuleEventBusTestFixture, ConvertsEmitPhotonRequestToMIMProtocolWhenMSMFlagNotSet) {
+  RuleEventBus bus;
+  EmitPhotonRequest emit_msg;
+  emit_msg.setMSM(false);
+
+  auto emit_event = bus.toRuleEvent(&emit_msg, SimTime(6));
+  EXPECT_EQ(emit_event.type, RuleEventType::EMIT_PHOTON_REQUEST);
+  EXPECT_EQ(emit_event.protocol_spec, ProtocolSpec::MIM_v1);
+  EXPECT_EQ(emit_event.execution_path, ExecutionPath::EntanglementLifecycle);
+}
+
 TEST_F(RuleEventBusTestFixture, ProtocolSpecNameUsesMIMMSMProtocolNaming) {
   EXPECT_EQ(to_string(ProtocolSpec::MIM_v1), "MIM Protocol v1");
   EXPECT_EQ(to_string(ProtocolSpec::MSM_v1), "MSM Protocol v1");

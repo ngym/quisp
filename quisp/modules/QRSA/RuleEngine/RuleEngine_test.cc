@@ -45,6 +45,8 @@ using namespace omnetpp;
 using namespace quisp::utils;
 using namespace quisp::rules;
 using namespace quisp::modules;
+using namespace quisp::core;
+namespace core = quisp::core;
 using quisp::modules::qrsa::IQubitRecord;
 using quisp::modules::qubit_record::QubitRecord;
 using namespace quisp_test;
@@ -77,24 +79,32 @@ class RuleEngineEventLogger : public ILogger {
 
 class TestQNicStoreStub : public IQNicStore {
  public:
-  int count_num_free_calls = 0;
-  int take_free_qubit_calls = 0;
+  int count_num_available_calls = 0;
+  int acquire_available_qubit_calls = 0;
   int set_qubit_busy_calls = 0;
-  int count_num_free_return = 0;
-  int take_free_qubit_return = 0;
+  int count_num_available_return = 0;
+  int acquire_available_qubit_return = 0;
 
-  int countNumFreeQubits(QNIC_type type, int qnic_index) override {
+  int countNumAvailableQubits(QNIC_type type, int qnic_index) override {
     (void)type;
     (void)qnic_index;
-    count_num_free_calls++;
-    return count_num_free_return;
+    count_num_available_calls++;
+    return count_num_available_return;
+  }
+
+  int acquireAvailableQubitIndex(QNIC_type type, int qnic_index) override {
+    (void)type;
+    (void)qnic_index;
+    acquire_available_qubit_calls++;
+    return acquire_available_qubit_return;
+  }
+
+  int countNumFreeQubits(QNIC_type type, int qnic_index) override {
+    return countNumAvailableQubits(type, qnic_index);
   }
 
   int takeFreeQubitIndex(QNIC_type type, int qnic_index) override {
-    (void)type;
-    (void)qnic_index;
-    take_free_qubit_calls++;
-    return take_free_qubit_return;
+    return acquireAvailableQubitIndex(type, qnic_index);
   }
 
   void setQubitBusy(QNIC_type type, int qnic_index, int qubit_index, bool is_busy) override {
@@ -640,7 +650,8 @@ TEST(RuleProtocolHandlerRegistrarTest, registerDefaultsRegistersExpectedExactEve
   EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::BSM_RESULT, core::events::ProtocolSpec::MIM_v1));
   EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::BSM_TIMING, core::events::ProtocolSpec::MIM_v1));
   EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EPPS_TIMING, core::events::ProtocolSpec::MSM_v1));
-  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EMIT_PHOTON_REQUEST, core::events::ProtocolSpec::Unknown));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EMIT_PHOTON_REQUEST, core::events::ProtocolSpec::MIM_v1));
+  EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::EMIT_PHOTON_REQUEST, core::events::ProtocolSpec::MSM_v1));
   EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::SINGLE_CLICK_RESULT, core::events::ProtocolSpec::MSM_v1));
   EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::MSM_RESULT, core::events::ProtocolSpec::MSM_v1));
   EXPECT_TRUE(rule_engine_probe.hasExactHandler(core::events::RuleEventType::STOP_EMITTING, core::events::ProtocolSpec::MSM_v1));
@@ -728,8 +739,8 @@ TEST_F(RuleEngineTest, emitPhotonRequestEventIsHandledByRegistrarWithoutUnknownL
   emit_request->setFirst(true);
 
   auto* qnic_store_stub = new TestQNicStoreStub();
-  qnic_store_stub->count_num_free_return = 1;
-  qnic_store_stub->take_free_qubit_return = 5;
+  qnic_store_stub->count_num_available_return = 1;
+  qnic_store_stub->acquire_available_qubit_return = 5;
   rule_engine->qnic_store.reset(qnic_store_stub);
  	EXPECT_CALL(*realtime_controller, EmitPhoton(0, 5, QNIC_E, _)).Times(1);
 
@@ -737,8 +748,8 @@ TEST_F(RuleEngineTest, emitPhotonRequestEventIsHandledByRegistrarWithoutUnknownL
 
   EXPECT_EQ(raw_logger->log_event_count, 0);
   EXPECT_EQ(raw_logger->last_event_type, "");
-  EXPECT_EQ(qnic_store_stub->count_num_free_calls, 1);
-  EXPECT_EQ(qnic_store_stub->take_free_qubit_calls, 1);
+  EXPECT_EQ(qnic_store_stub->count_num_available_calls, 1);
+  EXPECT_EQ(qnic_store_stub->acquire_available_qubit_calls, 1);
 
   rule_engine->qnic_store.reset();
   // do not delete rule_engine directly here (OMNeT++ module lifecycle handled by simulation environment)
@@ -759,7 +770,7 @@ TEST_F(RuleEngineTest, emitPhotonRequestEventWithNoFreeQubitsForNonMSMPathSkipsE
   emit_request->setFirst(true);
 
   auto* qnic_store_stub = new TestQNicStoreStub();
-  qnic_store_stub->count_num_free_return = 0;
+  qnic_store_stub->count_num_available_return = 0;
   rule_engine->qnic_store.reset(qnic_store_stub);
   EXPECT_CALL(*realtime_controller, EmitPhoton(_, _, _, _)).Times(0);
 
@@ -767,8 +778,8 @@ TEST_F(RuleEngineTest, emitPhotonRequestEventWithNoFreeQubitsForNonMSMPathSkipsE
 
   EXPECT_EQ(raw_logger->log_event_count, 0);
   EXPECT_EQ(raw_logger->last_event_type, "");
-  EXPECT_EQ(qnic_store_stub->count_num_free_calls, 1);
-  EXPECT_EQ(qnic_store_stub->take_free_qubit_calls, 0);
+  EXPECT_EQ(qnic_store_stub->count_num_available_calls, 1);
+  EXPECT_EQ(qnic_store_stub->acquire_available_qubit_calls, 0);
 
   rule_engine->qnic_store.reset();
   // do not delete rule_engine directly here (OMNeT++ module lifecycle handled by simulation environment)

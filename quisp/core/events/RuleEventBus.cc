@@ -28,6 +28,13 @@ ExecutionPath executionPathFromType(RuleEventType type) {
   return ExecutionPath::EntanglementLifecycle;
 }
 
+ProtocolSpec protocolFromEmitPhotonRequest(const EmitPhotonRequest *msg) {
+  if (msg == nullptr || !msg->isMSM()) {
+    return ProtocolSpec::MIM_v1;
+  }
+  return ProtocolSpec::MSM_v1;
+}
+
 template <typename MessageT>
 RuleEvent makeRuleEvent(RuleEventType type, MessageT *msg, ::omnetpp::simtime_t now, bool keep_source_override, ProtocolSpec protocol_spec,
                         ExecutionPath execution_path, std::string protocol_raw_value = "") {
@@ -59,7 +66,8 @@ std::optional<RuleEvent> translateByType(::omnetpp::cMessage *msg, ::omnetpp::si
                          executionPathFromType(RuleEventType::EPPS_TIMING));
   }
   if (dynamic_cast<EmitPhotonRequest *>(msg) != nullptr) {
-    return makeRuleEvent(RuleEventType::EMIT_PHOTON_REQUEST, dynamic_cast<EmitPhotonRequest *>(msg), now, true, ProtocolSpec::Unknown,
+    auto *emit_request = dynamic_cast<EmitPhotonRequest *>(msg);
+    return makeRuleEvent(RuleEventType::EMIT_PHOTON_REQUEST, emit_request, now, true, protocolFromEmitPhotonRequest(emit_request),
                          executionPathFromType(RuleEventType::EMIT_PHOTON_REQUEST));
   }
   if (dynamic_cast<LinkTomographyRuleSet *>(msg) != nullptr) {
@@ -154,9 +162,16 @@ void RuleEventBus::registerDefaultTranslators() {
   registerTranslator(messageClassName<EPPSTimingNotification>(),
                     translatorFor<EPPSTimingNotification>(RuleEventType::EPPS_TIMING, ProtocolSpec::MSM_v1,
                                                          executionPathFromType(RuleEventType::EPPS_TIMING)));
-  registerTranslator(messageClassName<EmitPhotonRequest>(),
-                    translatorFor<EmitPhotonRequest>(RuleEventType::EMIT_PHOTON_REQUEST, ProtocolSpec::Unknown,
-                                                     executionPathFromType(RuleEventType::EMIT_PHOTON_REQUEST), true));
+  registerTranslator(
+      messageClassName<EmitPhotonRequest>(),
+      [](::omnetpp::cMessage *msg, ::omnetpp::simtime_t now) -> std::optional<RuleEvent> {
+        if (auto *emit_request = dynamic_cast<EmitPhotonRequest *>(msg)) {
+          return std::optional{
+              makeRuleEvent(RuleEventType::EMIT_PHOTON_REQUEST, emit_request, now, true, protocolFromEmitPhotonRequest(emit_request),
+                           executionPathFromType(RuleEventType::EMIT_PHOTON_REQUEST))};
+        }
+        return std::nullopt;
+      });
   registerTranslator(messageClassName<LinkTomographyRuleSet>(),
                     translatorFor<LinkTomographyRuleSet>(RuleEventType::LINK_TOMOGRAPHY_RULESET, ProtocolSpec::LinkTomography,
                                                          executionPathFromType(RuleEventType::LINK_TOMOGRAPHY_RULESET)));

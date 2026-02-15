@@ -1,6 +1,6 @@
 #pragma once
 
-#include "IRuleProtocolHandler.h"
+#include "../IRuleProtocolHandler.h"
 
 namespace quisp::modules {
 class RuleEngine;

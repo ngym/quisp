@@ -26,7 +26,7 @@ TEST(QNicRecord, InitWithoutQubits) {
   QNicRecord record(provider, qnic_index, qnic_type, new DisabledLogger{});
   EXPECT_EQ(qnic_index, record.index);
   EXPECT_EQ(qnic_type, record.type);
-  EXPECT_EQ(0, record.countNumFreeQubits());
+  EXPECT_EQ(0, record.countNumAvailableQubits());
 }
 
 TEST(QNicRecord, InitWithQubits) {
@@ -39,10 +39,10 @@ TEST(QNicRecord, InitWithQubits) {
   QNicRecord record(provider, qnic_index, qnic_type, new DisabledLogger{});
   EXPECT_EQ(qnic_index, record.index);
   EXPECT_EQ(qnic_type, record.type);
-  EXPECT_EQ(5, record.countNumFreeQubits());
+  EXPECT_EQ(5, record.countNumAvailableQubits());
 }
 
-TEST(QNicRecord, TakeFreeQubit) {
+TEST(QNicRecord, AcquireAvailableQubit) {
   ComponentProvider provider(new cModule());
   int qnic_index = 3;
   auto qnic_type = QNIC_E;
@@ -50,14 +50,14 @@ TEST(QNicRecord, TakeFreeQubit) {
   provider.setStrategy(std::make_unique<TestComponentProviderStrategy>(qnic_specs));
 
   QNicRecord record(provider, qnic_index, qnic_type, new DisabledLogger{});
-  EXPECT_EQ(3, record.countNumFreeQubits());
-  EXPECT_NE(-1, record.takeFreeQubitIndex());
-  EXPECT_EQ(2, record.countNumFreeQubits());
-  EXPECT_NE(-1, record.takeFreeQubitIndex());
-  EXPECT_EQ(1, record.countNumFreeQubits());
-  EXPECT_NE(-1, record.takeFreeQubitIndex());
-  EXPECT_EQ(0, record.countNumFreeQubits());
-  EXPECT_EQ(-1, record.takeFreeQubitIndex());
+  EXPECT_EQ(3, record.countNumAvailableQubits());
+  EXPECT_NE(-1, record.acquireAvailableQubitIndex());
+  EXPECT_EQ(2, record.countNumAvailableQubits());
+  EXPECT_NE(-1, record.acquireAvailableQubitIndex());
+  EXPECT_EQ(1, record.countNumAvailableQubits());
+  EXPECT_NE(-1, record.acquireAvailableQubitIndex());
+  EXPECT_EQ(0, record.countNumAvailableQubits());
+  EXPECT_EQ(-1, record.acquireAvailableQubitIndex());
 }
 
 TEST(QNicRecord, SetQubitBusy) {
@@ -68,15 +68,15 @@ TEST(QNicRecord, SetQubitBusy) {
   provider.setStrategy(std::make_unique<TestComponentProviderStrategy>(qnic_specs));
 
   QNicRecord record(provider, qnic_index, qnic_type, new DisabledLogger{});
-  EXPECT_EQ(3, record.countNumFreeQubits());
+  EXPECT_EQ(3, record.countNumAvailableQubits());
   record.setQubitBusy(0, true);
-  EXPECT_EQ(2, record.countNumFreeQubits());
+  EXPECT_EQ(2, record.countNumAvailableQubits());
   record.setQubitBusy(1, true);
-  EXPECT_EQ(1, record.countNumFreeQubits());
+  EXPECT_EQ(1, record.countNumAvailableQubits());
   record.setQubitBusy(2, true);
-  EXPECT_EQ(0, record.countNumFreeQubits());
+  EXPECT_EQ(0, record.countNumAvailableQubits());
   record.setQubitBusy(2, false);
-  EXPECT_EQ(1, record.countNumFreeQubits());
+  EXPECT_EQ(1, record.countNumAvailableQubits());
 }
 
 TEST(QNicRecord, SetQubitBusyWithInvalidIndex) {

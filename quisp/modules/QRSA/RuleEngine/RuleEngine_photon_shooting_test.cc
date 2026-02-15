@@ -69,7 +69,9 @@ class RuleEngineTestTarget : public quisp::modules::RuleEngine {
   }
   // setter function for allResorces[qnic_type][qnic_index]
   void setQubitBusyInQnic(int qnic_type, int qnic_index, int qubit_index) { qnic_store->setQubitBusy(QNIC_type(qnic_type), qnic_index, qubit_index, true); };
-  int getNumFreeQubitsInQnic(int qnic_type, int qnic_index) { return qnic_store->countNumFreeQubits(QNIC_type(qnic_type), qnic_index); }
+  int getNumAvailableQubitsInQnic(int qnic_type, int qnic_index) {
+    return qnic_store->countNumAvailableQubits(QNIC_type(qnic_type), qnic_index);
+  }
 };
 
 TEST(RuleEnginePhotonShootingTest, RequestEmissionWithoutFreeQubit) {
@@ -132,7 +134,7 @@ TEST(RuleEnginePhotonShootingTest, EmitPhotonWithSingleFreeQubit) {
   pk->setQnicIndex(qnic_index);
   pk->setFirst(true);
 
-  EXPECT_EQ(rule_engine->getNumFreeQubitsInQnic(QNIC_E, qnic_index), 1);
+  EXPECT_EQ(rule_engine->getNumAvailableQubitsInQnic(QNIC_E, qnic_index), 1);
   EXPECT_CALL(*mockRealtimeController, EmitPhoton(qnic_index, 1, QNIC_E, STATIONARYQUBIT_PULSE_BOUND));
   // RE receives BSM Notification message
   rule_engine->handleMessage(pk);
@@ -170,18 +172,18 @@ TEST(RuleEnginePhotonShootingTest, EmitPhotonWithTwoFreeQubits) {
   pk->setFirst(true);
   pk->setIntervalBetweenPhotons(0.0001);
 
-  EXPECT_EQ(rule_engine->getNumFreeQubitsInQnic(QNIC_E, qnic_index), 2);
+  EXPECT_EQ(rule_engine->getNumAvailableQubitsInQnic(QNIC_E, qnic_index), 2);
   EXPECT_CALL(*mockRealtimeController, EmitPhoton(qnic_index, 0, QNIC_E, STATIONARYQUBIT_PULSE_BEGIN));
   // RE receives BSM Notification message
   rule_engine->handleMessage(pk);
   EXPECT_EQ(sim->getFES()->getLength(), 1);
   EXPECT_TRUE(pk->isScheduled());
-  EXPECT_EQ(rule_engine->getNumFreeQubitsInQnic(QNIC_E, qnic_index), 1);
+  EXPECT_EQ(rule_engine->getNumAvailableQubitsInQnic(QNIC_E, qnic_index), 1);
 
   // second photon emission
   EXPECT_CALL(*mockRealtimeController, EmitPhoton(qnic_index, 1, QNIC_E, STATIONARYQUBIT_PULSE_END));
   sim->executeNextEvent();
-  EXPECT_EQ(rule_engine->getNumFreeQubitsInQnic(QNIC_E, qnic_index), 0);
+  EXPECT_EQ(rule_engine->getNumAvailableQubitsInQnic(QNIC_E, qnic_index), 0);
   EXPECT_EQ(sim->getFES()->getLength(), 0);
 
   sim->getFES()->clear();
@@ -213,26 +215,26 @@ TEST(RuleEnginePhotonShootingTest, EmitPhotonWithThreeFreeQubits) {
   pk->setQnicIndex(qnic_index);
   pk->setFirst(true);
 
-  EXPECT_EQ(rule_engine->getNumFreeQubitsInQnic(QNIC_E, qnic_index), 3);
+  EXPECT_EQ(rule_engine->getNumAvailableQubitsInQnic(QNIC_E, qnic_index), 3);
   EXPECT_CALL(*mockRealtimeController, EmitPhoton(qnic_index, 0, QNIC_E, STATIONARYQUBIT_PULSE_BEGIN));
   // RE receives BSM Notification message
   rule_engine->handleMessage(pk);
   EXPECT_EQ(sim->getFES()->getLength(), 1);
   EXPECT_TRUE(pk->isScheduled());
-  EXPECT_EQ(rule_engine->getNumFreeQubitsInQnic(QNIC_E, qnic_index), 2);
+  EXPECT_EQ(rule_engine->getNumAvailableQubitsInQnic(QNIC_E, qnic_index), 2);
 
   // second photon emission
   EXPECT_CALL(*mockRealtimeController, EmitPhoton(qnic_index, 1, QNIC_E, 0));
   sim->executeNextEvent();
   EXPECT_EQ(sim->getFES()->getLength(), 1);
   EXPECT_TRUE(pk->isScheduled());
-  EXPECT_EQ(rule_engine->getNumFreeQubitsInQnic(QNIC_E, qnic_index), 1);
+  EXPECT_EQ(rule_engine->getNumAvailableQubitsInQnic(QNIC_E, qnic_index), 1);
 
   // third photon emission
   EXPECT_CALL(*mockRealtimeController, EmitPhoton(qnic_index, 2, QNIC_E, STATIONARYQUBIT_PULSE_END));
   sim->executeNextEvent();
   EXPECT_EQ(sim->getFES()->getLength(), 0);
-  EXPECT_EQ(rule_engine->getNumFreeQubitsInQnic(QNIC_E, qnic_index), 0);
+  EXPECT_EQ(rule_engine->getNumAvailableQubitsInQnic(QNIC_E, qnic_index), 0);
 
   sim->getFES()->clear();
   delete mockHardwareMonitor;

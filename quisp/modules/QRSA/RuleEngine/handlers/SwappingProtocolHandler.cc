@@ -3,7 +3,7 @@
 #include <functional>
 #include <utility>
 
-#include "RuleEngine.h"
+#include "../RuleEngine.h"
 #include "messages/link_generation_messages_m.h"
 
 namespace quisp::modules::handlers {

@@ -56,7 +56,7 @@ TEST(QNicStore, Init) {
   EXPECT_EQ(1, store.qnics.at(QNIC_RP).size());
 }
 
-TEST(QNicStore, CountFreeQubits) {
+TEST(QNicStore, CountAvailableQubits) {
   ComponentProvider provider(new cModule());
   std::vector<QNicSpec> qnic_specs = {{QNIC_E, 0, 1}, {QNIC_E, 1, 3}, {QNIC_R, 0, 1}, {QNIC_RP, 0, 1}};
   int num_emitter_qnics = 2;
@@ -66,13 +66,13 @@ TEST(QNicStore, CountFreeQubits) {
   provider.setStrategy(std::make_unique<Strategy>(qnic_specs));
   QNicStore store(provider, num_emitter_qnics, num_receiver_qnics, num_passive_receiver_qnics);
 
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_E, 0));
-  EXPECT_EQ(3, store.countNumFreeQubits(QNIC_E, 1));
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_R, 0));
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_RP, 0));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_E, 0));
+  EXPECT_EQ(3, store.countNumAvailableQubits(QNIC_E, 1));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_R, 0));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_RP, 0));
 }
 
-TEST(QNicStore, TakeFreeQubits) {
+TEST(QNicStore, AcquireAvailableQubits) {
   ComponentProvider provider(new cModule());
   std::vector<QNicSpec> qnic_specs = {{QNIC_E, 0, 1}, {QNIC_E, 1, 3}, {QNIC_R, 0, 1}, {QNIC_RP, 0, 1}};
   int num_emitter_qnics = 2;
@@ -82,20 +82,20 @@ TEST(QNicStore, TakeFreeQubits) {
   provider.setStrategy(std::make_unique<Strategy>(qnic_specs));
   QNicStore store(provider, num_emitter_qnics, num_receiver_qnics, num_passive_receiver_qnics);
 
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_E, 0));
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_R, 0));
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_RP, 0));
-  EXPECT_EQ(3, store.countNumFreeQubits(QNIC_E, 1));
-  EXPECT_NE(-1, store.takeFreeQubitIndex(QNIC_E, 1));
-  EXPECT_EQ(2, store.countNumFreeQubits(QNIC_E, 1));
-  EXPECT_NE(-1, store.takeFreeQubitIndex(QNIC_E, 1));
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_E, 1));
-  EXPECT_NE(-1, store.takeFreeQubitIndex(QNIC_E, 1));
-  EXPECT_EQ(0, store.countNumFreeQubits(QNIC_E, 1));
-  EXPECT_EQ(-1, store.takeFreeQubitIndex(QNIC_E, 1));
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_E, 0));
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_R, 0));
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_RP, 0));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_E, 0));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_R, 0));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_RP, 0));
+  EXPECT_EQ(3, store.countNumAvailableQubits(QNIC_E, 1));
+  EXPECT_NE(-1, store.acquireAvailableQubitIndex(QNIC_E, 1));
+  EXPECT_EQ(2, store.countNumAvailableQubits(QNIC_E, 1));
+  EXPECT_NE(-1, store.acquireAvailableQubitIndex(QNIC_E, 1));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_E, 1));
+  EXPECT_NE(-1, store.acquireAvailableQubitIndex(QNIC_E, 1));
+  EXPECT_EQ(0, store.countNumAvailableQubits(QNIC_E, 1));
+  EXPECT_EQ(-1, store.acquireAvailableQubitIndex(QNIC_E, 1));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_E, 0));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_R, 0));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_RP, 0));
 }
 
 TEST(QNicStore, SetQubitBusy) {
@@ -108,15 +108,15 @@ TEST(QNicStore, SetQubitBusy) {
   provider.setStrategy(std::make_unique<Strategy>(qnic_specs));
   QNicStore store(provider, num_emitter_qnics, num_receiver_qnics, num_passive_receiver_qnics);
 
-  EXPECT_EQ(3, store.countNumFreeQubits(QNIC_E, 1));
+  EXPECT_EQ(3, store.countNumAvailableQubits(QNIC_E, 1));
   store.setQubitBusy(QNIC_E, 1, 0, true);
-  EXPECT_EQ(2, store.countNumFreeQubits(QNIC_E, 1));
+  EXPECT_EQ(2, store.countNumAvailableQubits(QNIC_E, 1));
   store.setQubitBusy(QNIC_E, 1, 1, true);
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_E, 1));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_E, 1));
   store.setQubitBusy(QNIC_E, 1, 2, true);
-  EXPECT_EQ(0, store.countNumFreeQubits(QNIC_E, 1));
+  EXPECT_EQ(0, store.countNumAvailableQubits(QNIC_E, 1));
   store.setQubitBusy(QNIC_E, 1, 2, false);
-  EXPECT_EQ(1, store.countNumFreeQubits(QNIC_E, 1));
+  EXPECT_EQ(1, store.countNumAvailableQubits(QNIC_E, 1));
   EXPECT_THROW(store.setQubitBusy(QNIC_E, 1, 2, false), omnetpp::cRuntimeError);
 }
 

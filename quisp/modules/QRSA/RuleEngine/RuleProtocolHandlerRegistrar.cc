@@ -1,5 +1,7 @@
 #include "RuleProtocolHandlerRegistrar.h"
 
+#include "RuleEngine.h"
+#include "core/events/RuleEventBus.h"
 #include "handlers/RuleProtocolHandlers.h"
 
 namespace quisp::modules {

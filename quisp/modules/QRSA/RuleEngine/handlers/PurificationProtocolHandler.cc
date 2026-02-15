@@ -3,7 +3,7 @@
 #include <functional>
 #include <utility>
 
-#include "RuleEngine.h"
+#include "../RuleEngine.h"
 #include "messages/purification_messages_m.h"
 
 namespace quisp::modules::handlers {

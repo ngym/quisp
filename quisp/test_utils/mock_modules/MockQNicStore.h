@@ -13,7 +13,9 @@ using quisp::modules::qnic_store::IQNicStore;
 class MockQNicStore : public IQNicStore {
  public:
   MOCK_METHOD(int, countNumFreeQubits, (QNIC_type type, int qnic_index), (override));
+  MOCK_METHOD(int, countNumAvailableQubits, (QNIC_type type, int qnic_index), (override));
   MOCK_METHOD(int, takeFreeQubitIndex, (QNIC_type type, int qnic_index), (override));
+  MOCK_METHOD(int, acquireAvailableQubitIndex, (QNIC_type type, int qnic_index), (override));
   MOCK_METHOD(void, setQubitBusy, (QNIC_type type, int qnic_index, int qubit_index, bool is_busy), (override));
   MOCK_METHOD(quisp::modules::qrsa::IQubitRecord*, getQubitRecord, (QNIC_type type, int qnic_index, int qubit_index), (override));
 };

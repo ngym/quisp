@@ -4,7 +4,7 @@
 #include <nlohmann/json.hpp>
 #include <utility>
 
-#include "RuleEngine.h"
+#include "../RuleEngine.h"
 #include "messages/classical_messages.h"
 #include "rules/RuleSet.h"
 

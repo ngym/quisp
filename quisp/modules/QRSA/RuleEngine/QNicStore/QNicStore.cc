@@ -27,12 +27,22 @@ QNicStore::QNicStore(ComponentProvider& provider, int number_of_emitter_qnics, i
 
 int QNicStore::countNumFreeQubits(QNIC_type type, int qnic_index) {
   auto& qnic = getQNic(type, qnic_index);
-  return qnic->countNumFreeQubits();
+  return qnic->countNumAvailableQubits();
 }
 
 int QNicStore::takeFreeQubitIndex(QNIC_type type, int qnic_index) {
   auto& qnic = getQNic(type, qnic_index);
-  return qnic->takeFreeQubitIndex();
+  return qnic->acquireAvailableQubitIndex();
+}
+
+int QNicStore::countNumAvailableQubits(QNIC_type type, int qnic_index) {
+  auto& qnic = getQNic(type, qnic_index);
+  return qnic->countNumAvailableQubits();
+}
+
+int QNicStore::acquireAvailableQubitIndex(QNIC_type type, int qnic_index) {
+  auto& qnic = getQNic(type, qnic_index);
+  return qnic->acquireAvailableQubitIndex();
 }
 
 void QNicStore::setQubitBusy(QNIC_type type, int qnic_index, int qubit_index, bool is_busy) {

@@ -13,6 +13,14 @@ QNicRecord::QNicRecord(utils::ComponentProvider& provider, int index, QNIC_type 
 }
 
 int QNicRecord::countNumFreeQubits() {
+  return countNumAvailableQubits();
+}
+
+int QNicRecord::takeFreeQubitIndex() {
+  return acquireAvailableQubitIndex();
+}
+
+int QNicRecord::countNumAvailableQubits() {
   int num_free = 0;
   for (auto& qubit : qubits) {
     if (!qubit->isBusy()) {
@@ -22,7 +30,7 @@ int QNicRecord::countNumFreeQubits() {
   return num_free;
 }
 
-int QNicRecord::takeFreeQubitIndex() {
+int QNicRecord::acquireAvailableQubitIndex() {
   for (auto& qubit : qubits) {
     if (!qubit->isBusy()) {
       qubit->setBusy(true);

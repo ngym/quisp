@@ -3,7 +3,7 @@
 #include <functional>
 #include <utility>
 
-#include "RuleEngine.h"
+#include "../RuleEngine.h"
 #include "messages/classical_messages.h"
 
 namespace quisp::modules::handlers {
@@ -34,17 +34,17 @@ void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
     engine.scheduleMSMPhotonEmission(QNIC_RP, qnic_index, notification_packet);
   });
 
-  register_handler(EventType::EMIT_PHOTON_REQUEST, EventProtocol::Unknown, [&engine](const core::events::RuleEvent& event) {
+  auto emit_photon_handler = [&engine](const core::events::RuleEvent& event) {
     auto *pk = std::get<messages::EmitPhotonRequest *>(event.payload);
     auto type = pk->getQnicType();
     auto qnic_index = pk->getQnicIndex();
-    auto number_of_free_emitters = engine.qnic_store->countNumFreeQubits(type, qnic_index);
+    auto number_of_free_emitters = engine.qnic_store->countNumAvailableQubits(type, qnic_index);
 
     if (pk->isMSM()) {
       auto &msm_info = engine.msm_info_map[qnic_index];
       msm_info.photon_index_counter++;
       if (number_of_free_emitters != 0) {
-        auto qubit_index = engine.qnic_store->takeFreeQubitIndex(type, qnic_index);
+        auto qubit_index = engine.qnic_store->acquireAvailableQubitIndex(type, qnic_index);
         msm_info.qubit_info_map[msm_info.iteration_index] = qubit_index;
         engine.sendEmitPhotonSignalToQnic(type, qnic_index, qubit_index, true, true);
       } else {
@@ -64,7 +64,7 @@ void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
       if (number_of_free_emitters == 0) {
         return;
       }
-      auto qubit_index = engine.qnic_store->takeFreeQubitIndex(type, qnic_index);
+      auto qubit_index = engine.qnic_store->acquireAvailableQubitIndex(type, qnic_index);
       auto is_first = pk->isFirst();
       auto is_last = (number_of_free_emitters == 1);
       pk->setFirst(false);
@@ -73,7 +73,10 @@ void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
         engine.scheduleAt(simTime() + pk->getIntervalBetweenPhotons(), pk);
       }
     }
-  });
+  };
+
+  register_handler(EventType::EMIT_PHOTON_REQUEST, EventProtocol::MIM_v1, emit_photon_handler);
+  register_handler(EventType::EMIT_PHOTON_REQUEST, EventProtocol::MSM_v1, emit_photon_handler);
 
   register_handler(EventType::SINGLE_CLICK_RESULT, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent& event) {
     engine.handleSingleClickResult(std::get<messages::SingleClickResult *>(event.payload));

@@ -652,6 +652,46 @@ TEST(RuleProtocolHandlerRegistrarTest, registerDefaultsRegistersExpectedExactEve
   EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::UNKNOWN));
 }
 
+TEST(RuleProtocolHandlerRegistrarTest, registerDefaultsDoesNotRegisterFallbackHandlers) {
+  RuleEngineRegistrationProbe rule_engine_probe(nullptr, nullptr, nullptr, nullptr);
+
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::MIM_v1));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::MSM_v1));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::Purification));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::Swapping));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::ConnectionManagement));
+  EXPECT_FALSE(rule_engine_probe.hasProtocolFallbackHandler(core::events::ProtocolSpec::LinkTomography));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::BSM_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::BSM_TIMING));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::EPPS_TIMING));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::EMIT_PHOTON_REQUEST));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::SINGLE_CLICK_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::MSM_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::STOP_EMITTING));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::PURIFICATION_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::SWAPPING_RESULT));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::RULESET_FORWARDING));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::RULESET_FORWARDING_APPLICATION));
+  EXPECT_FALSE(rule_engine_probe.hasTypeFallbackHandler(core::events::RuleEventType::LINK_TOMOGRAPHY_RULESET));
+}
+
+TEST_F(RuleEngineTest, directUnknownRuleEventFromRuleEngineLogsUnknownRuleEvent) {
+  auto logger = std::make_unique<RuleEngineEventLogger>();
+  auto* raw_logger = logger.get();
+  auto* rule_engine = new RuleEngineTestTarget{nullptr, routing_daemon, hardware_monitor, realtime_controller, qnic_specs, std::move(logger)};
+  sim->registerComponent(rule_engine);
+  sim->setContext(rule_engine);
+  rule_engine->callInitialize();
+
+  core::events::RuleEvent unknown_event{core::events::RuleEventType::UNKNOWN, core::events::RuleEventChannel::EXTERNAL, false, SimTime(2), 11,
+                                        core::events::ProtocolSpec::Unknown, core::events::ExecutionPath::Unknown};
+  rule_engine->handleRuleEvent(unknown_event);
+
+  EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_event");
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \"UNKNOWN\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_number\": 11"));
+}
+
 TEST_F(RuleEngineTest, emitPhotonRequestEventIsHandledByRegistrarWithoutUnknownLog) {
   auto logger = std::make_unique<RuleEngineEventLogger>();
   auto* raw_logger = logger.get();

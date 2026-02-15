@@ -88,6 +88,12 @@ void Runtime::exec() {
 }
 
 void Runtime::execProgram(const Program& program) {
+  if (!execProgramNoThrow(program)) {
+    throw std::runtime_error("uncaught error");
+  }
+}
+
+bool Runtime::execProgramNoThrow(const Program& program, std::string* uncaught_error_payload) {
   label_map = &program.label_map;
   auto& opcodes = program.opcodes;
   auto len = opcodes.size();
@@ -113,8 +119,13 @@ void Runtime::execProgram(const Program& program) {
     if (callback != nullptr) {
       callback->logEvent("runtime_uncaught_error", ss.str());
     }
-    throw std::runtime_error("uncaught error");
+    if (uncaught_error_payload != nullptr) {
+      *uncaught_error_payload = ss.str();
+    }
+    return false;
   }
+
+  return true;
 }
 
 void Runtime::cleanup() {

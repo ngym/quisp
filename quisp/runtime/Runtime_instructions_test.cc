@@ -237,7 +237,10 @@ TEST_F(RuntimeInstructionsTest, ERROR) {
                 INSTR_SET_RegId_int_{{r2, 1} },
                 // clang-format on
             }};
-  EXPECT_THROW({ execProgram(p); }, std::runtime_error);
+  std::string payload;
+  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", _)).Times(1);
+  EXPECT_FALSE(runtime->execProgramNoThrow(p, &payload));
+  EXPECT_NE(payload.find("\"return_code\""), std::string::npos);
   EXPECT_TRUE(checkRegisters({1, 0, 0, 0, 0}));
   EXPECT_EQ(runtime->return_code, ReturnCode::ERROR);
   auto output = testing::internal::GetCapturedStderr();

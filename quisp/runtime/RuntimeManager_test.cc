@@ -139,4 +139,18 @@ TEST_F(RuntimeManagerTest, ExecAndTerminated) {
     EXPECT_FALSE(rs3.terminated);
   }
 }
+
+TEST_F(RuntimeManagerTest, ExecErrorPathThrowsAndLogsRuntimeError) {
+  Program error_program{"", {INSTR_ERROR_String_{"error in manager"}}};
+  Rule rule{
+      "", -1, -1, error_program, empty,
+  };
+  RuleSet rs{"error", {rule}, empty};
+  rs.id = 1;
+  runtimes->acceptRuleSet(rs);
+  EXPECT_EQ(runtimes->size(), 1);
+  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", _)).Times(1);
+  EXPECT_THROW(runtimes->exec(), std::runtime_error);
+  EXPECT_EQ(runtimes->size(), 1);
+}
 }  // namespace

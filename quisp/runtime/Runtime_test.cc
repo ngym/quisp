@@ -229,8 +229,13 @@ TEST_F(RuntimeTest, AssignQubit) {
 
 TEST_F(RuntimeTest, UncaughtErrorPathLogsRuntimeEvent) {
   Program error_program{"", {INSTR_RET_ReturnCode_{{ReturnCode::ERROR}}}};
-  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", _)).Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", _)).Times(2);
   EXPECT_THROW(runtime->execProgram(error_program), std::runtime_error);
+
+  std::string payload;
+  EXPECT_FALSE(runtime->execProgramNoThrow(error_program, &payload));
+  EXPECT_EQ(runtime->return_code, ReturnCode::ERROR);
+  EXPECT_NE(payload.find("\"return_code\""), std::string::npos);
 }
 
 }  // namespace

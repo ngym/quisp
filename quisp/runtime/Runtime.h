@@ -109,6 +109,10 @@ class Runtime {
   void exec();
 
   /// @brief execute the given Program in a Rule
+  bool execProgramNoThrow(const Program& program, std::string* uncaught_error_payload = nullptr);
+
+  /// @brief execute the given Program in a Rule
+  /// @details throws std::runtime_error when return_code is ERROR.
   void execProgram(const Program& program);
 
   /// @brief execute the one Instruction

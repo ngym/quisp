@@ -125,8 +125,7 @@ TEST(RuleEventBusTest, KeepsOrderByTimeThenEventNumberInDrain) {
 
 TEST(RuleEventBusTest, UnknownMessageAndNullMessageAreHandled) {
   RuleEventBus bus;
-  cMessage plain("plain");
-  bus.publish(&plain, SimTime(1));
+  bus.publish(RuleEvent{RuleEventType::UNKNOWN, SimTime(1), 9});
   bus.publish(nullptr, SimTime(1));
 
   auto events = bus.drain(SimTime(1));

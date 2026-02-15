@@ -350,8 +350,7 @@ TEST_F(RuleEngineTest, unknownProtocolForKnownTypeIsLoggedAsUnknownRuleProtocol)
   rule_engine->handleRuleEvent(unknown_protocol_event);
 
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_protocol");
-  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \""
-                                                     + std::to_string(static_cast<int>(core::events::RuleEventKind::BSM_RESULT)) + "\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \"BSM_RESULT\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"protocol_spec\": \"Unknown\""));
 }
 

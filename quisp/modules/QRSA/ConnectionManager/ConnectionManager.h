@@ -99,6 +99,7 @@ class ConnectionManager : public IConnectionManager, public Logger::LoggerBase {
   virtual bool isKnownSelfTimingMessage(const omnetpp::cMessage* msg, int& qnic_index) const;
   virtual void dispatchInternalEvent(const DecodedConnectionManagerEvent& ev);
   virtual void dispatchProtocolMessage(const DecodedConnectionManagerEvent& ev);
+  virtual void handleUnknownControlMessage(const DecodedConnectionManagerEvent& ev);
   virtual void handleSelfTiming(int qnic_address);
   virtual void handleProtocolSetupRequest(messages::ConnectionSetupRequest* msg);
   virtual void handleProtocolSetupResponse(messages::ConnectionSetupResponse* msg);

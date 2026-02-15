@@ -130,6 +130,7 @@ RuleEventBus::RuleEventTranslator translatorFor(RuleEventKind event_type, Protoc
 RuleEvent makeUnknownRuleEvent(::omnetpp::cMessage *msg, omnetpp::simtime_t now) {
   auto type_name = msg == nullptr ? "omnetpp::cMessage" : msg->getClassName();
   auto full_name = msg == nullptr ? "null" : msg->getFullName();
+  auto protocol_raw_value = msg == nullptr ? "" : msg->getClassName();
   return RuleEvent{
       RuleEventKind::UNKNOWN,
       msg == nullptr ? RuleEventChannel::UNKNOWN : (msg->isSelfMessage() ? RuleEventChannel::INTERNAL_TIMER : RuleEventChannel::EXTERNAL),
@@ -138,7 +139,7 @@ RuleEvent makeUnknownRuleEvent(::omnetpp::cMessage *msg, omnetpp::simtime_t now)
       getEventNumberOrFallback(),
       ProtocolType::Unknown,
       ExecutionPath::Unknown,
-      "",
+      protocol_raw_value,
       std::monostate{},
       full_name,
       type_name,

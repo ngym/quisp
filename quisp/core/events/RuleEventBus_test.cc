@@ -205,6 +205,7 @@ TEST_F(RuleEventBusTestFixture, ConvertsUnknownMessageToUnknownEvent) {
   EXPECT_EQ(events[0].type, RuleEventKind::UNKNOWN);
   EXPECT_EQ(events[0].protocol_spec, ProtocolType::Unknown);
   EXPECT_EQ(events[0].execution_path, ExecutionPath::Unknown);
+  EXPECT_EQ(events[0].protocol_raw_value, "omnetpp::cMessage");
   EXPECT_TRUE(std::holds_alternative<std::monostate>(events[0].payload));
   EXPECT_EQ(events[0].msg_name, "raw");
   EXPECT_EQ(events[0].msg_type, "omnetpp::cMessage");

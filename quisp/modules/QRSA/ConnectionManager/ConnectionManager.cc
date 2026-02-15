@@ -9,6 +9,21 @@
 #include "RuleSetGenerator.h"
 #include <sstream>
 
+namespace {
+
+std::string toString(quisp::modules::ConnectionManager::ConnectionManagerEventChannel channel) {
+  switch (channel) {
+    case quisp::modules::ConnectionManager::ConnectionManagerEventChannel::InternalTimer:
+      return "InternalTimer";
+    case quisp::modules::ConnectionManager::ConnectionManagerEventChannel::ProtocolMessage:
+      return "ProtocolMessage";
+    default:
+      return "Unknown";
+  }
+}
+
+}  // namespace
+
 using namespace omnetpp;
 using namespace quisp::messages;
 using namespace quisp::rules;
@@ -137,7 +152,7 @@ void ConnectionManager::dispatchInternalEvent(const DecodedConnectionManagerEven
     return;
   }
 
-  handleUnknownControlMessage(ev.raw);
+  handleUnknownControlMessage(ev);
 }
 
 void ConnectionManager::dispatchProtocolMessage(const DecodedConnectionManagerEvent& ev) {
@@ -153,7 +168,7 @@ void ConnectionManager::dispatchProtocolMessage(const DecodedConnectionManagerEv
       handleProtocolSetupRequest(request);
       return;
     }
-    handleUnknownControlMessage(ev.raw);
+    handleUnknownControlMessage(ev);
     return;
   }
   if (ev.protocol_type == ConnectionManagerProtocolType::SetupResponse) {
@@ -161,7 +176,7 @@ void ConnectionManager::dispatchProtocolMessage(const DecodedConnectionManagerEv
       handleProtocolSetupResponse(response);
       return;
     }
-    handleUnknownControlMessage(ev.raw);
+    handleUnknownControlMessage(ev);
     return;
   }
   if (ev.protocol_type == ConnectionManagerProtocolType::RejectSetupRequest) {
@@ -169,11 +184,11 @@ void ConnectionManager::dispatchProtocolMessage(const DecodedConnectionManagerEv
       handleProtocolRejectSetup(reject);
       return;
     }
-    handleUnknownControlMessage(ev.raw);
+    handleUnknownControlMessage(ev);
     return;
   }
 
-  handleUnknownControlMessage(ev.raw);
+  handleUnknownControlMessage(ev);
 }
 
 void ConnectionManager::handleIncomingControlMessage(cMessage* msg) {
@@ -189,7 +204,7 @@ void ConnectionManager::handleIncomingControlMessage(cMessage* msg) {
     return;
   }
 
-  handleUnknownControlMessage(msg);
+  handleUnknownControlMessage(decoded);
 }
 
 void ConnectionManager::handleSelfTiming(int qnic_address) { initiateApplicationRequest(qnic_address); }
@@ -237,26 +252,37 @@ void ConnectionManager::handleProtocolRejectSetup(RejectConnectionSetupRequest* 
   delete msg;
 }
 
-void ConnectionManager::handleUnknownControlMessage(cMessage* msg) {
+void ConnectionManager::handleUnknownControlMessage(const DecodedConnectionManagerEvent& ev) {
+  auto* msg = ev.raw;
   if (logger) {
-    const char* full_name = msg ? msg->getFullName() : "null";
-    const char* class_name = msg ? msg->getClassName() : "null";
+    const auto event_number = omnetpp::getSimulation() ? omnetpp::getSimulation()->getEventNumber() : 0;
+    const auto simtime = omnetpp::simTime();
     const bool self_msg = msg != nullptr && msg->isSelfMessage();
     const int kind = msg != nullptr ? msg->getKind() : -1;
+    const std::string event_channel = toString(ev.channel);
+    int known_qnic_index = -1;
+    if (ev.self_timing_status == ConnectionManagerSelfTimingStatus::Known) {
+      known_qnic_index = ev.self_timing_qnic_index;
+    }
+
     std::ostringstream payload;
-    payload << "{"
-            << "\"event\":\"handleIncomingControlMessage\","
-            << "\"my_address\":" << my_address << ","
-            << "\"msg_full_name\":\"" << full_name << "\","
-            << "\"msg_class_name\":\"" << class_name << "\","
-            << "\"is_self_message\":" << (self_msg ? "true" : "false") << ","
-            << "\"msg_kind\":" << kind << "}";
+    payload << "\"simtime\": " << simtime << ","
+            << "\"event_number\": " << event_number << ","
+            << "\"module\": \"" << getName() << "\","
+            << "\"qnode_addr\": " << my_address << ", \"parentAddress\": " << my_address << ","
+            << "\"event_channel\": \"" << event_channel << "\","
+            << "\"is_self_message\": " << (self_msg ? "true" : "false") << ","
+            << "\"known_qnic_index\": " << known_qnic_index << ","
+            << "\"msg_full_name\": \"" << (msg ? msg->getFullName() : "null") << "\","
+            << "\"msg_class_name\": \"" << (msg ? msg->getClassName() : "null") << "\","
+            << "\"msg_kind\": " << kind;
     logger->logEvent("connection_manager_unknown_control_message", payload.str());
     logger->logPacket("handleIncomingControlMessage", msg);
-    EV << "[ConnectionManager::handleUnknownControlMessage] "
-       << "my_address=" << my_address << ", msg_name=" << (msg != nullptr ? msg->getFullName() : "null") << ", isSelfMessage="
-       << (msg != nullptr && msg->isSelfMessage()) << ", msg_kind=" << (msg != nullptr ? msg->getKind() : -1) << endl;
   }
+  handleUnknownControlMessage(msg);
+}
+
+void ConnectionManager::handleUnknownControlMessage(cMessage* msg) {
   delete msg;
 }
 

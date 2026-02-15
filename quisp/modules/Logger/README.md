@@ -40,6 +40,15 @@ logEvent("unknown_rule_protocol",
          "\"protocol_raw_value\": \"999\", \"msg_name\": \"pur_result\", \"msg_type\": \"purification::PurificationResult\"}");
 ```
 
+For unknown control messages in `ConnectionManager`:
+
+```cpp
+logEvent("connection_manager_unknown_control_message",
+         "{\"simtime\": 10.0, \"event_number\": 12, \"event_channel\": \"ProtocolMessage\", "
+         "\"qnode_addr\": 5, \"parentAddress\": 5, \"is_self_message\": false, "
+         "\"known_qnic_index\": -1, \"msg_full_name\": \"Unknown\", \"msg_class_name\": \"omnetpp::cMessage\"}");
+```
+
 Examples of protocol metadata values are:
 
 - `\"protocol_spec\": \"MIM Protocol v1\"`

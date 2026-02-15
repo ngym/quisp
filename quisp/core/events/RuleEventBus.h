@@ -55,6 +55,38 @@ enum class RuleEventKind {
 // Kept for backward compatibility. New code should use RuleEventKind.
 using RuleEventType = RuleEventKind;
 
+inline std::string to_string(RuleEventKind event_type) {
+  switch (event_type) {
+    case RuleEventKind::BSM_RESULT:
+      return "BSM_RESULT";
+    case RuleEventKind::BSM_TIMING:
+      return "BSM_TIMING";
+    case RuleEventKind::EPPS_TIMING:
+      return "EPPS_TIMING";
+    case RuleEventKind::EMIT_PHOTON_REQUEST:
+      return "EMIT_PHOTON_REQUEST";
+    case RuleEventKind::LINK_TOMOGRAPHY_RULESET:
+      return "LINK_TOMOGRAPHY_RULESET";
+    case RuleEventKind::MSM_RESULT:
+      return "MSM_RESULT";
+    case RuleEventKind::PURIFICATION_RESULT:
+      return "PURIFICATION_RESULT";
+    case RuleEventKind::SINGLE_CLICK_RESULT:
+      return "SINGLE_CLICK_RESULT";
+    case RuleEventKind::STOP_EMITTING:
+      return "STOP_EMITTING";
+    case RuleEventKind::SWAPPING_RESULT:
+      return "SWAPPING_RESULT";
+    case RuleEventKind::RULESET_FORWARDING:
+      return "RULESET_FORWARDING";
+    case RuleEventKind::RULESET_FORWARDING_APPLICATION:
+      return "RULESET_FORWARDING_APPLICATION";
+    case RuleEventKind::UNKNOWN:
+    default:
+      return "UNKNOWN";
+  }
+}
+
 using RuleEventPayload = std::variant<std::monostate, messages::BSMTimingNotification *, messages::CombinedBSAresults *,
                                      messages::EPPSTimingNotification *, messages::EmitPhotonRequest *,
                                      messages::InternalRuleSetForwarding *, messages::InternalRuleSetForwarding_Application *,

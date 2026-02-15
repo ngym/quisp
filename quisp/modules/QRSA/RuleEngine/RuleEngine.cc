@@ -146,8 +146,8 @@ void RuleEngine::logUnknownRuleProtocol(const core::events::RuleEvent &event) {
     return;
   }
   std::ostringstream ss;
-  ss << "\"simtime\": " << event.time << ", \"event_number\": " << event.event_number << ", \"event_type\": \""
-     << static_cast<int>(event.type) << "\", \"protocol_spec\": \"" << to_string(event.protocol_spec) << "\", \"execution_path\": \""
+  ss << "\"simtime\": " << event.time << ", \"event_number\": " << event.event_number << ", \"event_type\": \"" << to_string(event.type)
+     << "\", \"protocol_spec\": \"" << to_string(event.protocol_spec) << "\", \"execution_path\": \""
      << to_string(event.execution_path) << "\", \"protocol_raw_value\": \"" << event.protocol_raw_value << "\", \"msg_name\": \""
      << event.msg_name << "\", \"msg_type\": \"" << event.msg_type << "\", \"qnode_addr\": " << parentAddress
      << ", \"parentAddress\": " << parentAddress;

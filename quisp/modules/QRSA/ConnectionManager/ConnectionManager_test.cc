@@ -11,6 +11,7 @@
 #include "modules/QRSA/RoutingDaemon/IRoutingDaemon.h"
 #include "rules/Action.h"
 #include "test_utils/TestUtils.h"
+#include "test_utils/Logger.h"
 
 using json = nlohmann::json;
 namespace {
@@ -26,14 +27,54 @@ using quisp::rules::PurType;
 
 class Strategy : public quisp_test::TestComponentProviderStrategy {
  public:
-  Strategy(IRoutingDaemon *_routing_daemon, IHardwareMonitor *_hardware_monitor) : routing_daemon(_routing_daemon), hardware_monitor(_hardware_monitor) {}
-  Strategy() {}
+  Strategy(IRoutingDaemon *_routing_daemon, IHardwareMonitor *_hardware_monitor, std::unique_ptr<quisp::modules::Logger::ILogger> logger = {})
+      : routing_daemon(_routing_daemon), hardware_monitor(_hardware_monitor), logger_(std::move(logger)) {
+    if (logger_ == nullptr) {
+      logger_ = std::make_unique<quisp_test::Logger::TestLogger>();
+    }
+  }
+  Strategy() : Strategy(nullptr, nullptr) {}
   ~Strategy() {}
   int getNodeAddr() override { return 5; };
   IRoutingDaemon *getRoutingDaemon() override { return routing_daemon; }
   IHardwareMonitor *getHardwareMonitor() override { return hardware_monitor; }
+  quisp::modules::Logger::ILogger* getLogger() override { return logger_.get(); }
   IRoutingDaemon *routing_daemon = nullptr;
   IHardwareMonitor *hardware_monitor = nullptr;
+  std::unique_ptr<quisp::modules::Logger::ILogger> logger_;
+};
+
+class ConnectionManagerEventLogger : public quisp::modules::Logger::ILogger {
+ public:
+  void logPacket(const std::string& event_type, omnetpp::cMessage const* const msg) override {
+    (void)event_type;
+    (void)msg;
+  }
+  void logQubitState(quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index, bool is_busy, bool is_allocated) override {
+    (void)qnic_type;
+    (void)qnic_index;
+    (void)qubit_index;
+    (void)is_busy;
+    (void)is_allocated;
+  }
+  void logBellPairInfo(const std::string& event_type, int partner_addr, quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index) override {
+    (void)event_type;
+    (void)partner_addr;
+    (void)qnic_type;
+    (void)qnic_index;
+    (void)qubit_index;
+  }
+  void logEvent(const std::string& event_type, const std::string& event_payload_json) override {
+    last_event_type = event_type;
+    last_payload = event_payload_json;
+    log_event_count++;
+  }
+  void setModule(omnetpp::cModule const* const mod) override {(void)mod;}
+  void setQNodeAddress(int addr) override {(void)addr;}
+
+  int log_event_count = 0;
+  std::string last_event_type;
+  std::string last_payload;
 };
 
 class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
@@ -62,7 +103,8 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
   bool shouldAcceptConnectionSetupResponseForTest(quisp::messages::ConnectionSetupResponse *pk) {
     return shouldAcceptConnectionSetupResponse(pk);
   }
-  ConnectionManagerTestTarget(IRoutingDaemon *routing_daemon, IHardwareMonitor *hardware_monitor)
+  ConnectionManagerTestTarget(IRoutingDaemon *routing_daemon, IHardwareMonitor *hardware_monitor,
+                              std::unique_ptr<quisp::modules::Logger::ILogger> logger = {})
       : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
     setComponentType(new module_type::TestModuleType("test cm"));
     setParInt(this, "address", 5);
@@ -75,9 +117,10 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
     setParDouble(this, "threshold_fidelity", 0.0);
     setParInt(this, "seed_cm", 0);
 
-    this->provider.setStrategy(std::make_unique<Strategy>(routing_daemon, hardware_monitor));
+    this->provider.setStrategy(std::make_unique<Strategy>(routing_daemon, hardware_monitor, std::move(logger)));
   }
-  ConnectionManagerTestTarget() : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
+  ConnectionManagerTestTarget()
+      : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
     setComponentType(new module_type::TestModuleType("test cm"));
     setParInt(this, "address", 5);
     setParInt(this, "total_number_of_qnics", 10);
@@ -786,6 +829,38 @@ TEST(ConnectionManagerTest, handleIncomingControlMessageDispatchesInternalAndPro
   auto *unknown = new cMessage("UnknownControlMessage");
   connection_manager->receiveMessageForTest(unknown);
   EXPECT_EQ(connection_manager->unknown_calls, 1);
+
+  delete routing_daemon;
+  delete hardware_monitor;
+}
+
+TEST(ConnectionManagerTest, unknownControlMessageIsLoggedAsConnectionManagerUnknownControlMessage) {
+  auto *sim = prepareSimulation();
+  auto *routing_daemon = new MockRoutingDaemon();
+  auto *hardware_monitor = new MockHardwareMonitor();
+  auto logger = std::make_unique<ConnectionManagerEventLogger>();
+  auto *raw_logger = logger.get();
+  auto *connection_manager = new ConnectionManagerTestTarget(routing_daemon, hardware_monitor, std::move(logger));
+
+  sim->registerComponent(connection_manager);
+  connection_manager->callInitialize();
+
+  auto *unknown = new cMessage("UnknownControlMessage");
+  connection_manager->receiveMessageForTest(unknown);
+
+  ASSERT_EQ(raw_logger->log_event_count, 1);
+  EXPECT_EQ(raw_logger->last_event_type, "connection_manager_unknown_control_message");
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_channel\": \"InternalTimer\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"is_self_message\": true"));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"known_qnic_index\": -1"));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"msg_full_name\": \"UnknownControlMessage\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"msg_class_name\": \"omnetpp::cMessage\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"msg_kind\": 0"));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"simtime\": "));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_number\": "));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"module\": \"connection_manager_test_target\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"qnode_addr\": 5"));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"parentAddress\": 5"));
 
   delete routing_daemon;
   delete hardware_monitor;

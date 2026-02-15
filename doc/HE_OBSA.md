@@ -1,6 +1,9 @@
 
 *Note: this file is an early design document, but will be updated in the future.*
 
+For terminology alignment, this document uses `MIM Link` / `MSM Link` for architecture context and
+`MIM Protocol v1` / `MSM Protocol v1` for protocol classification used by dispatch and logs.
+
 # Hardware Element: Optical Bell State Analyzer (OBSA) #
 
 Rather than model beam splitters and photon detectors explicitly, we

@@ -77,9 +77,23 @@ as a service via the web, and possibly to open source the simulator.
 - [Quantum State Representations / 量子状態表現](Quantum%20State%20Representations.md)
 - [The story for a first SIGCOMM paper / 第1回SIGCOMM論文のストーリー](The%20Story.md)
 
-# Decisions
+# Design Vocabulary / 用語定義
 
-# 設計方針 / Decisions
+- Link architecture context: `MIM Link`, `MSM Link`.
+- Protocol context: `ProtocolSpec` values (for event dispatch and logs) use:
+  - `MIM Protocol v1`
+  - `MSM Protocol v1`
+  - `Purification`
+  - `Swapping`
+  - `LinkTomography`
+  - `ConnectionManagement`
+  - `Maintenance`
+- RuleEngine dispatch decisions use `RuleEventType` + `ProtocolSpec`.
+
+`MIM Protocol v1` / `MSM Protocol v1` are protocol identifiers only; they should not be used as architecture names.
+`MIM Link` / `MSM Link` are link architecture names.
+
+# Decisions
 
 - [Major Design Decisions / 主要設計方針](Major%20Design%20Decisions.md)
 - [Major Functionality Descriptions / 主要機能の説明](Major%20Functionality%20Descriptions.md)

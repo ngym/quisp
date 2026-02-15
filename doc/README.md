@@ -26,6 +26,7 @@
 * [Contents of a path setup return message](FlatPathSetupReturn%20Message%20Contents.md)
 * [Setting Up Paths Recursively: the Internetworking Case](Recursive%20Path%20Setup.md)
 * [MIM Link](MIM_Link.md)
+* [MSM Link](MSM_Link.md)
 * [Making Entanglement](Making_Entanglement.md)
 * [Resource Allocation](Resource_Allocation.md)
 * [Simulating a Link: An Example](SimLink.md)

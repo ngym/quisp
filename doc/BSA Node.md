@@ -2,6 +2,9 @@
 
 *Note: This is an old design document, which we expect to still be useful, but it may or may not correspond well to the current implementation.
 
+For terminology alignment, `MIM Link` and `MSM Link` mean architecture categories, while
+`MIM Protocol v1` / `MSM Protocol v1` are protocol identifiers used in event dispatch and logs.
+
 As a standalone node, appears in an [MIM Link](MIM_Link.md).
 
 The Bnode must drive timing of photon arrival.  See, e.g. Fig. 2 in

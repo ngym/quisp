@@ -38,8 +38,18 @@ class Strategy : public quisp_test::TestComponentProviderStrategy {
 
 class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
  public:
+  using quisp::modules::ConnectionManager::connection_setup_buffer;
   using quisp::modules::ConnectionManager::isQnicBusy;
   using quisp::modules::ConnectionManager::par;
+  using quisp::modules::ConnectionManager::decodeIncomingMessage;
+  using quisp::modules::ConnectionManager::dispatchInternalEvent;
+  using quisp::modules::ConnectionManager::dispatchProtocolMessage;
+  using quisp::modules::ConnectionManager::handleIncomingControlMessage;
+  using quisp::modules::ConnectionManager::request_send_timing;
+  using quisp::modules::ConnectionManager::ConnectionManagerEventChannel;
+  using quisp::modules::ConnectionManager::ConnectionManagerProtocolType;
+  using quisp::modules::ConnectionManager::ConnectionManagerSelfTimingStatus;
+  using quisp::modules::ConnectionManager::DecodedConnectionManagerEvent;
   using quisp::modules::ConnectionManager::parsePurType;
   using quisp::modules::ConnectionManager::purification_type;
   using quisp::modules::ConnectionManager::releaseQnic;
@@ -113,6 +123,58 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
   };
   TestGate *toRouterGate;
   unsigned long createUniqueId() override { return 1234; };
+};
+
+class ConnectionManagerDispatchTestTarget : public ConnectionManagerTestTarget {
+ public:
+  using ConnectionManagerTestTarget::ConnectionManagerTestTarget;
+  void resetDispatchState() {
+    self_timing_calls = 0;
+    self_timing_qnic_index = -1;
+    protocol_request_calls = 0;
+    protocol_response_calls = 0;
+    protocol_reject_calls = 0;
+    unknown_calls = 0;
+    last_protocol = ConnectionManagerProtocolType::Unknown;
+    last_message = nullptr;
+  }
+
+  int self_timing_calls = 0;
+  int self_timing_qnic_index = -1;
+  int protocol_request_calls = 0;
+  int protocol_response_calls = 0;
+  int protocol_reject_calls = 0;
+  int unknown_calls = 0;
+  ConnectionManagerProtocolType last_protocol = ConnectionManagerProtocolType::Unknown;
+  cMessage* last_message = nullptr;
+
+  void handleSelfTiming(int qnic_address) override {
+    self_timing_calls++;
+    self_timing_qnic_index = qnic_address;
+  }
+  void handleProtocolSetupRequest(ConnectionSetupRequest* msg) override {
+    protocol_request_calls++;
+    last_protocol = ConnectionManagerProtocolType::SetupRequest;
+    last_message = msg;
+    delete msg;
+  }
+  void handleProtocolSetupResponse(ConnectionSetupResponse* msg) override {
+    protocol_response_calls++;
+    last_protocol = ConnectionManagerProtocolType::SetupResponse;
+    last_message = msg;
+    delete msg;
+  }
+  void handleProtocolRejectSetup(RejectConnectionSetupRequest* msg) override {
+    protocol_reject_calls++;
+    last_protocol = ConnectionManagerProtocolType::RejectSetupRequest;
+    last_message = msg;
+    delete msg;
+  }
+  void handleUnknownControlMessage(cMessage* msg) override {
+    unknown_calls++;
+    last_message = msg;
+    delete msg;
+  }
 };
 
 TEST(ConnectionManagerTest, Init) {
@@ -639,6 +701,94 @@ TEST(ConnectionManagerTest, QnicReservation) {
   EXPECT_EQ(connection_manager->reserved_qnics.size(), 0);
   EXPECT_FALSE(connection_manager->isQnicBusy(qnic_address));
   EXPECT_FALSE(connection_manager->isQnicBusy(qnic_address2));
+}
+
+TEST(ConnectionManagerTest, decodeIncomingMessageDistinguishesSelfAndProtocolMessages) {
+  auto *sim = prepareSimulation();
+  auto *routing_daemon = new MockRoutingDaemon();
+  auto *hardware_monitor = new MockHardwareMonitor();
+  auto *connection_manager = new ConnectionManagerDispatchTestTarget(routing_daemon, hardware_monitor);
+  sim->registerComponent(connection_manager);
+  connection_manager->callInitialize();
+
+  auto event = connection_manager->decodeIncomingMessage(connection_manager->request_send_timing[2]);
+  EXPECT_EQ(event.channel, ConnectionManager::ConnectionManagerEventChannel::InternalTimer);
+  EXPECT_EQ(event.self_timing_status, ConnectionManager::ConnectionManagerSelfTimingStatus::Known);
+  EXPECT_EQ(event.self_timing_qnic_index, 2);
+
+  auto *request = new ConnectionSetupRequest("ConnectionSetupRequest");
+  auto *response = new ConnectionSetupResponse("ConnectionSetupResponse");
+  auto *reject = new RejectConnectionSetupRequest("RejectConnectionSetupRequest");
+  auto *unknown = new cMessage("UnknownControlMessage");
+
+  EXPECT_FALSE(request == nullptr);
+  EXPECT_FALSE(response == nullptr);
+  EXPECT_FALSE(reject == nullptr);
+  EXPECT_FALSE(unknown == nullptr);
+  EXPECT_STREQ(request->getClassName(), "quisp::messages::ConnectionSetupRequest");
+  EXPECT_STREQ(response->getClassName(), "quisp::messages::ConnectionSetupResponse");
+  EXPECT_STREQ(reject->getClassName(), "quisp::messages::RejectConnectionSetupRequest");
+
+  ASSERT_NE(nullptr, dynamic_cast<ConnectionSetupRequest *>(request)) << request->getClassName();
+  ASSERT_NE(nullptr, dynamic_cast<ConnectionSetupResponse *>(response)) << response->getClassName();
+  ASSERT_NE(nullptr, dynamic_cast<RejectConnectionSetupRequest *>(reject)) << reject->getClassName();
+
+  EXPECT_EQ(connection_manager->decodeIncomingMessage(request).protocol_type, ConnectionManager::ConnectionManagerProtocolType::SetupRequest);
+  EXPECT_EQ(connection_manager->decodeIncomingMessage(response).protocol_type, ConnectionManager::ConnectionManagerProtocolType::SetupResponse);
+  EXPECT_EQ(connection_manager->decodeIncomingMessage(reject).protocol_type, ConnectionManager::ConnectionManagerProtocolType::RejectSetupRequest);
+  EXPECT_EQ(connection_manager->decodeIncomingMessage(unknown).protocol_type, ConnectionManager::ConnectionManagerProtocolType::Unknown);
+
+  delete request;
+  delete response;
+  delete reject;
+  delete unknown;
+  delete routing_daemon;
+  delete hardware_monitor;
+}
+
+TEST(ConnectionManagerTest, handleIncomingControlMessageDispatchesInternalAndProtocolEvents) {
+  auto *sim = prepareSimulation();
+  auto *routing_daemon = new MockRoutingDaemon();
+  auto *hardware_monitor = new MockHardwareMonitor();
+  auto *connection_manager = new ConnectionManagerDispatchTestTarget(routing_daemon, hardware_monitor);
+  sim->registerComponent(connection_manager);
+  connection_manager->callInitialize();
+
+  connection_manager->resetDispatchState();
+  connection_manager->receiveMessageForTest(connection_manager->request_send_timing[1]);
+  EXPECT_EQ(connection_manager->self_timing_calls, 1);
+  EXPECT_EQ(connection_manager->self_timing_qnic_index, 1);
+  EXPECT_EQ(connection_manager->protocol_request_calls, 0);
+  EXPECT_EQ(connection_manager->protocol_response_calls, 0);
+  EXPECT_EQ(connection_manager->protocol_reject_calls, 0);
+  EXPECT_EQ(connection_manager->unknown_calls, 0);
+
+  auto *request = new ConnectionSetupRequest("ConnectionSetupRequest");
+  request->setActual_destAddr(5);
+  request->setActual_srcAddr(3);
+  connection_manager->receiveMessageForTest(request);
+  EXPECT_EQ(connection_manager->protocol_request_calls, 1);
+  EXPECT_EQ(connection_manager->last_protocol, ConnectionManager::ConnectionManagerProtocolType::SetupRequest);
+
+  auto *response = new ConnectionSetupResponse("ConnectionSetupResponse");
+  response->setActual_destAddr(5);
+  response->setActual_srcAddr(3);
+  connection_manager->receiveMessageForTest(response);
+  EXPECT_EQ(connection_manager->protocol_response_calls, 1);
+  EXPECT_EQ(connection_manager->last_protocol, ConnectionManager::ConnectionManagerProtocolType::SetupResponse);
+
+  auto *reject = new RejectConnectionSetupRequest("RejectConnectionSetupRequest");
+  reject->setActual_srcAddr(6);
+  connection_manager->receiveMessageForTest(reject);
+  EXPECT_EQ(connection_manager->protocol_reject_calls, 1);
+  EXPECT_EQ(connection_manager->last_protocol, ConnectionManager::ConnectionManagerProtocolType::RejectSetupRequest);
+
+  auto *unknown = new cMessage("UnknownControlMessage");
+  connection_manager->receiveMessageForTest(unknown);
+  EXPECT_EQ(connection_manager->unknown_calls, 1);
+
+  delete routing_daemon;
+  delete hardware_monitor;
 }
 
 TEST(ConnectionManagerTest, StoreRuleSetForApplicationDeduplicatesResponsesBySessionAndAttempt) {

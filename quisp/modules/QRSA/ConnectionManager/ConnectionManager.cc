@@ -66,64 +66,184 @@ void ConnectionManager::initialize() {
  * \param msg pointer to the cMessage itself
  */
 void ConnectionManager::handleMessage(cMessage *msg) {
-  // this should only be the send notification
-  if (msg->isSelfMessage()) {
-    // check which qnic address the notification is for and initiate the connection
-    for (int i = 0; i < request_send_timing.size(); i++) {
-      if (request_send_timing[i] == msg) {
-        initiateApplicationRequest(i);
-        return;
-      }
-    }
-    error("receive a send self-notification but cannot find which qnic to use");
+  handleIncomingControlMessage(msg);
+}
+
+ConnectionManager::DecodedConnectionManagerEvent ConnectionManager::decodeIncomingMessage(omnetpp::cMessage* msg) const {
+  ConnectionManager::DecodedConnectionManagerEvent event;
+  event.raw = msg;
+
+  if (dynamic_cast<quisp::messages::ConnectionSetupRequest *>(msg)) {
+    event.channel = ConnectionManagerEventChannel::ProtocolMessage;
+    event.protocol_type = ConnectionManagerProtocolType::SetupRequest;
+    return event;
   }
-  logger->logPacket("handleMessage", msg);
+  if (dynamic_cast<quisp::messages::ConnectionSetupResponse *>(msg)) {
+    event.channel = ConnectionManagerEventChannel::ProtocolMessage;
+    event.protocol_type = ConnectionManagerProtocolType::SetupResponse;
+    return event;
+  }
+  if (dynamic_cast<quisp::messages::RejectConnectionSetupRequest *>(msg)) {
+    event.channel = ConnectionManagerEventChannel::ProtocolMessage;
+    event.protocol_type = ConnectionManagerProtocolType::RejectSetupRequest;
+    return event;
+  }
 
-  if (auto *req = dynamic_cast<ConnectionSetupRequest *>(msg)) {
-    int actual_dst = req->getActual_destAddr();
-    int actual_src = req->getActual_srcAddr();
+  int decoded_qnic_index = -1;
+  if (isKnownSelfTimingMessage(msg, decoded_qnic_index)) {
+    event.channel = ConnectionManagerEventChannel::InternalTimer;
+    event.protocol_type = ConnectionManagerProtocolType::Unknown;
+    event.self_timing_status = ConnectionManagerSelfTimingStatus::Known;
+    event.self_timing_qnic_index = decoded_qnic_index;
+    return event;
+  }
+  if (msg && msg->isSelfMessage()) {
+    event.channel = ConnectionManagerEventChannel::InternalTimer;
+    event.protocol_type = ConnectionManagerProtocolType::Unknown;
+    event.self_timing_status = ConnectionManagerSelfTimingStatus::UnknownIndex;
+    return event;
+  }
 
-    if (actual_dst == my_address) {
-      // got ConnectionSetupRequest and return the response
-      respondToRequest(req);
-      delete msg;
-    } else if (actual_src == my_address) {
-      // initiator node
-      queueApplicationRequest(req);
-    } else {
-      // intermediate node
-      tryRelayRequestToNextHop(req);
+  return event;
+}
+
+bool ConnectionManager::isKnownSelfTimingMessage(const omnetpp::cMessage* msg, int& qnic_index) const {
+  if (!msg || !msg->isSelfMessage()) {
+    qnic_index = -1;
+    return false;
+  }
+
+  for (int i = 0; i < request_send_timing.size(); i++) {
+    if (request_send_timing[i] == msg) {
+      qnic_index = i;
+      return true;
     }
+  }
+  qnic_index = -1;
+  return false;
+}
+
+void ConnectionManager::dispatchInternalEvent(const DecodedConnectionManagerEvent& ev) {
+  if (!ev.raw) {
+    return;
+  }
+  if (ev.channel != ConnectionManagerEventChannel::InternalTimer) {
     return;
   }
 
-  if (auto *resp = dynamic_cast<ConnectionSetupResponse *>(msg)) {
-    int initiator_addr = resp->getActual_destAddr();
-    int responder_addr = resp->getActual_srcAddr();
+  if (ev.self_timing_status == ConnectionManagerSelfTimingStatus::Known) {
+    handleSelfTiming(ev.self_timing_qnic_index);
+    return;
+  }
 
-    if (initiator_addr == my_address || responder_addr == my_address) {
-      // this node is not a swapper
-      storeRuleSetForApplication(resp);
-    } else {
-      // this node is a swapper (intermediate node)
-      // currently, destinations are separated. (Not accumulated.)
-      storeRuleSet(resp);
+  handleUnknownControlMessage(ev.raw);
+}
+
+void ConnectionManager::dispatchProtocolMessage(const DecodedConnectionManagerEvent& ev) {
+  if (!ev.raw) {
+    return;
+  }
+  if (ev.channel != ConnectionManagerEventChannel::ProtocolMessage) {
+    return;
+  }
+
+  if (ev.protocol_type == ConnectionManagerProtocolType::SetupRequest) {
+    if (auto *request = dynamic_cast<ConnectionSetupRequest *>(ev.raw)) {
+      handleProtocolSetupRequest(request);
+      return;
     }
+    handleUnknownControlMessage(ev.raw);
+    return;
+  }
+  if (ev.protocol_type == ConnectionManagerProtocolType::SetupResponse) {
+    if (auto *response = dynamic_cast<ConnectionSetupResponse *>(ev.raw)) {
+      handleProtocolSetupResponse(response);
+      return;
+    }
+    handleUnknownControlMessage(ev.raw);
+    return;
+  }
+  if (ev.protocol_type == ConnectionManagerProtocolType::RejectSetupRequest) {
+    if (auto *reject = dynamic_cast<RejectConnectionSetupRequest *>(ev.raw)) {
+      handleProtocolRejectSetup(reject);
+      return;
+    }
+    handleUnknownControlMessage(ev.raw);
+    return;
+  }
+
+  handleUnknownControlMessage(ev.raw);
+}
+
+void ConnectionManager::handleIncomingControlMessage(cMessage* msg) {
+  auto decoded = decodeIncomingMessage(msg);
+
+  if (decoded.channel == ConnectionManagerEventChannel::InternalTimer) {
+    dispatchInternalEvent(decoded);
+    return;
+  }
+
+  if (decoded.channel == ConnectionManagerEventChannel::ProtocolMessage) {
+    dispatchProtocolMessage(decoded);
+    return;
+  }
+
+  handleUnknownControlMessage(msg);
+}
+
+void ConnectionManager::handleSelfTiming(int qnic_address) { initiateApplicationRequest(qnic_address); }
+
+void ConnectionManager::handleProtocolSetupRequest(ConnectionSetupRequest* msg) {
+  int actual_dst = msg->getActual_destAddr();
+  int actual_src = msg->getActual_srcAddr();
+
+  if (actual_dst == my_address) {
+    // got ConnectionSetupRequest and return the response
+    respondToRequest(msg);
     delete msg;
-    return;
+  } else if (actual_src == my_address) {
+    // initiator node
+    queueApplicationRequest(msg);
+  } else {
+    // intermediate node
+    tryRelayRequestToNextHop(msg);
   }
+}
 
-  if (auto *pk = dynamic_cast<RejectConnectionSetupRequest *>(msg)) {
-    int actual_src = pk->getActual_srcAddr();
+void ConnectionManager::handleProtocolSetupResponse(ConnectionSetupResponse* msg) {
+  int initiator_addr = msg->getActual_destAddr();
+  int responder_addr = msg->getActual_srcAddr();
 
-    if (actual_src == my_address) {
-      initiator_reject_req_handler(pk);
-    } else {
-      intermediate_reject_req_handler(pk);
-    }
-    delete msg;
-    return;
+  if (initiator_addr == my_address || responder_addr == my_address) {
+    // this node is not a swapper
+    storeRuleSetForApplication(msg);
+  } else {
+    // this node is a swapper (intermediate node)
+    // currently, destinations are separated. (Not accumulated.)
+    storeRuleSet(msg);
   }
+  delete msg;
+}
+
+void ConnectionManager::handleProtocolRejectSetup(RejectConnectionSetupRequest* msg) {
+  int actual_src = msg->getActual_srcAddr();
+
+  if (actual_src == my_address) {
+    initiator_reject_req_handler(msg);
+  } else {
+    intermediate_reject_req_handler(msg);
+  }
+  delete msg;
+}
+
+void ConnectionManager::handleUnknownControlMessage(cMessage* msg) {
+  if (logger) {
+    logger->logPacket("handleIncomingControlMessage", msg);
+    EV << "[ConnectionManager::handleUnknownControlMessage] "
+       << "my_address=" << my_address << ", msg_name=" << (msg != nullptr ? msg->getFullName() : "null") << ", isSelfMessage="
+       << (msg != nullptr && msg->isSelfMessage()) << ", msg_kind=" << (msg != nullptr ? msg->getKind() : -1) << endl;
+  }
+  delete msg;
 }
 
 PurType ConnectionManager::parsePurType(const std::string &pur_type) {

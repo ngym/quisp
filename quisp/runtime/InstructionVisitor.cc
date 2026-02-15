@@ -1,8 +1,43 @@
 #include "InstructionVisitor.h"
 
+#include <sstream>
 #include <stdexcept>
 
 #include "Runtime.h"
+
+namespace {
+std::string escapeJson(const std::string& value) {
+  std::ostringstream output;
+  for (auto ch : value) {
+    switch (ch) {
+      case '"':
+        output << "\\\"";
+        break;
+      case '\\':
+        output << "\\\\";
+        break;
+      case '\b':
+        output << "\\b";
+        break;
+      case '\f':
+        output << "\\f";
+        break;
+      case '\n':
+        output << "\\n";
+        break;
+      case '\r':
+        output << "\\r";
+        break;
+      case '\t':
+        output << "\\t";
+        break;
+      default:
+        output << ch;
+    }
+  }
+  return output.str();
+}
+}  // namespace
 
 namespace quisp::runtime {
 
@@ -208,8 +243,8 @@ void InstructionVisitor::operator()(const INSTR_INC_RegId_& instruction) {
 
 void InstructionVisitor::operator()(const INSTR_ERROR_String_& instruction) {
   auto [message] = instruction.args;
-  std::cerr << "RuntimeError : " << message << std::endl;
-  runtime->debugRuntimeState();
+  runtime->has_runtime_error = true;
+  runtime->runtime_error_message = message;
   runtime->should_exit = true;
   runtime->return_code = ReturnCode::ERROR;
 }
@@ -217,20 +252,38 @@ void InstructionVisitor::operator()(const INSTR_ERROR_String_& instruction) {
 void InstructionVisitor::operator()(const INSTR_DEBUG_RUNTIME_STATE_None_& _instruction) { runtime->debugRuntimeState(); }
 void InstructionVisitor::operator()(const INSTR_DEBUG_QubitId_& instruction) {
   auto [qubit_id] = instruction.args;
+  if (!runtime->shouldEmitDebugEvent()) {
+    return;
+  }
   auto qubit_ref = runtime->getQubitByQubitId(qubit_id);
-  std::cout << "Debug(QubitId:" << qubit_id << "): "
-            << "\n  qnic type: " << qubit_ref->getQNicType() << "\n  qnic index: " << qubit_ref->getQNicIndex() << "\n  qubit index: " << qubit_ref->getQubitIndex() << std::endl;
+  std::ostringstream ss;
+  ss << "\"qubit_id\": " << qubit_id.val << ", \"found\": " << (qubit_ref != nullptr ? "true" : "false");
+  if (qubit_ref != nullptr) {
+    ss << ", \"qnic_type\": " << qubit_ref->getQNicType() << ", \"qnic_index\": " << qubit_ref->getQNicIndex() << ", \"qubit_index\": "
+       << qubit_ref->getQubitIndex() << ", \"is_busy\": " << (qubit_ref->isBusy() ? "true" : "false") << ", \"is_allocated\": " << (qubit_ref->isAllocated() ? "true" : "false");
+  }
+  runtime->logRuntimeEvent("runtime_debug_qubit", ss.str());
 }
 
 void InstructionVisitor::operator()(const INSTR_DEBUG_String_& instruction) {
   auto [arg] = instruction.args;
-  std::cout << "Debug(string): " << arg << std::endl;
+  if (!runtime->shouldEmitDebugEvent()) {
+    return;
+  }
+  std::ostringstream ss;
+  ss << "\"message\": \"" << escapeJson(arg) << "\"";
+  runtime->logRuntimeEvent("runtime_debug_string", ss.str());
 }
 
 void InstructionVisitor::operator()(const INSTR_DEBUG_RegId_& instruction) {
   auto [reg1] = instruction.args;
   auto value = runtime->getRegVal(reg1);
-  std::cout << "Debug(Reg): " << value << std::endl;
+  if (!runtime->shouldEmitDebugEvent()) {
+    return;
+  }
+  std::ostringstream ss;
+  ss << "\"register\": " << static_cast<int>(reg1) << ", \"value\": " << value;
+  runtime->logRuntimeEvent("runtime_debug_reg", ss.str());
 }
 
 void InstructionVisitor::operator()(const INSTR_ADD_RegId_RegId_int_& instruction) {

@@ -3,6 +3,40 @@
 #include <omnetpp.h>
 #include <sstream>
 
+namespace {
+std::string escapeJson(const std::string& value) {
+  std::ostringstream output;
+  for (auto ch : value) {
+    switch (ch) {
+      case '"':
+        output << "\\\"";
+        break;
+      case '\\':
+        output << "\\\\";
+        break;
+      case '\b':
+        output << "\\b";
+        break;
+      case '\f':
+        output << "\\f";
+        break;
+      case '\n':
+        output << "\\n";
+        break;
+      case '\r':
+        output << "\\r";
+        break;
+      case '\t':
+        output << "\\t";
+        break;
+      default:
+        output << ch;
+    }
+  }
+  return output.str();
+}
+}  // namespace
+
 namespace quisp::runtime {
 
 Runtime::Runtime(const Runtime& rt) : Runtime() {
@@ -10,42 +44,71 @@ Runtime::Runtime(const Runtime& rt) : Runtime() {
   visitor.runtime = this;
   callback = rt.callback;
   rule_id = rt.rule_id;
+  send_tag = rt.send_tag;
+  receive_tag = rt.receive_tag;
+  pc = rt.pc;
+  for (int i = 0; i < 5; i++) {
+    registers[i] = rt.registers[i];
+  }
   qubits = rt.qubits;
-  resource_counter = rt.resource_counter;
+  messages = rt.messages;
   sequence_number_to_qubit = rt.sequence_number_to_qubit;
   qubit_to_sequence_number = rt.qubit_to_sequence_number;
+  resource_counter = rt.resource_counter;
   shared_tag_to_rule_id = rt.shared_tag_to_rule_id;
   rule_id_to_shared_tag = rt.rule_id_to_shared_tag;
-  messages = rt.messages;
+  named_qubits = rt.named_qubits;
   memory = rt.memory;
   ruleset = rt.ruleset;
   partners = rt.partners;
+  label_map = rt.label_map;
+  return_code = rt.return_code;
+  should_exit = rt.should_exit;
+  has_runtime_error = rt.has_runtime_error;
+  runtime_error_message = rt.runtime_error_message;
   terminated = rt.terminated;
+  qubit_found = rt.qubit_found;
+  message_found = rt.message_found;
   debugging = rt.debugging;
 }
 
 Runtime::Runtime() : visitor(InstructionVisitor{this}) {}
 Runtime::Runtime(const RuleSet& ruleset, ICallBack* cb) : visitor(InstructionVisitor{this}), callback(cb) { assignRuleSet(ruleset); }
+Runtime::~Runtime() {}
+
 Runtime& Runtime::operator=(Runtime&& rt) {
   visitor = rt.visitor;
   visitor.runtime = this;
   callback = rt.callback;
   rule_id = rt.rule_id;
+  send_tag = rt.send_tag;
+  receive_tag = rt.receive_tag;
+  pc = rt.pc;
+  for (int i = 0; i < 5; i++) {
+    registers[i] = rt.registers[i];
+  }
   qubits = std::move(rt.qubits);
-  resource_counter = std::move(rt.resource_counter);
+  messages = std::move(rt.messages);
   sequence_number_to_qubit = std::move(rt.sequence_number_to_qubit);
   qubit_to_sequence_number = std::move(rt.qubit_to_sequence_number);
+  resource_counter = std::move(rt.resource_counter);
   shared_tag_to_rule_id = std::move(rt.shared_tag_to_rule_id);
   rule_id_to_shared_tag = std::move(rt.rule_id_to_shared_tag);
-  messages = std::move(rt.messages);
+  named_qubits = std::move(rt.named_qubits);
   memory = std::move(rt.memory);
   ruleset = std::move(rt.ruleset);
   partners = std::move(rt.partners);
+  label_map = rt.label_map;
+  return_code = rt.return_code;
+  should_exit = rt.should_exit;
+  has_runtime_error = rt.has_runtime_error;
+  runtime_error_message = std::move(rt.runtime_error_message);
   terminated = rt.terminated;
+  qubit_found = rt.qubit_found;
+  message_found = rt.message_found;
   debugging = rt.debugging;
   return *this;
 }
-Runtime::~Runtime() {}
 
 void Runtime::exec() {
   if (terminated) return;
@@ -113,6 +176,13 @@ bool Runtime::execProgramNoThrow(const Program& program, std::string* uncaught_e
   }
 
   if (return_code == ReturnCode::ERROR) {
+    if (has_runtime_error) {
+      std::ostringstream error_ss;
+      error_ss << "\"message\": \"" << escapeJson(runtime_error_message) << "\", \"instruction\": \"INSTR_ERROR_String\"";
+      if (callback != nullptr) {
+        callback->logEvent("runtime_error", error_ss.str());
+      }
+    }
     std::ostringstream ss;
     ss << "\"return_code\": \"" << static_cast<int>(return_code)
        << "\", \"program_name\": \"" << program.name << "\"";
@@ -137,6 +207,8 @@ void Runtime::cleanup() {
   should_exit = false;
   qubit_found = false;
   message_found = false;
+  has_runtime_error = false;
+  runtime_error_message.clear();
   return_code = ReturnCode::NONE;
 }
 
@@ -460,12 +532,20 @@ void Runtime::debugSource(const Program& program) const {
   for (int i = 0; i < len; i++) {
     ss << (i == pc ? "  >>" : "    ") << std::to_string(i) << ": " << std::visit([](auto& op) { return op.toString(); }, program.opcodes[i]) << "\n";
   }
-  if (callback != nullptr) callback->logEvent("runtime_source_debug", ss.str());
+  if (callback != nullptr) callback->logEvent("runtime_debug_source", ss.str());
 }
 
 std::string Runtime::debugInstruction(const InstructionTypes& instr) const {
   return std::visit([](auto& op) { return op.toString(); }, instr);
 }
+
+void Runtime::logRuntimeEvent(const std::string& event_type, const std::string& event_payload_json) const {
+  if (callback != nullptr) {
+    callback->logEvent(event_type, event_payload_json);
+  }
+}
+
+bool Runtime::shouldEmitDebugEvent() const { return callback != nullptr && debugging; }
 
 size_t Runtime::partnerCount() const { return partners.size(); }
 size_t Runtime::qubitCount() const { return qubits.size(); }

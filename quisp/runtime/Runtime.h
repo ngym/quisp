@@ -346,6 +346,8 @@ class Runtime {
   void debugRuntimeState();
   void debugSource(const Program& program) const;
   std::string debugInstruction(const InstructionTypes& instr) const;
+  void logRuntimeEvent(const std::string& event_type, const std::string& event_payload_json) const;
+  bool shouldEmitDebugEvent() const;
   //@}
 
   std::size_t partnerCount() const;
@@ -363,7 +365,7 @@ class Runtime {
   ICallBack* callback;
   //@}
 
-  /** @name states */
+ /** @name states */
   //@{
   /// @brief currently evaluating rule id
   RuleId rule_id = -1;
@@ -469,6 +471,12 @@ class Runtime {
    */
   bool should_exit = false;
 
+  /// @brief whether the latest instruction set a runtime error detail
+  bool has_runtime_error = false;
+
+  /// @brief the latest runtime error detail for logging
+  std::string runtime_error_message;
+
   /**
    * @brief This flag is enabled when the RuleSet finishes its tasks.
    *
@@ -499,5 +507,6 @@ class Runtime {
    */
   bool debugging = false;
   //@}
+
 };
 }  // namespace quisp::runtime

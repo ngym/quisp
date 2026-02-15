@@ -149,6 +149,7 @@ TEST_F(RuntimeManagerTest, ExecErrorPathThrowsAndLogsRuntimeError) {
   rs.id = 1;
   runtimes->acceptRuleSet(rs);
   EXPECT_EQ(runtimes->size(), 1);
+  EXPECT_CALL(*callback, logEvent("runtime_error", testing::_)).Times(1);
   EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", _)).Times(1);
   EXPECT_THROW(runtimes->exec(), std::runtime_error);
   EXPECT_EQ(runtimes->size(), 1);

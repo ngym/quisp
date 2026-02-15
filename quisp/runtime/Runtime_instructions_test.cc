@@ -27,16 +27,17 @@ class RuntimeInstructionsTest : public testing::Test {
  protected:
   void SetUp() {
     runtime = new Runtime();
-    runtime->callback = new MockRuntimeCallback();
+    callback = new MockRuntimeCallback();
+    runtime->callback = callback;
     runtime->rule_id = 0;
     runtime->cleanup();
     qubit = new QubitRecord{QNIC_E, 2, 3};
   }
 
   void TearDown() {
-    auto* callback = runtime->callback;
+    auto* cb = runtime->callback;
     delete runtime;
-    delete callback;
+    delete cb;
     delete qubit;
   }
 
@@ -65,6 +66,7 @@ class RuntimeInstructionsTest : public testing::Test {
     return testing::AssertionFailure() << ss.str();
   }
   Runtime* runtime;
+  MockRuntimeCallback* callback;
   IQubitRecord* qubit;
 };
 
@@ -225,7 +227,6 @@ TEST_F(RuntimeInstructionsTest, BLT) {
 }
 
 TEST_F(RuntimeInstructionsTest, ERROR) {
-  testing::internal::CaptureStderr();
   Label passed1{"passed1"}, passed2{"passed2"}, passed3{"passed3"};
   Label l1{"l1"}, l2{"l2"}, l3{"l3"};
   Program p{"",
@@ -238,13 +239,45 @@ TEST_F(RuntimeInstructionsTest, ERROR) {
                 // clang-format on
             }};
   std::string payload;
-  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", _)).Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_error", ::testing::HasSubstr("\"message\": \"error\""))).Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", testing::_)).Times(1);
   EXPECT_FALSE(runtime->execProgramNoThrow(p, &payload));
   EXPECT_NE(payload.find("\"return_code\""), std::string::npos);
   EXPECT_TRUE(checkRegisters({1, 0, 0, 0, 0}));
   EXPECT_EQ(runtime->return_code, ReturnCode::ERROR);
-  auto output = testing::internal::GetCapturedStderr();
-  EXPECT_NE(output.find("RuntimeError"), std::string::npos);
+}
+
+TEST_F(RuntimeInstructionsTest, DebugInstructionsEmitRuntimeEvents) {
+  runtime->debugging = true;
+  auto q0 = QubitId{0};
+  runtime->setQubit(qubit, q0);
+  Program p{"", {
+                    INSTR_SET_RegId_int_{{r0, 123}},
+                    INSTR_DEBUG_String_{"debug-string"},
+                    INSTR_DEBUG_RegId_{{r0}},
+                    INSTR_DEBUG_QubitId_{{q0}},
+                  }};
+
+  EXPECT_CALL(*callback, logEvent("runtime_debug_source", testing::_)).Times(testing::AtLeast(1));
+  EXPECT_CALL(*callback, logEvent("runtime_debug_state", testing::_)).Times(testing::AtLeast(1));
+  EXPECT_CALL(*callback, logEvent("runtime_debug_string", testing::_)).Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_debug_reg", testing::_)).Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_debug_qubit", testing::_)).Times(1);
+  EXPECT_TRUE(runtime->execProgramNoThrow(p));
+}
+
+TEST_F(RuntimeInstructionsTest, DebugInstructionsDoNotEmitWhenDebugDisabled) {
+  runtime->debugging = false;
+  auto q0 = QubitId{0};
+  runtime->setQubit(qubit, q0);
+  Program p{"", {
+                    INSTR_DEBUG_String_{"not-emitted"},
+                    INSTR_DEBUG_RegId_{{r0}},
+                    INSTR_DEBUG_QubitId_{{q0}},
+                  }};
+
+  EXPECT_CALL(*callback, logEvent(testing::HasSubstr("runtime_debug_"), testing::_)).Times(0);
+  EXPECT_TRUE(runtime->execProgramNoThrow(p));
 }
 
 TEST_F(RuntimeInstructionsTest, RET) {

@@ -16,6 +16,8 @@ class RuleProtocolHandlerRegistrar {
   RuleProtocolHandlerRegistrar(RuleProtocolHandlerRegistrar&&) = delete;
   RuleProtocolHandlerRegistrar& operator=(RuleProtocolHandlerRegistrar&&) = delete;
 
+  // Default execution registrations are keyed by (RuleEventType, ProtocolSpec),
+  // where ProtocolSpec is protocol classification (MIM/MSM/Swapping/etc.) rather than link architecture naming.
   static void registerDefaults(RuleEngine& engine);
 };
 

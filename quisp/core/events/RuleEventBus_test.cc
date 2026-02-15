@@ -232,6 +232,11 @@ TEST_F(RuleEventBusTestFixture, ProtocolSpecNameUsesMIMMSMProtocolNaming) {
   EXPECT_EQ(to_string(ProtocolSpec::MSM_v1), "MSM Protocol v1");
 }
 
+TEST_F(RuleEventBusTestFixture, ProtocolSpecNameDoesNotUseLinkSuffix) {
+  EXPECT_EQ(to_string(ProtocolSpec::MIM_v1), "MIM Protocol v1");
+  EXPECT_THAT(to_string(ProtocolSpec::MSM_v1), Not(HasSubstr("Link")));
+}
+
 TEST_F(RuleEventBusTestFixture, UnknownMessageAndNullMessageAreHandled) {
   RuleEventBus bus;
   bus.publish({RuleEventType::UNKNOWN, RuleEventChannel::EXTERNAL, false, SimTime(1), 9});

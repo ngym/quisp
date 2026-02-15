@@ -148,6 +148,8 @@ void RuleEngine::logUnknownRuleProtocol(const core::events::RuleEvent &event) {
 }
 
 void RuleEngine::dispatchRuleEvent(const core::events::RuleEvent &event) {
+  // Unknown protocol value is tracked separately from unknown event type.
+  // unknown protocol => log unknown_rule_protocol even when a handler is not found.
   const auto protocol_unknown = event.protocol_spec == RuleEventProtocol::Unknown;
   const auto should_log_unknown_protocol = protocol_unknown && event.type != core::events::RuleEventType::UNKNOWN;
   auto it = rule_event_handlers.find({event.type, event.protocol_spec});

@@ -305,6 +305,25 @@ TEST_F(RuleEngineTest, unknownRuleEventIsLogged) {
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"msg_name\": \"raw\""));
 }
 
+TEST_F(RuleEngineTest, unknownProtocolForKnownTypeIsLoggedAsUnknownRuleProtocol) {
+  auto logger = std::make_unique<RuleEngineEventLogger>();
+  auto* raw_logger = logger.get();
+  auto* rule_engine = new RuleEngineTestTarget{nullptr, routing_daemon, hardware_monitor, realtime_controller, qnic_specs, std::move(logger)};
+  sim->registerComponent(rule_engine);
+  rule_engine->callInitialize();
+
+  core::events::RuleEvent unknown_protocol_event{core::events::RuleEventType::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false,
+                                                 SimTime(1), 0, core::events::ProtocolSpec::Unknown,
+                                                 core::events::ExecutionPath::EntanglementLifecycle};
+
+  rule_engine->handleRuleEvent(unknown_protocol_event);
+
+  EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_protocol");
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \""
+                                                     + std::to_string(static_cast<int>(core::events::RuleEventType::BSM_RESULT)) + "\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"protocol_spec\": \"Unknown\""));
+}
+
 TEST_F(RuleEngineTest, dispatchRuleEventPrefersExactHandlerBeforeFallbacks) {
   auto logger = std::make_unique<RuleEngineEventLogger>();
   auto* raw_logger = logger.get();

@@ -42,6 +42,13 @@ using qnic_store::IQNicStore;
 using qubit_record::IQubitRecord;
 
 class RuleProtocolHandlerRegistrar;
+namespace handlers {
+class MIMProtocolHandler;
+class MSMProtocolHandler;
+class PurificationProtocolHandler;
+class SwappingProtocolHandler;
+class ConnectionManagementProtocolHandler;
+}  // namespace handlers
 
 struct SwappingResultData {
   unsigned long ruleset_id;
@@ -63,6 +70,11 @@ struct SwappingResultData {
 class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
  public:
   friend class RuleProtocolHandlerRegistrar;
+  friend class handlers::MIMProtocolHandler;
+  friend class handlers::MSMProtocolHandler;
+  friend class handlers::PurificationProtocolHandler;
+  friend class handlers::SwappingProtocolHandler;
+  friend class handlers::ConnectionManagementProtocolHandler;
   friend runtime_callback::RuntimeCallback;
   RuleEngine();
   ~RuleEngine();
@@ -84,6 +96,8 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   using RuleEventHandler = std::function<void(const core::events::RuleEvent&)>;
   using RuleEventType = core::events::RuleEventType;
   using RuleEventProtocol = core::events::ProtocolSpec;
+  // Dispatch key is (RuleEventType, ProtocolSpec), where ProtocolSpec is protocol classifier:
+  // e.g. MIM Protocol v1 / MSM Protocol v1, not link architecture labels.
   using RuleEventDispatchKey = std::pair<RuleEventType, RuleEventProtocol>;
   void registerRuleEventHandler(RuleEventType event_type, RuleEventHandler handler);
   void registerRuleEventHandler(RuleEventType event_type, RuleEventProtocol protocol_spec, RuleEventHandler handler);

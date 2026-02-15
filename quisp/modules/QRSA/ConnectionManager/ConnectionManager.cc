@@ -7,6 +7,7 @@
 
 #include "ConnectionManager.h"
 #include "RuleSetGenerator.h"
+#include <sstream>
 
 using namespace omnetpp;
 using namespace quisp::messages;
@@ -238,6 +239,19 @@ void ConnectionManager::handleProtocolRejectSetup(RejectConnectionSetupRequest* 
 
 void ConnectionManager::handleUnknownControlMessage(cMessage* msg) {
   if (logger) {
+    const char* full_name = msg ? msg->getFullName() : "null";
+    const char* class_name = msg ? msg->getClassName() : "null";
+    const bool self_msg = msg != nullptr && msg->isSelfMessage();
+    const int kind = msg != nullptr ? msg->getKind() : -1;
+    std::ostringstream payload;
+    payload << "{"
+            << "\"event\":\"handleIncomingControlMessage\","
+            << "\"my_address\":" << my_address << ","
+            << "\"msg_full_name\":\"" << full_name << "\","
+            << "\"msg_class_name\":\"" << class_name << "\","
+            << "\"is_self_message\":" << (self_msg ? "true" : "false") << ","
+            << "\"msg_kind\":" << kind << "}";
+    logger->logEvent("connection_manager_unknown_control_message", payload.str());
     logger->logPacket("handleIncomingControlMessage", msg);
     EV << "[ConnectionManager::handleUnknownControlMessage] "
        << "my_address=" << my_address << ", msg_name=" << (msg != nullptr ? msg->getFullName() : "null") << ", isSelfMessage="

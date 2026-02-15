@@ -20,6 +20,10 @@ quisp/coverage*
 quisp/lcov.info
 quisp/default.profraw
 
+### omnet
+inet4.5/
+omnetpp-6.3.0/
+
 ### generated on docker
 org.eclipse*
 

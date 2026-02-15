@@ -105,7 +105,19 @@ void RuleEngine::handleMessage(cMessage *msg) {
 }
 
 void RuleEngine::registerRuleEventHandler(RuleEventType event_type, RuleEventHandler handler) {
-  rule_event_handlers[static_cast<int>(event_type)] = std::move(handler);
+  registerRuleEventHandler(event_type, RuleEventProtocol::Unknown, std::move(handler));
+}
+
+void RuleEngine::registerRuleEventHandler(RuleEventType event_type, RuleEventProtocol protocol_spec, RuleEventHandler handler) {
+  rule_event_handlers[{event_type, protocol_spec}] = std::move(handler);
+}
+
+void RuleEngine::registerRuleEventTypeFallback(RuleEventType event_type, RuleEventHandler handler) {
+  rule_event_type_fallback_handlers[static_cast<int>(event_type)] = std::move(handler);
+}
+
+void RuleEngine::registerRuleEventProtocolFallback(RuleEventProtocol protocol_spec, RuleEventHandler handler) {
+  rule_protocol_fallback_handlers[static_cast<int>(protocol_spec)] = std::move(handler);
 }
 
 void RuleEngine::registerRuleEventHandlers() {
@@ -122,13 +134,55 @@ void RuleEngine::logUnknownRuleEvent(const core::events::RuleEvent &event) {
   logger->logEvent("unknown_rule_event", ss.str());
 }
 
-void RuleEngine::dispatchRuleEvent(const core::events::RuleEvent &event) {
-  const auto event_type = static_cast<int>(event.type);
-  if (const auto it = rule_event_handlers.find(event_type); it != rule_event_handlers.end()) {
-    it->second(event);
+void RuleEngine::logUnknownRuleProtocol(const core::events::RuleEvent &event) {
+  if (logger == nullptr) {
     return;
   }
-  logUnknownRuleEvent(event);
+  std::ostringstream ss;
+  ss << "\"simtime\": " << event.time << ", \"event_number\": " << event.event_number << ", \"event_type\": \""
+     << static_cast<int>(event.type) << "\", \"protocol_spec\": \"" << to_string(event.protocol_spec) << "\", \"execution_path\": \""
+     << to_string(event.execution_path) << "\", \"protocol_raw_value\": \"" << event.protocol_raw_value << "\", \"msg_name\": \""
+     << event.msg_name << "\", \"msg_type\": \"" << event.msg_type << "\", \"qnode_addr\": " << parentAddress
+     << ", \"parentAddress\": " << parentAddress;
+  logger->logEvent("unknown_rule_protocol", ss.str());
+}
+
+void RuleEngine::dispatchRuleEvent(const core::events::RuleEvent &event) {
+  const auto protocol_unknown = event.protocol_spec == RuleEventProtocol::Unknown;
+  const auto should_log_unknown_protocol = protocol_unknown && event.type != core::events::RuleEventType::UNKNOWN;
+  auto it = rule_event_handlers.find({event.type, event.protocol_spec});
+  if (it != rule_event_handlers.end()) {
+    it->second(event);
+    if (should_log_unknown_protocol) {
+      logUnknownRuleProtocol(event);
+    }
+    return;
+  }
+
+  if (const auto type_fallback_it = rule_event_type_fallback_handlers.find(static_cast<int>(event.type));
+      type_fallback_it != rule_event_type_fallback_handlers.end()) {
+    type_fallback_it->second(event);
+    if (should_log_unknown_protocol) {
+      logUnknownRuleProtocol(event);
+    }
+    return;
+  }
+
+  if (const auto protocol_fallback_it = rule_protocol_fallback_handlers.find(static_cast<int>(event.protocol_spec));
+      protocol_fallback_it != rule_protocol_fallback_handlers.end()) {
+    protocol_fallback_it->second(event);
+    if (should_log_unknown_protocol) {
+      logUnknownRuleProtocol(event);
+    }
+    return;
+  }
+
+  if (event.type == core::events::RuleEventType::UNKNOWN) {
+    logUnknownRuleEvent(event);
+  } else {
+    logUnknownRuleProtocol(event);
+  }
+  return;
 }
 
 void RuleEngine::handleRuleEvent(const core::events::RuleEvent &event) {

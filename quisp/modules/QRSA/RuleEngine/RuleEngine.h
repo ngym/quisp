@@ -7,6 +7,7 @@
 #include <functional>
 #include <unordered_map>
 #include <vector>
+#include <utility>
 
 #include <omnetpp.h>
 
@@ -27,6 +28,7 @@
 #include "runtime/Runtime.h"
 #include "runtime/RuntimeFacade.h"
 #include "utils/ComponentProvider.h"
+#include "core/events/ProtocolSpec.h"
 
 using namespace omnetpp;
 using namespace quisp::rules;
@@ -81,7 +83,12 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void ResourceAllocation(int qnic_type, int qnic_index);
   using RuleEventHandler = std::function<void(const core::events::RuleEvent&)>;
   using RuleEventType = core::events::RuleEventType;
+  using RuleEventProtocol = core::events::ProtocolSpec;
+  using RuleEventDispatchKey = std::pair<RuleEventType, RuleEventProtocol>;
   void registerRuleEventHandler(RuleEventType event_type, RuleEventHandler handler);
+  void registerRuleEventHandler(RuleEventType event_type, RuleEventProtocol protocol_spec, RuleEventHandler handler);
+  void registerRuleEventTypeFallback(RuleEventType event_type, RuleEventHandler handler);
+  void registerRuleEventProtocolFallback(RuleEventProtocol protocol_spec, RuleEventHandler handler);
 
  protected:
   void initialize() override;
@@ -93,6 +100,7 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void handleSingleClickResult(messages::SingleClickResult *click_result);
   void handleRuleEvent(const core::events::RuleEvent &event);
   void logUnknownRuleEvent(const core::events::RuleEvent &event);
+  void logUnknownRuleProtocol(const core::events::RuleEvent &event);
   void registerRuleEventHandlers();
   void dispatchRuleEvent(const core::events::RuleEvent &event);
   messages::CombinedBSAresults *generateCombinedBSAresults(int qnic_index);
@@ -111,7 +119,14 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
 
   runtime::RuntimeFacade runtimes;
   core::events::RuleEventBus event_bus;
-  std::unordered_map<int, RuleEventHandler> rule_event_handlers;
+  struct RuleEventDispatchKeyHash {
+    size_t operator()(RuleEventDispatchKey const& key) const {
+      return (static_cast<size_t>(key.first) * 1315423911u) ^ static_cast<size_t>(key.second);
+    }
+  };
+  std::unordered_map<RuleEventDispatchKey, RuleEventHandler, RuleEventDispatchKeyHash> rule_event_handlers;
+  std::unordered_map<int, RuleEventHandler> rule_event_type_fallback_handlers;
+  std::unordered_map<int, RuleEventHandler> rule_protocol_fallback_handlers;
   std::unordered_map<std::pair<QNIC_type, int>, messages::EmitPhotonRequest *> emit_photon_timer_map;
   std::unordered_map<std::pair<QNIC_type, int>, std::vector<int>> emitted_photon_order_map;
 

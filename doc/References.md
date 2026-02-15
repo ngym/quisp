@@ -47,7 +47,7 @@ In addition to Takaaki's thesis, the design decisions incorporated
 here have evolved over fifteen years, and can be found in Rodney Van
 Meter's research papers.
 
-For details of the link architectures (which we call MM, MIM, MSM),
+For details of the link architectures (which we call MM, MIM Link, MSM Link),
 the best source is
 
 * Jones et al., "Design and analysis of communication protocols for

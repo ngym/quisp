@@ -11,6 +11,9 @@
 #include <vector>
 #include <variant>
 
+#include "ExecutionPath.h"
+#include "ProtocolSpec.h"
+
 namespace quisp::messages {
 class BSMTimingNotification;
 class CombinedBSAresults;
@@ -62,6 +65,9 @@ struct RuleEvent {
   bool keep_source = false;
   ::omnetpp::simtime_t time = SIMTIME_ZERO;
   int64_t event_number = 0;
+  ProtocolSpec protocol_spec = ProtocolSpec::Unknown;
+  ExecutionPath execution_path = ExecutionPath::Unknown;
+  std::string protocol_raw_value = "";
   RuleEventPayload payload = std::monostate{};
   std::string msg_name = "";
   std::string msg_type = "";

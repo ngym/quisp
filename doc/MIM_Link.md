@@ -25,4 +25,3 @@ Interesting inefficiencies develop when there is an imbalance, with
 one endpoint having more transceiver qubits than the other.  If one
 has 10 transceiver qubits and the other has 100, then 90 qubits at the
 larger end are simply wasted in this architecture.
-

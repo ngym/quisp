@@ -30,3 +30,17 @@ Structured events can be emitted with `logEvent`.
 ```cpp
 logEvent("unknown_rule_event", "{\"simtime\": 1.0, \"event_type\": \"UNKNOWN\", \"msg_name\": \"raw\"}");
 ```
+
+For protocol-based rule dispatching, log payloads include protocol / path metadata:
+
+```cpp
+logEvent("unknown_rule_protocol",
+         "{\"simtime\": 1.0, \"event_number\": 123, \"event_type\": \"PURIFICATION_RESULT\", "
+         "\"protocol_spec\": \"Unknown\", \"execution_path\": \"EntanglementLifecycle\", "
+         "\"protocol_raw_value\": \"999\", \"msg_name\": \"pur_result\", \"msg_type\": \"purification::PurificationResult\"}");
+```
+
+Examples of protocol metadata values are:
+
+- `\"protocol_spec\": \"MIM Protocol v1\"`
+- `\"protocol_spec\": \"MSM Protocol v1\"`

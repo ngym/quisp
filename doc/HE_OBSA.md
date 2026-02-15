@@ -9,8 +9,7 @@ will treat them as a unit here, and call it the BSA or OBSA.
 For this simulation, without loss of generality, we are assuming that
 inter-node entanglement is always generated using an OBSA.
 
-* As a [standalone BSA node](BSA Node.md), appears in an [MIM
-  Link](MIM_Link.md).
+* As a [standalone BSA node](BSA Node.md), appears in a [MIM Link](MIM_Link.md).
 * As a component of a node, appears once in [MM Link](MM_Link.md) and
   twice in [MSM Link](MSM_Link.md).
 
@@ -33,4 +32,3 @@ model that at this level.
 CycleTime is how long it takes us to reset the detector for its next
 use, including the measurement window itself.  The maximum number of
 detection attempts/second is therefore 1/CycleTime.
-

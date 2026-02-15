@@ -167,6 +167,7 @@ class RuleEngineTestTarget : public quisp::modules::RuleEngine {
   using quisp::modules::RuleEngine::handleSwappingResult;
   using quisp::modules::RuleEngine::initialize;
   using quisp::modules::RuleEngine::handleMessage;
+  using quisp::modules::RuleEngine::handleRuleEvent;
   using quisp::modules::RuleEngine::par;
   using quisp::modules::RuleEngine::qnic_store;
   using quisp::modules::RuleEngine::runtimes;
@@ -300,8 +301,77 @@ TEST_F(RuleEngineTest, unknownRuleEventIsLogged) {
 
   EXPECT_EQ(raw_logger->log_event_count, 1);
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_event");
-  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"msg_name\": \"raw\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \"UNKNOWN\""));
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"msg_name\": \"raw\""));
+}
+
+TEST_F(RuleEngineTest, dispatchRuleEventPrefersExactHandlerBeforeFallbacks) {
+  auto logger = std::make_unique<RuleEngineEventLogger>();
+  auto* raw_logger = logger.get();
+  auto* rule_engine = new RuleEngineTestTarget{nullptr, routing_daemon, hardware_monitor, realtime_controller, qnic_specs, std::move(logger)};
+  sim->registerComponent(rule_engine);
+  rule_engine->callInitialize();
+
+  int exact_calls = 0;
+  int type_fallback_calls = 0;
+  int protocol_fallback_calls = 0;
+  core::events::RuleEvent event{core::events::RuleEventType::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
+                                core::events::ProtocolSpec::MSM_v1, core::events::ExecutionPath::EntanglementLifecycle};
+
+  rule_engine->registerRuleEventHandler(core::events::RuleEventType::BSM_RESULT, core::events::ProtocolSpec::MSM_v1,
+                                        [&exact_calls](const core::events::RuleEvent&) { ++exact_calls; });
+  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventType::BSM_RESULT,
+                                            [&type_fallback_calls](const core::events::RuleEvent&) { ++type_fallback_calls; });
+  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolSpec::MSM_v1,
+                                                [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
+  rule_engine->handleRuleEvent(event);
+
+  EXPECT_EQ(exact_calls, 1);
+  EXPECT_EQ(type_fallback_calls, 0);
+  EXPECT_EQ(protocol_fallback_calls, 0);
+  EXPECT_EQ(raw_logger->log_event_count, 0);
+}
+
+TEST_F(RuleEngineTest, dispatchRuleEventFallsBackByTypeBeforeProtocolFallback) {
+  auto logger = std::make_unique<RuleEngineEventLogger>();
+  auto* raw_logger = logger.get();
+  auto* rule_engine = new RuleEngineTestTarget{nullptr, routing_daemon, hardware_monitor, realtime_controller, qnic_specs, std::move(logger)};
+  sim->registerComponent(rule_engine);
+  rule_engine->callInitialize();
+
+  int type_fallback_calls = 0;
+  int protocol_fallback_calls = 0;
+  core::events::RuleEvent event{core::events::RuleEventType::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
+                                core::events::ProtocolSpec::Maintenance, core::events::ExecutionPath::EntanglementLifecycle};
+
+  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventType::BSM_RESULT,
+                                            [&type_fallback_calls](const core::events::RuleEvent&) { ++type_fallback_calls; });
+  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolSpec::Maintenance,
+                                                [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
+  rule_engine->handleRuleEvent(event);
+
+  EXPECT_EQ(type_fallback_calls, 1);
+  EXPECT_EQ(protocol_fallback_calls, 0);
+  EXPECT_EQ(raw_logger->log_event_count, 0);
+}
+
+TEST_F(RuleEngineTest, dispatchRuleEventFallsBackByProtocolWhenTypeFallbackMissing) {
+  auto logger = std::make_unique<RuleEngineEventLogger>();
+  auto* raw_logger = logger.get();
+  auto* rule_engine = new RuleEngineTestTarget{nullptr, routing_daemon, hardware_monitor, realtime_controller, qnic_specs, std::move(logger)};
+  sim->registerComponent(rule_engine);
+  rule_engine->callInitialize();
+
+  int protocol_fallback_calls = 0;
+  core::events::RuleEvent event{core::events::RuleEventType::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
+                                core::events::ProtocolSpec::Maintenance, core::events::ExecutionPath::EntanglementLifecycle};
+
+  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolSpec::Maintenance,
+                                                [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
+  rule_engine->handleRuleEvent(event);
+
+  EXPECT_EQ(protocol_fallback_calls, 1);
+  EXPECT_EQ(raw_logger->log_event_count, 0);
 }
 
 TEST_F(RuleEngineTest, bsmResultEventIsHandledByRegistrarWithoutUnknownLog) {
@@ -522,7 +592,8 @@ TEST_F(RuleEngineTest, ruleSetForwardingApplicationEventWithUnknownApplicationTy
 
   EXPECT_NO_THROW(rule_engine->handleMessage(forwarding));
 
-  EXPECT_EQ(raw_logger->last_event_type, "unknown_ruleset_forwarding_application");
+  EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_protocol");
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"protocol_raw_value\": \"999\""));
 }
 
 TEST_F(RuleEngineTest, emitPhotonRequestEventIsHandledByRegistrarWithoutUnknownLog) {

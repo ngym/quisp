@@ -13,7 +13,7 @@ holding the AWG.  I'm not clear on how the signal is relayed to the
 other end point.)
 
 
-#Entanglement Distribution Protocol for MIM and MM (notes by kaaki)#
+#Entanglement Distribution Protocol for MIM Protocol v1 and MSM Protocol v1 (notes by kaaki)#
 
 There are two main ways, with or without hand-shake, to distribute entangled pairs using a stand-alone or an internal BSA.
 Slides explaining those with figures can be found [slides](HOMProtocol.pptx).

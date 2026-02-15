@@ -81,8 +81,19 @@ TEST_F(RuleEventBusTestFixture, ConvertsKnownMessagesToRuleEvents) {
             }),
             1);
   EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
+              return e.type == RuleEventType::RULESET_FORWARDING && e.protocol_spec == ProtocolSpec::ConnectionManagement &&
+                     e.execution_path == ExecutionPath::Forwarding && e.protocol_raw_value.empty();
+            }),
+            1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
               return e.type == RuleEventType::RULESET_FORWARDING_APPLICATION &&
                      std::holds_alternative<InternalRuleSetForwarding_Application *>(e.payload);
+            }),
+            1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
+              return e.type == RuleEventType::RULESET_FORWARDING_APPLICATION &&
+                     e.protocol_spec == ProtocolSpec::ConnectionManagement && e.protocol_raw_value.empty() &&
+                     e.execution_path == ExecutionPath::Forwarding;
             }),
             1);
   EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
@@ -90,7 +101,18 @@ TEST_F(RuleEventBusTestFixture, ConvertsKnownMessagesToRuleEvents) {
             }),
             1);
   EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
+              return e.type == RuleEventType::LINK_TOMOGRAPHY_RULESET &&
+                     e.protocol_spec == ProtocolSpec::LinkTomography && e.execution_path == ExecutionPath::EntanglementLifecycle &&
+                     e.protocol_raw_value.empty();
+            }),
+            1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
               return e.type == RuleEventType::MSM_RESULT && std::holds_alternative<MSMResult *>(e.payload);
+            }),
+            1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
+              return e.type == RuleEventType::MSM_RESULT &&
+                     e.protocol_spec == ProtocolSpec::MSM_v1 && e.execution_path == ExecutionPath::EntanglementLifecycle;
             }),
             1);
   EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
@@ -98,7 +120,17 @@ TEST_F(RuleEventBusTestFixture, ConvertsKnownMessagesToRuleEvents) {
             }),
             1);
   EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
+              return e.type == RuleEventType::PURIFICATION_RESULT &&
+                     e.protocol_spec == ProtocolSpec::Purification && e.execution_path == ExecutionPath::EntanglementLifecycle;
+            }),
+            1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
               return e.type == RuleEventType::SINGLE_CLICK_RESULT && std::holds_alternative<SingleClickResult *>(e.payload);
+            }),
+            1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
+              return e.type == RuleEventType::SINGLE_CLICK_RESULT && e.protocol_spec == ProtocolSpec::MSM_v1 &&
+                     e.execution_path == ExecutionPath::EntanglementLifecycle;
             }),
             1);
   EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
@@ -109,6 +141,38 @@ TEST_F(RuleEventBusTestFixture, ConvertsKnownMessagesToRuleEvents) {
               return e.type == RuleEventType::SWAPPING_RESULT && std::holds_alternative<SwappingResult *>(e.payload);
             }),
             1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
+              return e.type == RuleEventType::SWAPPING_RESULT &&
+                     e.protocol_spec == ProtocolSpec::Swapping && e.execution_path == ExecutionPath::EntanglementLifecycle;
+            }),
+            1);
+}
+
+TEST_F(RuleEventBusTestFixture, KeepsProtocolRawValueForUnknownProtocolHint) {
+  RuleEventBus bus;
+  InternalRuleSetForwarding_Application forwarding_app;
+  forwarding_app.setApplication_type(123);
+  bus.publish(&forwarding_app, SimTime(1));
+  auto events = bus.drain(SimTime(1));
+
+  ASSERT_EQ(events.size(), 1);
+  EXPECT_EQ(events[0].type, RuleEventType::RULESET_FORWARDING_APPLICATION);
+  EXPECT_EQ(events[0].protocol_spec, ProtocolSpec::Unknown);
+  EXPECT_EQ(events[0].protocol_raw_value, "123");
+  EXPECT_EQ(events[0].execution_path, ExecutionPath::Forwarding);
+}
+
+TEST_F(RuleEventBusTestFixture, KeepsProtocolRawValueForUnknownPurificationProtocol) {
+  RuleEventBus bus;
+  PurificationResult result;
+  result.setProtocol(999);
+  bus.publish(&result, SimTime(1));
+
+  auto events = bus.drain(SimTime(1));
+  ASSERT_EQ(events.size(), 1);
+  EXPECT_EQ(events[0].type, RuleEventType::PURIFICATION_RESULT);
+  EXPECT_EQ(events[0].protocol_spec, ProtocolSpec::Unknown);
+  EXPECT_EQ(events[0].protocol_raw_value, "999");
 }
 
 TEST_F(RuleEventBusTestFixture, KeepsOrderByTimeThenEventNumberInDrain) {
@@ -139,6 +203,8 @@ TEST_F(RuleEventBusTestFixture, ConvertsUnknownMessageToUnknownEvent) {
   auto events = bus.drain(SimTime(4));
   ASSERT_EQ(events.size(), 1);
   EXPECT_EQ(events[0].type, RuleEventType::UNKNOWN);
+  EXPECT_EQ(events[0].protocol_spec, ProtocolSpec::Unknown);
+  EXPECT_EQ(events[0].execution_path, ExecutionPath::Unknown);
   EXPECT_TRUE(std::holds_alternative<std::monostate>(events[0].payload));
   EXPECT_EQ(events[0].msg_name, "raw");
   EXPECT_EQ(events[0].msg_type, "omnetpp::cMessage");
@@ -159,6 +225,11 @@ TEST_F(RuleEventBusTestFixture, ConvertsWithTranslatorPreservesEventMetadata) {
   auto emit_event = bus.toRuleEvent(&emit_msg, SimTime(6));
   EXPECT_EQ(emit_event.type, RuleEventType::EMIT_PHOTON_REQUEST);
   EXPECT_TRUE(emit_event.keep_source);
+}
+
+TEST_F(RuleEventBusTestFixture, ProtocolSpecNameUsesMIMMSMProtocolNaming) {
+  EXPECT_EQ(to_string(ProtocolSpec::MIM_v1), "MIM Protocol v1");
+  EXPECT_EQ(to_string(ProtocolSpec::MSM_v1), "MSM Protocol v1");
 }
 
 TEST_F(RuleEventBusTestFixture, UnknownMessageAndNullMessageAreHandled) {
@@ -182,7 +253,8 @@ TEST_F(RuleEventBusTestFixture, SupportsTranslatorRegistrationOverride) {
           return std::nullopt;
         }
         return RuleEvent{
-            RuleEventType::STOP_EMITTING, RuleEventChannel::EXTERNAL, false, now, 99, std::monostate{}, msg->getFullName(), msg->getClassName()};
+            RuleEventType::STOP_EMITTING, RuleEventChannel::EXTERNAL, false, now, 99, ProtocolSpec::Unknown, ExecutionPath::Unknown, "",
+            std::monostate{}, msg->getFullName(), msg->getClassName()};
       });
 
   cMessage raw("raw");

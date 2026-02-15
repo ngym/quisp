@@ -1,6 +1,6 @@
-### MSM protocol details which take part in the RuleEngine
+### MSM Link Architecture details which take part in the RuleEngine
 
-In a MSM protocol, the RuleEngine recieves an EPPSTimingNotification message. Then, the QNode prepares to emit photons from the specified timing with the specified interval. In this setting, the QNode contains an internal BSA, and the emitted photons are sent into there. The BSA performs a Bell state measurement on the emitted photon and one of the entangled photons sent from the EPPS.
+In MSM Link, the RuleEngine receives an EPPSTimingNotification message. Then, the QNode prepares to emit photons from the specified timing with the specified interval. In this setting, the QNode contains an internal BSA, and the emitted photons are sent into there. The BSA performs a Bell state measurement on the emitted photon and one of the entangled photons sent from the EPPS.
 
 After performing a single tiral of Bell state measurement, the result is sent back to the rule engine. Each emission iteration from the EPPS is counted locally at the QNode, named as `photon_index`. If we succeed in Bell state measurement we save the information of that qubit and `photon_index` in `success_list`, and for failure, we release that memory immediately.
 Then, we send a message to the partner QNode with the result of the BSM and the `photon_index`. When a QNode receives a result from its partner, it compares the qubits with the same `photon_index`, and the following operations are performed:
@@ -17,7 +17,7 @@ Local BSM: success | Partner BSM: success
 - Save the information of the Bell pair in the bellpairstore.
 
 
-We will show a sequence diagram of the MSM protocol below.
+We will show a sequence diagram of MSM Link below.
 
 ```mermaid
 sequenceDiagram
@@ -56,7 +56,7 @@ sequenceDiagram
     PRT->>PRT: Call handle_msm_result(success, correction, photon_index)
 ```
 
-We will show a pseudocode for major functions related to the MSM protocol, which also appeard in the sequence diagram above.
+We will show a pseudocode for major functions related to MSM Link, which also appeared in the sequence diagram above.
 
 ### Pseudocodes
 
@@ -66,7 +66,7 @@ We will show a pseudocode for major functions related to the MSM protocol, which
 
 - `success_list`: List to store the information of memory qubits that succeeded local BSM. Contains the qubit information and the correction information.
 ---
-#### Function to emit photons from qnodes in msm links
+#### Function to emit photons from qnodes in MSM Link
 
 **Input:**
 - Interval of emission specified by the EPPSTimingNotification: `interval`

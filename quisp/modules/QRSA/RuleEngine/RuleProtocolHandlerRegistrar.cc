@@ -1,7 +1,6 @@
 #include "RuleProtocolHandlerRegistrar.h"
 
 #include "RuleEngine.h"
-#include <sstream>
 #include <nlohmann/json.hpp>
 #include <functional>
 #include <stdexcept>
@@ -15,6 +14,7 @@ namespace quisp::modules {
 using namespace messages;
 using namespace core::events;
 using EventType = RuleEventType;
+using EventProtocol = ProtocolSpec;
 using EventHandler = RuleEngine::RuleEventHandler;
 
 void RuleProtocolHandlerRegistrar::registerDefaults(RuleEngine& engine) {
@@ -24,15 +24,15 @@ void RuleProtocolHandlerRegistrar::registerDefaults(RuleEngine& engine) {
     engine.runtimes.submitRuleSet(ruleset.construct());
   };
 
-  auto register_handler = [&engine](EventType event_type, EventHandler handler) {
-    engine.registerRuleEventHandler(event_type, std::move(handler));
+  auto register_handler = [&engine](EventType event_type, EventProtocol protocol_spec, EventHandler handler) {
+    engine.registerRuleEventHandler(event_type, protocol_spec, std::move(handler));
   };
 
-  register_handler(EventType::BSM_RESULT, [&engine](const RuleEvent& event) {
+  register_handler(EventType::BSM_RESULT, EventProtocol::MIM_v1, [&engine](const RuleEvent& event) {
     engine.handleLinkGenerationResult(std::get<CombinedBSAresults *>(event.payload));
   });
 
-  register_handler(EventType::BSM_TIMING, [&engine](const RuleEvent& event) {
+  register_handler(EventType::BSM_TIMING, EventProtocol::MIM_v1, [&engine](const RuleEvent& event) {
     auto *notification_packet = std::get<BSMTimingNotification *>(event.payload);
     auto type = notification_packet->getQnicType();
     auto qnic_index = notification_packet->getQnicIndex();
@@ -41,7 +41,7 @@ void RuleProtocolHandlerRegistrar::registerDefaults(RuleEngine& engine) {
     engine.schedulePhotonEmission(type, qnic_index, notification_packet);
   });
 
-  register_handler(EventType::EPPS_TIMING, [&engine](const RuleEvent& event) {
+  register_handler(EventType::EPPS_TIMING, EventProtocol::MSM_v1, [&engine](const RuleEvent& event) {
     auto *notification_packet = std::get<EPPSTimingNotification *>(event.payload);
     auto partner_address = notification_packet->getOtherQnicParentAddr();
     auto partner_qnic_index = notification_packet->getOtherQnicIndex();
@@ -56,7 +56,7 @@ void RuleProtocolHandlerRegistrar::registerDefaults(RuleEngine& engine) {
     engine.scheduleMSMPhotonEmission(QNIC_RP, qnic_index, notification_packet);
   });
 
-  register_handler(EventType::EMIT_PHOTON_REQUEST, [&engine](const RuleEvent& event) {
+  register_handler(EventType::EMIT_PHOTON_REQUEST, EventProtocol::Unknown, [&engine](const RuleEvent& event) {
     auto *pk = std::get<EmitPhotonRequest *>(event.payload);
     auto type = pk->getQnicType();
     auto qnic_index = pk->getQnicIndex();
@@ -93,55 +93,49 @@ void RuleProtocolHandlerRegistrar::registerDefaults(RuleEngine& engine) {
     }
   });
 
-  register_handler(EventType::SINGLE_CLICK_RESULT, [&engine](const RuleEvent& event) {
+  register_handler(EventType::SINGLE_CLICK_RESULT, EventProtocol::MSM_v1, [&engine](const RuleEvent& event) {
     engine.handleSingleClickResult(std::get<SingleClickResult *>(event.payload));
   });
 
-  register_handler(EventType::MSM_RESULT, [&engine](const RuleEvent& event) {
+  register_handler(EventType::MSM_RESULT, EventProtocol::MSM_v1, [&engine](const RuleEvent& event) {
     engine.handleMSMResult(std::get<MSMResult *>(event.payload));
   });
 
-  register_handler(EventType::LINK_TOMOGRAPHY_RULESET, [&engine](const RuleEvent& event) {
+  register_handler(EventType::LINK_TOMOGRAPHY_RULESET, EventProtocol::LinkTomography, [&engine](const RuleEvent& event) {
     auto *pk = std::get<LinkTomographyRuleSet *>(event.payload);
     auto *ruleset = pk->getRuleSet();
     engine.runtimes.submitRuleSet(ruleset->construct());
   });
 
-  register_handler(EventType::PURIFICATION_RESULT, [&engine](const RuleEvent& event) {
+  register_handler(EventType::PURIFICATION_RESULT, EventProtocol::Purification, [&engine](const RuleEvent& event) {
     engine.handlePurificationResult(std::get<PurificationResult *>(event.payload));
   });
 
-  register_handler(EventType::SWAPPING_RESULT, [&engine](const RuleEvent& event) {
+  register_handler(EventType::SWAPPING_RESULT, EventProtocol::Swapping, [&engine](const RuleEvent& event) {
     engine.handleSwappingResult(std::get<SwappingResult *>(event.payload));
   });
 
-  register_handler(EventType::RULESET_FORWARDING, [&engine, submit_forwarded_ruleset](const RuleEvent& event) {
+  register_handler(EventType::RULESET_FORWARDING, EventProtocol::ConnectionManagement, [&engine, submit_forwarded_ruleset](const RuleEvent& event) {
     auto *pkt = std::get<InternalRuleSetForwarding *>(event.payload);
     auto serialized_ruleset = pkt->getRuleSet().dump();
     submit_forwarded_ruleset(serialized_ruleset);
   });
 
-  register_handler(EventType::RULESET_FORWARDING_APPLICATION, [&engine, submit_forwarded_ruleset](const RuleEvent& event) {
+  register_handler(EventType::RULESET_FORWARDING_APPLICATION, EventProtocol::ConnectionManagement, [&engine, submit_forwarded_ruleset](const RuleEvent& event) {
     auto *pkt = std::get<InternalRuleSetForwarding_Application *>(event.payload);
     auto application_type = pkt->getApplication_type();
     if (application_type != 0) {
-      if (engine.logger != nullptr) {
-        std::ostringstream payload;
-        payload << "\"qnode_addr\": " << engine.parentAddress << ", \"event_type\": \"RULESET_FORWARDING_APPLICATION\", \"application_type\": "
-                << application_type;
-        engine.logger->logEvent("unknown_ruleset_forwarding_application", payload.str());
-      }
       return;
     }
     auto serialized_ruleset = pkt->getRuleSet().dump();
     submit_forwarded_ruleset(serialized_ruleset);
   });
 
-  register_handler(EventType::STOP_EMITTING, [&engine](const RuleEvent& event) {
+  register_handler(EventType::STOP_EMITTING, EventProtocol::MSM_v1, [&engine](const RuleEvent& event) {
     engine.handleStopEmitting(std::get<StopEmitting *>(event.payload));
   });
 
-  register_handler(EventType::UNKNOWN, [&engine](const RuleEvent& event) {
+  register_handler(EventType::UNKNOWN, EventProtocol::Unknown, [&engine](const RuleEvent& event) {
     (void)event;
     engine.logUnknownRuleEvent(event);
   });

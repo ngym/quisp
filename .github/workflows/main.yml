@@ -76,6 +76,18 @@ jobs:
         run: make msgheaders
       - name: make googletest
         run: make googletest
+      - name: Run logging observability audit
+        run: |
+          if rg -n "std::cout|std::cerr" quisp/modules/QRSA/RuleEngine quisp/runtime quisp/core/events quisp/modules/QRSA/ConnectionManager --glob '*.{cc,h,cxx,hpp}'; then
+            echo "Unexpected std::cout/std::cerr usage found in logging scope"
+            exit 1
+          fi
+          if rg -n "MIM Protocol v1 Link|MSM Protocol v1 Link" doc quisp/modules --glob '!**/term-audit.md'; then
+            echo "Prohibited link/protocol naming mix detected"
+            exit 1
+          fi
+          rg -n "runtime_error|runtime_uncaught_error|runtime_debug_state|runtime_debug_source|runtime_debug_qubit|runtime_debug_reg|unknown_rule_event|unknown_rule_protocol|connection_manager_unknown_control_message" quisp
+          rg -n "protocol_spec|execution_path|protocol_raw_value|event_number|msg_name|msg_type" quisp/core/events quisp/modules/QRSA quisp/modules/Logger quisp/runtime
       - name: run module_tests
         run: make run-module-test
   clang-tidy:

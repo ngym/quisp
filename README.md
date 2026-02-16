@@ -240,7 +240,7 @@ Implemented `qutip` operation kinds on the high-fidelity path are:
 - `timing_jitter` (`jitter`, `timingjitter`)
 - `hamiltonian`, `lindblad`
 - `heralded_entanglement`
-- `dispersion`
+- `dispersion`, `channel_dispersion`, `fibre_dispersion`, `fiber_dispersion`
 - `multiphoton`
 - `hom`, `hom_interference`, `hominterference`, `two_photon_interference`, `twophoton_interference`, `bs_interference`, `bsinterference`
 - `source_multiphoton`, `multiphoton_source`, `multi_photon_source`, `photon_source`

@@ -148,6 +148,47 @@ TEST_F(RuleEventBusTestFixture, ConvertsKnownMessagesToRuleEvents) {
             1);
 }
 
+TEST_F(RuleEventBusTestFixture, KnownMessageMetadataIsPopulated) {
+  RuleEventBus bus;
+  simtime_t now = SimTime(1);
+  CombinedBSAresults combined_bsm_result;
+  BSMTimingNotification bsm_timing;
+  EPPSTimingNotification epps_timing;
+  EmitPhotonRequest emit_photon;
+  InternalRuleSetForwarding forwarding;
+  InternalRuleSetForwarding_Application forwarding_app;
+  LinkTomographyRuleSet link_tomography;
+  MSMResult msm_result;
+  PurificationResult purification_result;
+  SingleClickResult single_click;
+  StopEmitting stop_emitting;
+  SwappingResult swapping_result;
+
+  bus.publish(&combined_bsm_result, now);
+  bus.publish(&bsm_timing, now);
+  bus.publish(&epps_timing, now);
+  bus.publish(&emit_photon, now);
+  bus.publish(&forwarding, now);
+  bus.publish(&forwarding_app, now);
+  bus.publish(&link_tomography, now);
+  bus.publish(&msm_result, now);
+  bus.publish(&purification_result, now);
+  bus.publish(&single_click, now);
+  bus.publish(&stop_emitting, now);
+  bus.publish(&swapping_result, now);
+
+  auto events = bus.drain(now);
+  ASSERT_EQ(events.size(), 12);
+
+  for (const auto &event : events) {
+    EXPECT_EQ(event.time, now);
+    EXPECT_GE(event.event_number, 0);
+    EXPECT_FALSE(event.msg_name.empty());
+    EXPECT_FALSE(event.msg_type.empty());
+    EXPECT_TRUE(event.protocol_raw_value.empty()) << "Known mapped protocol cases should keep protocol_raw_value empty";
+  }
+}
+
 TEST_F(RuleEventBusTestFixture, KeepsProtocolRawValueForUnknownProtocolHint) {
   RuleEventBus bus;
   InternalRuleSetForwarding_Application forwarding_app;

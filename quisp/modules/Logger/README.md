@@ -31,6 +31,32 @@ Structured events can be emitted with `logEvent`.
 logEvent("unknown_rule_event", "{\"simtime\": 1.0, \"event_type\": \"UNKNOWN\", \"msg_name\": \"raw\"}");
 ```
 
+### logEvent contract used in this scope
+
+- Common structured fields (payload-level):
+  - `simtime` (float)
+  - `event_number` (integer)
+  - `module` (string)
+  - `qnode_addr` (integer, when available)
+  - `parentAddress` (integer, when available)
+- `RuleEventBus` / `RuleEngine` event payloads must include:
+  - `msg_name`
+  - `msg_type`
+  - `protocol_spec`
+  - `execution_path`
+  - `protocol_raw_value`
+- `Runtime` event payloads must include:
+  - `runtime_error`, `runtime_uncaught_error`, `runtime_debug_state`,
+    `runtime_debug_source`, `runtime_debug_string`, `runtime_debug_qubit`,
+    `runtime_debug_reg`
+  - plus runtime-specific keys (`message`, `instruction`, `return_code`, etc.)
+- `ConnectionManager` unknown-control payloads must include:
+  - `event_channel`
+  - `is_self_message`
+  - `known_qnic_index`
+  - `msg_full_name`
+  - `msg_class_name`
+
 For protocol-based rule dispatching, log payloads include protocol / path metadata:
 
 ```cpp

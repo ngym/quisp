@@ -40,6 +40,8 @@ template <typename MessageT>
 RuleEvent makeRuleEvent(RuleEventKind type, MessageT *msg, ::omnetpp::simtime_t now, bool keep_source_override, ProtocolType protocol_spec,
                         ExecutionPath execution_path, std::string protocol_raw_value = "") {
   const auto is_internal = msg != nullptr && msg->isSelfMessage();
+  std::string full_name = msg == nullptr ? "" : msg->getFullName();
+  const auto msg_name = full_name.empty() ? (msg == nullptr ? "" : msg->getClassName()) : full_name;
   return RuleEvent{type,
                    is_internal ? RuleEventChannel::INTERNAL_TIMER : RuleEventChannel::EXTERNAL,
                    keep_source_override || is_internal,
@@ -49,7 +51,7 @@ RuleEvent makeRuleEvent(RuleEventKind type, MessageT *msg, ::omnetpp::simtime_t 
                    execution_path,
                    std::move(protocol_raw_value),
                    static_cast<MessageT *>(msg),
-                   msg == nullptr ? "" : msg->getFullName(),
+                   msg_name,
                    msg == nullptr ? "" : msg->getClassName()};
 }
 

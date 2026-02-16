@@ -330,6 +330,7 @@ TEST_F(RuleEngineTest, unknownRuleEventIsLogged) {
 
   EXPECT_EQ(raw_logger->log_event_count, 1);
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_event");
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"module\": \"rule_engine_test_target\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \"UNKNOWN\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"msg_name\": \"raw\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"protocol_spec\": \"Unknown\""));
@@ -350,6 +351,7 @@ TEST_F(RuleEngineTest, unknownProtocolForKnownTypeIsLoggedAsUnknownRuleProtocol)
   rule_engine->handleRuleEvent(unknown_protocol_event);
 
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_protocol");
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"module\": \"rule_engine_test_target\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \"BSM_RESULT\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"protocol_spec\": \"Unknown\""));
 }
@@ -721,6 +723,7 @@ TEST_F(RuleEngineTest, directUnknownRuleEventFromRuleEngineLogsUnknownRuleEvent)
   rule_engine->handleRuleEvent(unknown_event);
 
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_event");
+  EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"module\": \"rule_engine_test_target\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_type\": \"UNKNOWN\""));
   EXPECT_THAT(raw_logger->last_payload, HasSubstr("\"event_number\": 11"));
 }

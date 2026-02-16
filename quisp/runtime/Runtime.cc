@@ -35,6 +35,29 @@ std::string escapeJson(const std::string& value) {
   }
   return output.str();
 }
+
+std::string extractQNodeAddrFromNodeInfo(const std::string& node_info) {
+  const std::string kPrefix = "QNodeAddr:";
+  auto start = node_info.find(kPrefix);
+  if (start == std::string::npos) {
+    return "";
+  }
+  auto value_start = start + kPrefix.size();
+  auto value_end = node_info.find_first_not_of("0123456789", value_start);
+  if (value_end == value_start) return "";
+  return node_info.substr(value_start, (value_end == std::string::npos ? node_info.size() : value_end) - value_start);
+}
+
+bool toInt(const std::string& value, int& out) {
+  if (value.empty()) return false;
+  try {
+    std::size_t consumed = 0;
+    out = std::stoi(value, &consumed);
+    return consumed == value.size();
+  } catch (...) {
+    return false;
+  }
+}
 }  // namespace
 
 namespace quisp::runtime {
@@ -117,7 +140,7 @@ void Runtime::exec() {
   if (debugging) {
     std::ostringstream ss;
     ss << "Run RuleSet: " << ruleset.name;
-    if (callback != nullptr) callback->logEvent("runtime_ruleset_start", ss.str());
+    logRuntimeEvent("runtime_ruleset_start", ss.str());
   }
   for (auto& rule : ruleset.rules) {
     rule_id = rule.id;
@@ -129,13 +152,13 @@ void Runtime::exec() {
         debugRuntimeState();
         std::ostringstream ss;
         ss << "Run Rule(" << rule.id << "): " << rule.name;
-        if (callback != nullptr) callback->logEvent("runtime_rule_start", ss.str());
+        logRuntimeEvent("runtime_rule_start", ss.str());
       }
       execProgram(rule.condition);
       if (debugging) {
         std::ostringstream ss;
         ss << "runtime_return_code: " << return_code;
-        if (callback != nullptr) callback->logEvent("runtime_return_code", ss.str());
+        logRuntimeEvent("runtime_return_code", ss.str());
       }
       if (return_code == ReturnCode::COND_FAILED) {
         break;
@@ -179,16 +202,12 @@ bool Runtime::execProgramNoThrow(const Program& program, std::string* uncaught_e
     if (has_runtime_error) {
       std::ostringstream error_ss;
       error_ss << "\"message\": \"" << escapeJson(runtime_error_message) << "\", \"instruction\": \"INSTR_ERROR_String\"";
-      if (callback != nullptr) {
-        callback->logEvent("runtime_error", error_ss.str());
-      }
+      logRuntimeEvent("runtime_error", error_ss.str());
     }
     std::ostringstream ss;
     ss << "\"return_code\": \"" << static_cast<int>(return_code)
        << "\", \"program_name\": \"" << program.name << "\"";
-    if (callback != nullptr) {
-      callback->logEvent("runtime_uncaught_error", ss.str());
-    }
+    logRuntimeEvent("runtime_uncaught_error", ss.str());
     if (uncaught_error_payload != nullptr) {
       *uncaught_error_payload = ss.str();
     }
@@ -522,7 +541,7 @@ void Runtime::debugRuntimeState() {
     ss << "  QubitId(" << qubit_id.val << "): Qubit(qnic: " << qubit->getQNicIndex() << ", index: " << qubit->getQubitIndex() << "):\n";
   }
   ss << "----------------------------------------";
-  if (callback != nullptr) callback->logEvent("runtime_debug_state", ss.str());
+  logRuntimeEvent("runtime_debug_state", ss.str());
 }
 
 void Runtime::debugSource(const Program& program) const {
@@ -532,7 +551,7 @@ void Runtime::debugSource(const Program& program) const {
   for (int i = 0; i < len; i++) {
     ss << (i == pc ? "  >>" : "    ") << std::to_string(i) << ": " << std::visit([](auto& op) { return op.toString(); }, program.opcodes[i]) << "\n";
   }
-  if (callback != nullptr) callback->logEvent("runtime_debug_source", ss.str());
+  logRuntimeEvent("runtime_debug_source", ss.str());
 }
 
 std::string Runtime::debugInstruction(const InstructionTypes& instr) const {
@@ -540,9 +559,22 @@ std::string Runtime::debugInstruction(const InstructionTypes& instr) const {
 }
 
 void Runtime::logRuntimeEvent(const std::string& event_type, const std::string& event_payload_json) const {
-  if (callback != nullptr) {
-    callback->logEvent(event_type, event_payload_json);
+  if (callback == nullptr) {
+    return;
   }
+  auto node_info = callback->getNodeInfo();
+  auto qnode_addr_text = extractQNodeAddrFromNodeInfo(node_info);
+  auto node_addr = -1;
+  toInt(qnode_addr_text, node_addr);
+
+  std::ostringstream ss;
+  ss << "\"simtime\": " << simTime() << ", \"event_number\": " << omnetpp::getSimulation()->getEventNumber() << ", \"module\": \"Runtime\""
+     << ", \"qnode_addr\": " << node_addr << ", \"parentAddress\": " << node_addr << ", \"event_type\": \"" << event_type << "\"";
+
+  if (!event_payload_json.empty()) {
+    ss << ", " << event_payload_json;
+  }
+  callback->logEvent(event_type, ss.str());
 }
 
 bool Runtime::shouldEmitDebugEvent() const { return callback != nullptr && debugging; }

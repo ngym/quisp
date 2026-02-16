@@ -239,8 +239,15 @@ TEST_F(RuntimeInstructionsTest, ERROR) {
                 // clang-format on
             }};
   std::string payload;
-  EXPECT_CALL(*callback, logEvent("runtime_error", ::testing::HasSubstr("\"message\": \"error\""))).Times(1);
-  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error", testing::_)).Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_error",
+                                  testing::AllOf(testing::HasSubstr("\"simtime\""), testing::HasSubstr("\"event_number\""), testing::HasSubstr("\"module\": \"Runtime\""),
+                                               testing::HasSubstr("\"qnode_addr\""), testing::HasSubstr("\"parentAddress\""),
+                                               testing::HasSubstr("\"message\": \"error\""))))
+      .Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_uncaught_error",
+                                  testing::AllOf(testing::HasSubstr("\"simtime\""), testing::HasSubstr("\"event_number\""), testing::HasSubstr("\"module\": \"Runtime\""),
+                                               testing::HasSubstr("\"return_code\""))))
+      .Times(1);
   EXPECT_FALSE(runtime->execProgramNoThrow(p, &payload));
   EXPECT_NE(payload.find("\"return_code\""), std::string::npos);
   EXPECT_TRUE(checkRegisters({1, 0, 0, 0, 0}));
@@ -260,9 +267,17 @@ TEST_F(RuntimeInstructionsTest, DebugInstructionsEmitRuntimeEvents) {
 
   EXPECT_CALL(*callback, logEvent("runtime_debug_source", testing::_)).Times(testing::AtLeast(1));
   EXPECT_CALL(*callback, logEvent("runtime_debug_state", testing::_)).Times(testing::AtLeast(1));
-  EXPECT_CALL(*callback, logEvent("runtime_debug_string", testing::_)).Times(1);
-  EXPECT_CALL(*callback, logEvent("runtime_debug_reg", testing::_)).Times(1);
-  EXPECT_CALL(*callback, logEvent("runtime_debug_qubit", testing::_)).Times(1);
+  EXPECT_CALL(*callback,
+              logEvent("runtime_debug_string",
+                       testing::AllOf(testing::HasSubstr("\"simtime\""), testing::HasSubstr("\"event_number\""), testing::HasSubstr("\"module\": \"Runtime\""),
+                                     testing::HasSubstr("\"message\": \"debug-string\""))))
+      .Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_debug_reg",
+                                  testing::AllOf(testing::HasSubstr("\"simtime\""), testing::HasSubstr("\"event_number\""),
+                                               testing::HasSubstr("\"module\": \"Runtime\""))))
+      .Times(1);
+  EXPECT_CALL(*callback, logEvent("runtime_debug_qubit", testing::AllOf(testing::HasSubstr("\"simtime\""), testing::HasSubstr("\"event_number\""),
+                                                                           testing::HasSubstr("\"module\": \"Runtime\"")))).Times(1);
   EXPECT_TRUE(runtime->execProgramNoThrow(p));
 }
 

@@ -188,11 +188,64 @@ installation, run:
 python3 scripts/check_qutip_import.py
 ```
 
+To run the high-fidelity worker smoke checks:
+
+```bash
+python3 scripts/qutip_worker_smoke.py
+```
+
 or
 
 ```bash
 python3 -c "import qutip, qutip_qip, qutip.qip; print('ok')"
 ```
+
+To run with the high-fidelity backend explicitly, set `physical_backend_type` in
+the `Backend` module parameters, for example:
+
+```ini
+*.backend.physical_backend_type = "qutip"
+```
+
+Optional `qutip` tuning parameters are available on `Backend`:
+
+```ini
+*.backend.qutip_backend_class = "qutip_density_matrix"  # or qutip_state_vector
+*.backend.qutip_python_executable = "python3"
+*.backend.qutip_worker_script = "scripts/qutip_worker.py"
+*.backend.qutip_max_register_qubits = 8
+*.backend.qutip_max_hilbert_dim = 4
+*.backend.qutip_solver = "mesolve"
+*.backend.qutip_truncation = 5
+*.backend.qutip_worker_timeout_ms = 1000
+```
+
+The default remains error-basis mode (`physical_backend_type = "error_basis"`) for
+large-scale compatibility.
+
+Implemented `qutip` operation kinds on the high-fidelity path are:
+
+- `unitary` (`X`, `Y`, `Z`, `H`, `S`, `Sdg`, `CNOT`, etc.)
+- `measurement` (`X`, `Y`, `Z`, `Bell`)
+- `noise` (`dephasing`, `loss`, `reset`)
+- `kerr`, `cross_kerr`
+- `beam_splitter`, `beamsplitter`, `beam splitter`
+- `phase_shift`, `phase_modulation`, `self_phase_modulation`, `cross_phase_modulation`,
+  `phase_modulator`, `self_phase_modulator`, `cross_phase_modulator`, `phaseshift`, `phaseshifter`,
+  `phase-shift`, `phase_shift`
+- `dephasing`, `decoherence`
+- `loss`, `attenuation`
+- `detection`
+- `delay`
+- `timing_jitter` (`jitter`, `timingjitter`)
+- `hamiltonian`, `lindblad`
+- `heralded_entanglement`
+- `dispersion`
+- `multiphoton`
+- `squeezing`
+- `reset`
+
+Unhandled/unknown kinds fail fast with a clear message.
 
 ## Trying it out on the web
 

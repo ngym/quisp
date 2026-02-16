@@ -15,12 +15,15 @@ class ErrorBasisBackend : public IPhysicalBackend {
  public:
   explicit ErrorBasisBackend(IQuantumBackend* backend);
 
+  uint32_t capabilities() const override;
+
   OperationResult applyNoise(const BackendContext& ctx, QubitHandle qubit) override;
   OperationResult applyGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) override;
   OperationResult applyNoiselessGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) override;
   OperationResult measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) override;
   OperationResult measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) override;
   OperationResult generateEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) override;
+  OperationResult applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) override;
 
  private:
   backends::IQubit* resolveQubit(QubitHandle qubit);

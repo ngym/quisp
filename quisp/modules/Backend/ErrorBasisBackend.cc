@@ -10,6 +10,10 @@ namespace quisp::modules::backend {
 
 ErrorBasisBackend::ErrorBasisBackend(IQuantumBackend* backend) : backend_(backend) {}
 
+uint32_t ErrorBasisBackend::capabilities() const {
+  return static_cast<uint32_t>(BackendCapability::SupportsLegacyErrorModel);
+}
+
 OperationResult ErrorBasisBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) {
   if (backend_ == nullptr) throw std::runtime_error("ErrorBasisBackend has no backend");
   (void)ctx;
@@ -128,9 +132,46 @@ OperationResult ErrorBasisBackend::generateEntanglement(const BackendContext& ct
   return {true};
 }
 
+OperationResult ErrorBasisBackend::applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
+  if (operation.kind == "unitary") {
+    const auto gate_entry = operation.payload.find("gate");
+    if (!operation.targets.empty() && gate_entry != operation.payload.end() && gate_entry->is_string()) {
+      return applyGate(ctx, gate_entry->get<std::string>(), operation.targets);
+    }
+    return {false, 1.0, false, false, false, false, "missing gate payload or targets"};
+  }
+  if (operation.kind == "measurement") {
+    if (operation.targets.empty()) {
+      return {false, 1.0, false, false, false, false, "measurement target missing"};
+    }
+    MeasureBasis basis = MeasureBasis::Z;
+    auto basis_label = operation.basis;
+    if (basis_label.empty() && operation.payload.contains("basis") && operation.payload["basis"].is_string()) {
+      basis_label = operation.payload["basis"].get<std::string>();
+    }
+    if (basis_label == "X") {
+      basis = MeasureBasis::X;
+    } else if (basis_label == "Y") {
+      basis = MeasureBasis::Y;
+    }
+    return measure(ctx, operation.targets.at(0), basis);
+  }
+  if (operation.kind == "noise") {
+    if (operation.targets.empty()) {
+      return {false, 1.0, false, false, false, false, "noise target missing"};
+    }
+    return applyNoise(ctx, operation.targets.at(0));
+  }
+  return {false, 1.0, false, false, false, false, "unsupported operation kind: " + operation.kind};
+}
+
 backends::IQubit* ErrorBasisBackend::resolveQubit(QubitHandle qubit) {
   auto id = std::make_unique<qubit_id::QubitId>(qubit.node_id, qubit.qnic_index, qubit.qnic_type, qubit.qubit_index);
-  return backend_->getQubit(id.get());
+  try {
+    return backend_->getQubit(id.get());
+  } catch (...) {
+    return nullptr;
+  }
 }
 
 OperationResult ErrorBasisBackend::measureAt(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {

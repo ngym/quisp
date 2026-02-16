@@ -7,7 +7,15 @@ simple Backend
         @class(BackendContainer);
         @display("p=30,40;");
         string backend_type = default("GraphStateBackend");
-        string physical_backend_type = default("");
+        string physical_backend_type = default("error_basis");
+        string qutip_backend_class = default("qutip_density_matrix");
+        string qutip_python_executable = default("python3");
+        string qutip_worker_script = default("scripts/qutip_worker.py");
+        int qutip_max_register_qubits = default(8);
+        int qutip_max_hilbert_dim = default(4);
+        string qutip_solver = default("mesolve");
+        double qutip_truncation = default(5);
+        int qutip_worker_timeout_ms = default(1000);
 
         // Default characteristics of qubits in the hardware
         double memory_error_rate = default(0);

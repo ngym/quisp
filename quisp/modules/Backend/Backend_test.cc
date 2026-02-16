@@ -78,6 +78,27 @@ TEST_F(BackendContainerTest, callBackendInitializeWithPhysicalBackendAlias) {
   EXPECT_NE(backend->backend, nullptr);
 }
 
+TEST_F(BackendContainerTest, callInitializeWithQutipPhysicalBackend) {
+  setParStr(backend, "physical_backend_type", "qutip");
+  EXPECT_EQ(backend->backend, nullptr);
+  backend->callInitialize();
+  EXPECT_NE(backend->backend, nullptr);
+}
+
+TEST_F(BackendContainerTest, callInitializeWithQutipBackendAlias) {
+  setParStr(backend, "physical_backend_type", "qutip_state_vector");
+  EXPECT_EQ(backend->backend, nullptr);
+  backend->callInitialize();
+  EXPECT_NE(backend->backend, nullptr);
+}
+
+TEST_F(BackendContainerTest, callInitializeWithQutipAliasUppercase) {
+  setParStr(backend, "physical_backend_type", "QUTIP");
+  EXPECT_EQ(backend->backend, nullptr);
+  backend->callInitialize();
+  EXPECT_NE(backend->backend, nullptr);
+}
+
 TEST_F(BackendContainerTest, callInitializeWithInvalidBackend) {
   setParStr(backend, "backend_type", "SomeInvalidBackend");
   EXPECT_EQ(backend->backend, nullptr);

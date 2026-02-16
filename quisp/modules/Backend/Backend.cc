@@ -1,8 +1,31 @@
 #include "Backend.h"
 #include <memory>
+#include <algorithm>
+#include <cctype>
 #include "backends/QubitConfiguration.h"
 
 namespace quisp::modules::backend {
+
+namespace {
+std::string toLower(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+  return value;
+}
+
+std::string normalizeBackendType(std::string value) {
+  const auto lowered = toLower(value);
+  if (value.empty() || lowered == "graphstatebackend" || lowered == "error_basis" || lowered == "errorbasis") {
+    return "GraphStateBackend";
+  }
+  if (lowered == "qutip" || lowered == "qutip_density_matrix") {
+    return "qutip";
+  }
+  if (lowered == "qutip_sv" || lowered == "qutip_state_vector") {
+    return "qutip_sv";
+  }
+  return lowered;
+}
+}  // namespace
 
 BackendContainer::BackendContainer() {}
 
@@ -14,25 +37,27 @@ void BackendContainer::initialize() {
 }
 
 std::string BackendContainer::getSelectedBackendType() const {
-  std::string physical_backend_type;
   if (hasPar("physical_backend_type")) {
-    physical_backend_type = par("physical_backend_type").stringValue();
+    return normalizeBackendType(par("physical_backend_type").stringValue());
   }
-  if (physical_backend_type.empty()) {
-    if (hasPar("backend_type")) {
-      return std::string(par("backend_type").stringValue());
-    }
-    return "GraphStateBackend";
+
+  if (hasPar("backend_type")) {
+    return normalizeBackendType(std::string(par("backend_type").stringValue()));
   }
-  return physical_backend_type;
+
+  return "GraphStateBackend";
 }
 
 std::unique_ptr<IQuantumBackend> BackendContainer::createBackend(const std::string& backend_type) {
-  if (backend_type == "GraphStateBackend" || backend_type == "error_basis") {
+  const auto normalized = normalizeBackendType(backend_type);
+  if (normalized == "GraphStateBackend" || normalized == "error_basis" || normalized == "qutip" || normalized == "qutip_density_matrix" || normalized == "qutip_state_vector" ||
+      normalized == "qutip_sv") {
     auto config = getDefaultQubitErrorModelConfiguration();
     return std::make_unique<GraphStateBackend>(std::make_unique<RNG>(this), std::move(config), static_cast<GraphStateBackend::ICallback*>(this));
   }
-  throw omnetpp::cRuntimeError("Unknown backend type: %s. Supported types are: GraphStateBackend, error_basis", backend_type.c_str());
+  throw omnetpp::cRuntimeError(
+      "Unknown backend type: %s. Supported types are: GraphStateBackend, error_basis, qutip, qutip_density_matrix, qutip_state_vector, qutip_sv",
+      backend_type.c_str());
 }
 
 std::unique_ptr<StationaryQubitConfiguration> BackendContainer::getDefaultQubitErrorModelConfiguration() {

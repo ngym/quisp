@@ -340,6 +340,7 @@ nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
       {"qutip_truncation", 5.0},
       {"qutip_worker_timeout_ms", 1000},
       {"qutip_worker_script", "scripts/qutip_worker.py"},
+      {"qutip_strict_simulated", false},
   };
 
   if (module.hasPar("qutip_python_executable")) {
@@ -375,6 +376,9 @@ nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
       params["qutip_worker_script"] = value;
     }
   }
+  if (module.hasPar("qutip_strict_simulated")) {
+    params["qutip_strict_simulated"] = module.par("qutip_strict_simulated").boolValue();
+  }
 
   return params;
 }
@@ -391,7 +395,7 @@ omnetpp::cModule* getBackendModuleFromContext() {
     }
     if (module->hasPar("qutip_backend_class") || module->hasPar("qutip_python_executable") || module->hasPar("qutip_max_register_qubits") ||
         module->hasPar("qutip_max_hilbert_dim") || module->hasPar("qutip_solver") || module->hasPar("qutip_truncation") || module->hasPar("qutip_worker_timeout_ms") ||
-        module->hasPar("qutip_worker_script")) {
+        module->hasPar("qutip_worker_script") || module->hasPar("qutip_strict_simulated")) {
       return module;
     }
   }
@@ -448,6 +452,7 @@ nlohmann::json QutipBackend::collectBackendParameters() const {
       {"qutip_solver", "mesolve"},
       {"qutip_truncation", 5.0},
       {"qutip_worker_timeout_ms", 1000},
+      {"qutip_strict_simulated", false},
   };
 
   auto* backend_module = getBackendModuleFromContext();

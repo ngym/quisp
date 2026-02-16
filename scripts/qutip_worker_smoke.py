@@ -77,6 +77,12 @@ def _assert_message_contains(response: Dict[str, Any], expected_substring: str, 
     raise AssertionError(f"{kind}: expected message to contain '{expected_substring}', got '{message}'")
 
 
+def _assert_qutip_status(response: Dict[str, Any], expected_status: str, kind: str) -> None:
+  status = response.get("qutip_status")
+  if status != expected_status:
+    raise AssertionError(f"{kind}: expected qutip_status='{expected_status}', got '{status}'")
+
+
 def _assert_error_category(response: Dict[str, Any], expected_category: str, kind: str) -> None:
   category = response.get("error_category")
   if category is None:
@@ -109,16 +115,16 @@ def main() -> int:
     return 2
 
   cases = [
-      ("unitary:X", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "X"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "params": []}, True, []),
-      ("unitary:x lower", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "x"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
+      ("unitary:X", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "X"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "params": []}, True, ["status:simulated"]),
+      ("unitary:x lower", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "x"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "params": []}, True, ["status:simulated"]),
       ("unitary:CNOT", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "CNOT"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}]}, True, []),
       ("unitary:missing gate", {"kind": "unitary", "payload": {"kind": "unitary"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["message:qutip worker unsupported unitary", "category:unsupported_gate"]),
       ("unitary:bad gate", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "ZZ"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["message:qutip worker unsupported unitary", "category:unsupported_gate"]),
-      ("measurement:Z", {"kind": "measurement", "basis": "Z", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["measured_plus"]),
+      ("measurement:Z", {"kind": "measurement", "basis": "Z", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["status:simulated", "measured_plus"]),
       ("measurement:alias measure", {"kind": "measure", "basis": "Z", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["measured_plus"]),
       ("measurement:BELL", {"kind": "measurement", "basis": "BELL", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["measured_plus"]),
       ("measurement:invalid basis", {"kind": "measurement", "basis": "W", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["message:unsupported measurement basis", "category:unsupported_measurement"]),
-      ("noise:dephasing", {"kind": "noise", "payload": {"kind": "noise", "noise_kind": "dephasing", "p": 0.05}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
+      ("noise:dephasing", {"kind": "noise", "payload": {"kind": "noise", "noise_kind": "dephasing", "p": 0.05}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["status:simulated"]),
       ("noise:dephase alias", {"kind": "noise", "payload": {"kind": "noise", "noise_kind": "dephase", "p": 0.02}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("noise:decoherence alias", {"kind": "noise", "payload": {"kind": "noise", "noise_kind": "decoherence", "p": 0.02}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("noise:loss", {"kind": "noise", "payload": {"kind": "noise", "noise_kind": "loss", "p": 0.01}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
@@ -130,7 +136,7 @@ def main() -> int:
       ("noise:phaseflip", {"kind": "noise", "payload": {"kind": "noise", "noise_kind": "phaseflip", "p": 0.09}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("noise:depolarizing", {"kind": "noise", "payload": {"kind": "noise", "noise_kind": "depolarizing", "p": 0.05}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("noise:unknown", {"kind": "noise", "payload": {"kind": "noise", "noise_kind": "not_a_noise"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["message:unsupported noise kind", "category:unsupported_noise"]),
-      ("advanced:kerr", {"kind": "kerr", "params": [0.2], "duration": 0.5, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
+      ("advanced:kerr", {"kind": "kerr", "params": [0.2], "duration": 0.5, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["status:implemented"]),
       ("advanced:kerr alias", {"kind": "kerr_effect", "params": [0.2], "duration": 0.5, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:kerr effect alias", {"kind": "kerreffect", "params": [0.2], "duration": 0.5, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:cross-kerr alias", {"kind": "cross_kerr_effect", "params": [0.2], "duration": 0.5, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}, {"node_id": 1, "qnic_index": 1, "qnic_type": 0, "qubit_index": 0}]}, True, []),
@@ -147,7 +153,7 @@ def main() -> int:
       ("advanced:fock_loss", {"kind": "fock_loss", "params": [0.11], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:polarization_rotation", {"kind": "polarization_rotation", "params": [0.14], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:polarization_decoherence", {"kind": "polarization_decoherence", "params": [0.04], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
-      ("advanced:phase_shift", {"kind": "phase_shift", "params": [0.5], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
+      ("advanced:phase_shift", {"kind": "phase_shift", "params": [0.5], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["status:simulated"]),
       ("advanced:phase-shift", {"kind": "phase-shift", "params": [0.5], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:phaseshift", {"kind": "phaseshift", "params": [0.5], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:phaseshifter", {"kind": "phaseshifter", "params": [0.5], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
@@ -164,7 +170,7 @@ def main() -> int:
       ("advanced:loss", {"kind": "loss", "params": [0.02], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:attenuation", {"kind": "attenuation", "params": [0.02], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:delay", {"kind": "delay", "duration": 0.2, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
-      ("advanced:hamiltonian", {"kind": "hamiltonian", "payload": {"expr": "sx"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
+      ("advanced:hamiltonian", {"kind": "hamiltonian", "payload": {"expr": "sx"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["status:implemented"]),
       ("advanced:lindblad", {"kind": "lindblad", "payload": {"expr": "sigmax"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
       ("advanced:hamiltonian invalid", {"kind": "hamiltonian", "payload": {"expr": ""}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["message:qutip worker requires expr"]),
       ("advanced:lindblad invalid", {"kind": "lindblad", "payload": {"expr": ""}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["message:qutip worker requires expr"]),
@@ -197,29 +203,86 @@ def main() -> int:
       ("limit:ancillary mode exceeded", {"kind": "kerr", "params": [0.2], "ancillary_modes": [0, 1, 2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "backend_config": {"qutip_backend_class": "qutip_density_matrix", "qutip_max_hilbert_dim": 2, "qutip_worker_timeout_ms": 5000}}, False, ["message:ancillary_modes", "category:exceeded_limit"]),
       ("invalid:qutip_max_register_qubits payload", {"kind": "kerr", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "backend_config": {"qutip_backend_class": "qutip_density_matrix", "qutip_max_register_qubits": "bad", "qutip_worker_timeout_ms": 5000}}, False, ["message:invalid_payload", "category:invalid_payload"]),
       ("invalid:qutip_max_hilbert_dim payload", {"kind": "kerr", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "backend_config": {"qutip_backend_class": "qutip_density_matrix", "qutip_max_hilbert_dim": "bad", "qutip_worker_timeout_ms": 5000}}, False, ["message:invalid_payload", "category:invalid_payload"]),
-      ("unsupported:unknown", {"kind": "not_a_kind", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["category:unsupported_kind"]),
+      ("unsupported:unknown", {"kind": "not_a_kind", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["status:unsupported", "category:unsupported_kind"]),
       ("kind:no-op", {"kind": "no-op", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, []),
   ]
 
+  status_counts = {"implemented": 0, "simulated": 0, "unsupported": 0, "unknown": 0}
   passed = 0
+
   for name, operation, expected, asserts in cases:
-      try:
-        response = _call_worker(operation, seed=args.seed)
-        _assert_response(expected, name, response)
-        for expected_field in asserts:
-          if expected_field.startswith("message:"):
-            _assert_message_contains(response, expected_field[len("message:"):], name)
-          elif expected_field.startswith("category:"):
-            _assert_error_category(response, expected_field[len("category:"):], name)
-          else:
-            _assert_bool_field(response, expected_field, name)
-        print(f"PASS {name}: {response.get('message')}")
-        passed += 1
-      except Exception as exc:
-        print(f"FAIL {name}: {exc}")
-        return 1
+    try:
+      response = _call_worker(operation, seed=args.seed)
+      _assert_response(expected, name, response)
+      for expected_field in asserts:
+        if expected_field.startswith("message:"):
+          _assert_message_contains(response, expected_field[len("message:"):], name)
+        elif expected_field.startswith("status:"):
+          _assert_qutip_status(response, expected_field[len("status:"):], name)
+        elif expected_field.startswith("category:"):
+          _assert_error_category(response, expected_field[len("category:"):], name)
+        else:
+          _assert_bool_field(response, expected_field, name)
+
+      qutip_status = response.get("qutip_status")
+      if qutip_status in {"implemented", "simulated", "unsupported"}:
+        status_counts[qutip_status] += 1
+      else:
+        status_counts["unknown"] += 1
+
+      print(f"PASS {name}: {response.get('message')}")
+      passed += 1
+    except Exception as exc:
+      print(f"FAIL {name}: {exc}")
+      return 1
 
   print(f"qutip worker smoke checks: {passed}/{len(cases)} passed")
+  total_status_ops = sum(status_counts.values())
+  if total_status_ops > 0:
+    implemented_ratio = status_counts["implemented"] / total_status_ops * 100.0
+    simulated_ratio = status_counts["simulated"] / total_status_ops * 100.0
+    unsupported_ratio = status_counts["unsupported"] / total_status_ops * 100.0
+    print(
+        "qutip status counts: "
+        + f"implemented={status_counts['implemented']} ({implemented_ratio:.1f}%), "
+        + f"simulated={status_counts['simulated']} ({simulated_ratio:.1f}%), "
+        + f"unsupported={status_counts['unsupported']} ({unsupported_ratio:.1f}%), "
+        + f"unknown={status_counts['unknown']}"
+    )
+
+    if status_counts["unsupported"] >= total_status_ops and any("strict" in name for name, *_ in cases):
+      print("qutip status: all operations were unsupported; check script case coverage")
+
+  strict_reject_operation = {
+    "kind": "phase_shift",
+    "params": [0.4],
+    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+    "duration": 0.3,
+    "backend_config": {
+      "qutip_strict_simulated": True,
+      "qutip_backend_class": "qutip_density_matrix",
+      "python_executable": "python3",
+      "qutip_worker_timeout_ms": 5000,
+    },
+  }
+  strict_allow_operation = dict(strict_reject_operation)
+  strict_allow_operation["backend_config"] = dict(strict_reject_operation["backend_config"])
+  strict_allow_operation["backend_config"]["qutip_strict_simulated"] = False
+
+  strict_reject_response = _call_worker(strict_reject_operation, seed=args.seed)
+  _assert_response(False, "strict:simulated reject", strict_reject_response)
+  _assert_qutip_status(strict_reject_response, "simulated", "strict:simulated reject")
+  _assert_error_category(strict_reject_response, "simulated_operation_rejected", "strict:simulated reject")
+  _assert_message_contains(
+      strict_reject_response,
+      "qutip strict mode rejected simulated kind",
+      "strict:simulated reject",
+  )
+
+  strict_allow_response = _call_worker(strict_allow_operation, seed=args.seed)
+  _assert_response(True, "strict:simulated allow", strict_allow_response)
+  _assert_qutip_status(strict_allow_response, "simulated", "strict:simulated allow")
+
   return 0
 
 

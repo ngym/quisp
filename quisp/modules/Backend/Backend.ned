@@ -16,6 +16,7 @@ simple Backend
         string qutip_solver = default("mesolve");
         double qutip_truncation = default(5);
         int qutip_worker_timeout_ms = default(1000);
+        bool qutip_strict_simulated = default(false);
 
         // Default characteristics of qubits in the hardware
         double memory_error_rate = default(0);

@@ -218,6 +218,7 @@ Optional `qutip` tuning parameters are available on `Backend`:
 *.backend.qutip_solver = "mesolve"
 *.backend.qutip_truncation = 5
 *.backend.qutip_worker_timeout_ms = 1000
+*.backend.qutip_strict_simulated = false
 ```
 
 The default remains error-basis mode (`physical_backend_type = "error_basis"`) for
@@ -234,6 +235,15 @@ The worker now implements a mixed set of operation kinds:
 - `implemented`: operation uses explicit `qutip` operator/evolution based path (for tested subset).
 - `simulated`: request is handled via approximation/fallback path.
 - `unsupported`: explicitly rejected with categorized message (for example `[category=unsupported_kind]`).
+
+`qutip` worker also emits `qutip_status` for every response so scenario-level mixed-operation
+analysis is possible.
+
+Strict mode is controlled by `qutip_strict_simulated`:
+- `false` (default): `simulated` kinds succeed and still return `qutip_status="simulated"`.
+- `true`: `simulated` kinds are rejected with
+  `error_category="simulated_operation_rejected"` and a message
+  `qutip strict mode rejected simulated kind: <kind>`.
 
 Examples currently marked `implemented` include `kerr`, `cross_kerr`,
 `beam_splitter`, `hamiltonian`, `lindblad`, `amplitude_damping`,

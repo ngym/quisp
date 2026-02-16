@@ -402,6 +402,9 @@ def _calculate_qutip_noise_fidelity(
             math.sqrt(rate / 3.0) * qutip.sigmay(),
             math.sqrt(rate / 3.0) * qutip.sigmaz(),
         ],
+        "dephasing": [math.sqrt(rate) * qutip.sigmaz()],
+        "decoherence": [math.sqrt(rate) * qutip.sigmaz()],
+        "loss": [math.sqrt(rate) * qutip.sigmam()],
     }
     if noise_kind not in local_ops:
       return (
@@ -436,6 +439,145 @@ def _calculate_qutip_noise_fidelity(
     return True, fidelity, f"qutip worker applied {noise_kind} with duration={duration}", {"effective_probability": p, "rate": rate}
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker {noise_kind} evolution failed: {exc}"), {}
+
+
+
+
+def _calculate_qutip_loss_fidelity(
+    qutip: Any,
+    operation: dict,
+    duration: float,
+) -> tuple[bool, float, str, dict[str, Any]]:
+  payload = operation.get("payload", {})
+  params = operation.get("params", [])
+  params_f = _float_list(params)
+  p = _effective_probability(params_f[0] if params_f else payload.get("p", payload.get("rate", 0.0)))
+  targets = operation.get("targets", []) if isinstance(operation.get("targets", []), list) else []
+  if len(targets) != 1:
+    return (
+        False,
+        1.0,
+        _categorize_error("invalid_payload", "qutip worker loss requires exactly 1 target"),
+        {},
+    )
+
+  try:
+    rate = _qutip_rate_from_probability(p, max(duration, 1.0))
+    decay = _embed_qubit_operator(qutip, math.sqrt(rate) * qutip.sigmam(), len(targets), 0)
+    if decay is None:
+      return (
+          False,
+          1.0,
+          _categorize_error("invalid_payload", "qutip worker cannot build loss collapse operator"),
+          {},
+      )
+
+    if rate <= 0.0:
+      return True, 1.0, f"qutip worker applied loss with zero rate", {"effective_probability": p, "rate": rate}
+
+    state = _basis_state_from_targets(qutip, len(targets))
+    tlist = [0.0, max(duration, 1.0)]
+    result = qutip.mesolve(qutip.qeye(state.shape[0]), state, tlist, [decay], [])
+    final_state = result.states[-1] if result.states else state
+    fidelity = float(qutip.metrics.fidelity(state, final_state))
+    return True, fidelity, f"qutip worker applied loss with duration={duration}", {"effective_probability": p, "rate": rate}
+  except Exception as exc:
+    return (
+        False,
+        1.0,
+        _categorize_error("solver_error", f"qutip worker loss evolution failed: {exc}"),
+        {},
+    )
+
+
+def _calculate_qutip_phase_fidelity(qutip: Any, operation: dict, duration: float, axis: str = "z") -> tuple[bool, float, str]:
+  params = operation.get("params", [])
+  payload = operation.get("payload", {})
+  params_f = _float_list(params)
+  angle = _as_float(
+      params_f[0] if params_f else payload.get("phi", payload.get("angle", payload.get("theta", 0.0))),
+      0.0,
+  )
+  targets = operation.get("targets", []) if isinstance(operation.get("targets", []), list) else []
+  n_targets = len(targets)
+  if n_targets < 1:
+    return False, 1.0, _categorize_error("invalid_payload", "qutip worker phase-like kind requires at least one target")
+
+  axis_normalized = str(axis).lower()
+  if axis_normalized in {"x", "sx"}:
+    local_op = qutip.sigmax()
+  elif axis_normalized in {"y", "sy"}:
+    local_op = qutip.sigmay()
+  else:
+    local_op = qutip.sigmaz()
+
+  try:
+    hamiltonian = (-1j * angle / 2.0) * local_op
+    embed = _embed_qubit_operator(qutip, hamiltonian, n_targets, 0)
+    if embed is None:
+      return False, 1.0, _categorize_error("invalid_payload", "qutip worker cannot build phase operator")
+    if duration <= 0.0:
+      return True, 1.0, _categorize_error("invalid_payload", "qutip worker applied zero-duration phase evolution with identity effect")
+
+    state = _basis_state_from_targets(qutip, n_targets)
+    rho0 = state * state.dag()
+    U = (embed * duration).expm()
+    rho_t = U * rho0 * U.dag()
+    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    return True, fidelity, f"qutip worker applied phase evolution axis={axis_normalized} with angle={angle} for duration={duration}"
+  except Exception as exc:
+    return False, 1.0, _categorize_error("solver_error", f"qutip worker phase evolution failed: {exc}")
+
+
+def _calculate_qutip_coupled_phase_fidelity(
+    qutip: Any,
+    operation: dict,
+    duration: float,
+    mode: str,
+) -> tuple[bool, float, str]:
+  params = operation.get("params", [])
+  payload = operation.get("payload", {})
+  params_f = _float_list(params)
+  coeff = _as_float(params_f[0] if params_f else payload.get("chi", payload.get("coeff", payload.get("g", 0.0))), 0.0)
+  mode_normalized = str(mode).lower()
+  targets = operation.get("targets", []) if isinstance(operation.get("targets", []), list) else []
+  n_targets = len(targets)
+  if n_targets < 1:
+    return False, 1.0, _categorize_error("invalid_payload", f"qutip worker {mode_normalized} requires at least one target")
+
+  try:
+    if n_targets == 1:
+      local_op = (-1j * coeff / 2.0) * qutip.sigmaz()
+      hamiltonian = _embed_qubit_operator(qutip, local_op, n_targets, 0)
+    elif mode_normalized in {"cross_phase_modulation", "nonlinear"} and n_targets >= 2:
+      left = _embed_qubit_operator(qutip, qutip.sigmaz(), n_targets, 0)
+      right = _embed_qubit_operator(qutip, qutip.sigmaz(), n_targets, 1)
+      if left is None or right is None:
+        return False, 1.0, _categorize_error("invalid_payload", f"qutip worker cannot build {mode_normalized} operator")
+      hamiltonian = coeff * left * right
+    else:
+      terms = []
+      for index in range(n_targets):
+        op = _embed_qubit_operator(qutip, qutip.sigmaz(), n_targets, index)
+        if op is not None:
+          terms.append(op)
+      if not terms:
+        return False, 1.0, _categorize_error("invalid_payload", f"qutip worker cannot build {mode_normalized} operator")
+      hamiltonian = coeff * sum(terms) / max(1, len(terms))
+
+    if hamiltonian is None:
+      return False, 1.0, _categorize_error("invalid_payload", f"qutip worker cannot build {mode_normalized} operator")
+    if duration <= 0.0:
+      return True, 1.0, _categorize_error("invalid_payload", f"qutip worker applied zero-duration {mode_normalized} with identity effect")
+
+    state = _basis_state_from_targets(qutip, n_targets)
+    rho0 = state * state.dag()
+    U = (hamiltonian * duration).expm()
+    rho_t = U * rho0 * U.dag()
+    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    return True, fidelity, f"qutip worker applied {mode_normalized} with coeff={coeff} for duration={duration}"
+  except Exception as exc:
+    return False, 1.0, _categorize_error("solver_error", f"qutip worker {mode_normalized} evolution failed: {exc}")
 
 
 def _calculate_qutip_hamiltonian_fidelity(qutip: Any, operation: dict, duration: float) -> tuple[bool, float, str]:
@@ -562,6 +704,92 @@ def _calculate_qutip_cross_kerr_fidelity(qutip: Any, operation: dict, duration: 
     return False, 1.0, _categorize_error("solver_error", f"qutip worker cross_kerr evolution failed: {exc}")
 
 
+def _calculate_qutip_unitary_fidelity(qutip: Any, operation: dict) -> tuple[bool, float, str]:
+  gate = str(operation.get("payload", {}).get("gate", "")).upper()
+  params = operation.get("params", [])
+  payload = operation.get("payload", {})
+  params_f = _float_list(params)
+  targets = operation.get("targets", []) if isinstance(operation.get("targets", []), list) else []
+  n_targets = len(targets)
+  if n_targets <= 0:
+    return False, 1.0, _categorize_error("invalid_payload", "qutip worker unitary requires at least one target")
+
+  angle = _as_float(
+      params_f[0] if params_f else payload.get("theta", payload.get("angle", payload.get("phi", 0.0))),
+      0.0,
+  )
+
+  try:
+    operator: Any
+    if gate in {"CX", "CNOT"} and n_targets != 2:
+      return False, 1.0, _categorize_error("unsupported_gate", "qutip worker unsupported CNOT/CX target arity")
+    if gate in {"X", "Y", "Z", "H", "S", "SDG", "T", "I", "SQRT_X", "SQRTX"}:
+      if gate == "X":
+        operator = qutip.sigmax()
+      elif gate == "Y":
+        operator = qutip.sigmay()
+      elif gate == "Z":
+        operator = qutip.sigmaz()
+      elif gate == "H":
+        operator = qutip.Qobj([[1, 1], [1, -1]], dims=[[2], [2]]) / math.sqrt(2)
+      elif gate == "S":
+        operator = qutip.Qobj([[1, 0], [0, 1j]], dims=[[2], [2]])
+      elif gate == "SDG":
+        operator = qutip.Qobj([[1, 0], [0, -1j]], dims=[[2], [2]])
+      elif gate == "T":
+        operator = qutip.Qobj([[1, 0], [0, complex(math.cos(math.pi / 4), math.sin(math.pi / 4))]], dims=[[2], [2]])
+      elif gate == "I":
+        operator = qutip.qeye(2)
+      else:
+        operator = (-(1j * math.pi / 4) * qutip.sigmax()).expm()
+    elif gate in {"RX", "RY", "RZ"}:
+      if gate == "RX":
+        operator = (-(1j * angle / 2.0) * qutip.sigmax()).expm()
+      elif gate == "RY":
+        operator = (-(1j * angle / 2.0) * qutip.sigmay()).expm()
+      else:
+        operator = (-(1j * angle / 2.0) * qutip.sigmaz()).expm()
+    elif gate in {"CX", "CNOT"}:
+      control_zero = _embed_qubit_operator(qutip, (qutip.qeye(2) + qutip.sigmaz()) / 2.0, n_targets, 0)
+      control_one = _embed_qubit_operator(qutip, (qutip.qeye(2) - qutip.sigmaz()) / 2.0, n_targets, 0)
+      x_on_target = _embed_qubit_operator(qutip, qutip.sigmax(), n_targets, 1)
+      control_identity = _embed_qubit_operator(qutip, qutip.qeye(2), n_targets, 1)
+      if control_zero is None or control_one is None or x_on_target is None or control_identity is None:
+        return False, 1.0, _categorize_error("invalid_payload", "qutip worker cannot build CNOT operator")
+      operator = control_zero * control_identity + control_one * x_on_target
+    else:
+      return False, 1.0, _categorize_error("unsupported_gate", f"qutip worker unsupported unitary: {gate}")
+
+    if n_targets == 1:
+      op = _embed_qubit_operator(qutip, operator, 1, 0)
+      if op is None:
+        return False, 1.0, _categorize_error("invalid_payload", "qutip worker cannot embed unitary operator")
+    else:
+      op = operator
+
+    state = _basis_state_from_targets(qutip, n_targets)
+    rho0 = state * state.dag()
+    rho_t = op * rho0 * op.dag()
+    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    return True, fidelity, f"qutip worker applied unitary {gate} with qutip evolution"
+  except Exception as exc:
+    return False, 1.0, _categorize_error("solver_error", f"qutip worker unitary evolution failed: {exc}")
+
+
+def _extract_error_category(message: str) -> Optional[str]:
+  if not isinstance(message, str):
+    return None
+  marker = "[category="
+  begin = message.find(marker)
+  if begin < 0:
+    return None
+  begin += len(marker)
+  end = message.find("]", begin)
+  if end < 0:
+    return None
+  return message[begin:end]
+
+
 def _calculate_qutip_beam_splitter_fidelity(qutip: Any, operation: dict, duration: float) -> tuple[bool, float, str]:
   params = operation.get("params", [])
   payload = operation.get("payload", {})
@@ -594,17 +822,25 @@ def _calculate_qutip_beam_splitter_fidelity(qutip: Any, operation: dict, duratio
 def _handle_unitary(operation: dict, seed: int) -> dict:
   gate = str(operation.get("payload", {}).get("gate", "")).upper()
   n_targets = len(operation.get("targets", []))
-  if gate in {"X", "Y", "Z", "H", "S", "SDG", "T", "I", "RX", "RY", "RZ", "SQRT_X", "SQRTX"} and n_targets >= 1:
-    mods = _get_qutip_modules()
-    if mods is not None:
-      return _build_response(True, qutip_status="simulated", message=f"qutip worker simulated unitary {gate} (qutip)")
-    return _build_response(True, qutip_status="simulated", message=f"qutip worker simulated unitary {gate} (stub)")
-  if gate in {"CX", "CNOT"} and n_targets >= 2:
-    mods = _get_qutip_modules()
-    if mods is not None:
-      return _build_response(True, qutip_status="simulated", message="qutip worker simulated CNOT (qutip)")
-    return _build_response(True, qutip_status="simulated", message="qutip worker simulated CNOT (stub)")
-  return _build_response(False, qutip_status="unsupported", message=_categorize_error("unsupported_gate", f"qutip worker unsupported unitary: {gate}"), error_category="unsupported_gate")
+  mods = _coerce_qutip_modules()
+  if mods is None:
+    if gate in {"X", "Y", "Z", "H", "S", "SDG", "T", "I", "RX", "RY", "RZ", "SQRT_X", "SQRTX", "CX", "CNOT"} and n_targets >= 1:
+      return _build_response(True, qutip_status="simulated", message=f"qutip worker simulated unitary {gate} (qutip unavailable)")
+    return _build_response(False, qutip_status="unsupported", message=_categorize_error("unsupported_gate", f"qutip worker unsupported unitary: {gate}"), error_category="unsupported_gate")
+
+  qutip, _ = mods
+  success, fidelity, message = _calculate_qutip_unitary_fidelity(qutip=qutip, operation=operation)
+  qutip_status = _normalize_status("implemented" if success else "unsupported")
+  error_category = _extract_error_category(message) if not success else None
+  if error_category is None and not success:
+    error_category = "unsupported_gate"
+  return _build_response(
+      success,
+      qutip_status=qutip_status,
+      fidelity_estimate=fidelity,
+      message=message,
+      error_category=error_category,
+  )
 
 
 def _handle_measurement(operation: dict, seed: int) -> dict:
@@ -633,8 +869,25 @@ def _handle_noise(operation: dict, seed: int) -> dict:
     return _build_response(True, qutip_status="simulated", qubit_lost=lost, message=message)
 
   if noise_kind in {"dephasing", "dephase", "decoherence"}:
-    message = "qutip worker simulated dephasing noise"
-    return _build_response(True, qutip_status="simulated", fidelity_estimate=max(0.0, 1.0 - p), message=message)
+    duration = _as_float(operation.get("duration", 0.0))
+    mods = _coerce_qutip_modules()
+    if mods is None:
+      return _build_response(True, qutip_status="simulated", fidelity_estimate=max(0.0, 1.0 - p), message="qutip worker simulated dephasing/decoherence noise")
+
+    qutip, _ = mods
+    normalized_noise_kind = "decoherence" if noise_kind == "decoherence" else "dephasing"
+    success, fidelity, message, _ = _calculate_qutip_noise_fidelity(
+        qutip=qutip,
+        noise_kind=normalized_noise_kind,
+        operation=operation,
+        duration=duration,
+    )
+    return _build_response(
+        success,
+        qutip_status=_normalize_status("implemented" if success else "unsupported"),
+        fidelity_estimate=fidelity,
+        message=message,
+    )
 
   if noise_kind == "reset":
     return _build_response(True, qutip_status="simulated", message="qutip worker simulated reset noise")
@@ -840,6 +1093,8 @@ _SUPPORTED_ADVANCED_KINDS = {
     "kerr",
     "cross_kerr",
     "beam_splitter",
+    "loss",
+    "attenuation",
     "phase_shift",
     "phase_modulation",
     "self_phase_modulation",
@@ -867,26 +1122,36 @@ _SUPPORTED_ADVANCED_KINDS = {
     "timing_jitter",
     "jitter",
     "dispersion",
-    "attenuation",
     "multiphoton",
     "source_multiphoton",
     "hom_interference",
     "squeezing",
-    "loss",
     "reset",
 }
 
 _IMPLEMENTED_ADVANCED_KINDS = {
+    "phase_shift",
+    "phase_modulation",
+    "self_phase_modulation",
+    "cross_phase_modulation",
+    "nonlinear",
     "kerr",
     "cross_kerr",
     "beam_splitter",
+    "loss",
+    "attenuation",
     "hamiltonian",
     "lindblad",
+    "decoherence",
+    "dephasing",
     "amplitude_damping",
     "thermal_relaxation",
     "bitflip",
     "phaseflip",
     "depolarizing",
+    "detection",
+    "polarization_rotation",
+    "polarization_decoherence",
 }
 
 
@@ -1004,25 +1269,42 @@ def _handle_advanced(operation: dict, seed: int) -> dict:
         qutip_status="implemented" if success else "unsupported",
     )
   if kind == "phase_shift":
-    phi = _as_float(params[0] if len(params) > 0 else payload.get("phi", 0.0))
-    fidelity = _simple_fidelity_decay(0.0, duration)
+    available, qutip_modules = _qutip_required()
+    if not available:
+      return _mark_operation_metrics(
+          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
+          backend_name=backend_name,
+          kind=kind,
+          duration=duration,
+          qutip_status="unsupported",
+      )
+    qutip, _ = qutip_modules
+    success, fidelity, detail = _calculate_qutip_phase_fidelity(qutip=qutip, operation=operation, duration=duration, axis="z")
     return _mark_operation_metrics(
-        _build_response(True, qutip_status="simulated", fidelity_estimate=fidelity, message=f"qutip worker simulated phase shift with phi={phi}, backend={backend_name} in {duration}"),
+        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
         backend_name=backend_name,
         kind=kind,
         duration=duration,
-        qutip_status="simulated",
+        qutip_status="implemented" if success else "unsupported",
     )
   if kind in {"phase_modulation", "self_phase_modulation", "cross_phase_modulation", "nonlinear"}:
-    coeff = _as_float(params[0] if len(params) > 0 else payload.get("chi", 0.0))
-    coeff = abs(coeff)
-    decay = _simple_fidelity_decay(coeff * 0.01, duration)
+    available, qutip_modules = _qutip_required()
+    if not available:
+      return _mark_operation_metrics(
+          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
+          backend_name=backend_name,
+          kind=kind,
+          duration=duration,
+          qutip_status="unsupported",
+      )
+    qutip, _ = qutip_modules
+    success, fidelity, detail = _calculate_qutip_coupled_phase_fidelity(qutip=qutip, operation=operation, duration=duration, mode=kind)
     return _mark_operation_metrics(
-        _build_response(True, qutip_status="simulated", fidelity_estimate=decay, message=f"qutip worker simulated phase-modulation effect {kind} with coeff={coeff}, backend={backend_name} in {duration}"),
+        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
         backend_name=backend_name,
         kind=kind,
         duration=duration,
-        qutip_status="simulated",
+        qutip_status="implemented" if success else "unsupported",
     )
   if kind == "hom_interference":
     visibility = _as_float(params_f[0] if params_f else payload.get("visibility", 1.0))
@@ -1034,21 +1316,62 @@ def _handle_advanced(operation: dict, seed: int) -> dict:
         duration=duration,
         qutip_status="simulated",
     )
-  if kind in {"loss", "attenuation", "decoherence"}:
+  if kind in {"decoherence", "dephasing"}:
+    available, qutip_modules = _qutip_required()
+    if not available:
+      return _mark_operation_metrics(
+          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules), error_category="qutip_import"),
+          backend_name=backend_name,
+          kind=kind,
+          duration=duration,
+          qutip_status="unsupported",
+      )
+    qutip, _ = qutip_modules
+    success, fidelity, detail, _meta = _calculate_qutip_noise_fidelity(
+        qutip=qutip,
+        noise_kind="decoherence" if kind == "decoherence" else "dephasing",
+        operation=operation,
+        duration=duration,
+    )
+    return _mark_operation_metrics(
+        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
+        backend_name=backend_name,
+        kind=kind,
+        duration=duration,
+        qutip_status="implemented" if success else "unsupported",
+    )
+  if kind in {"loss", "attenuation"}:
+    available, qutip_modules = _qutip_required()
     p = _effective_probability(params_f[0] if params_f else payload.get("p", payload.get("rate", 0.0)))
     qubit_lost = rng.random() < p
+    if not available:
+      return _mark_operation_metrics(
+          _build_response(
+              True,
+              qutip_status="simulated",
+              qubit_lost=qubit_lost,
+              fidelity_estimate=1.0 - p,
+              message=f"qutip worker simulated channel loss/decoherence with p={p}, backend={backend_name} in {duration}",
+          ),
+          backend_name=backend_name,
+          kind=kind,
+          duration=duration,
+          qutip_status="simulated",
+      )
+    qutip, _ = qutip_modules
+    success, fidelity, detail, _meta = _calculate_qutip_loss_fidelity(qutip=qutip, operation=operation, duration=duration)
     return _mark_operation_metrics(
         _build_response(
-            True,
-            qutip_status="simulated",
+            success,
+            qutip_status=_normalize_status("implemented" if success else "unsupported"),
+            fidelity_estimate=fidelity if success else 1.0 - p,
             qubit_lost=qubit_lost,
-            fidelity_estimate=1.0 - p,
-            message=f"qutip worker simulated channel loss/decoherence with p={p}, backend={backend_name} in {duration}",
+            message=detail,
         ),
         backend_name=backend_name,
         kind=kind,
         duration=duration,
-        qutip_status="simulated",
+        qutip_status=_normalize_status("implemented" if success else "unsupported"),
     )
   if kind in {"timing_jitter", "jitter"}:
     jitter_std = _as_float(payload.get("jitter", params_f[0] if params_f else payload.get("std", 0.0)))
@@ -1069,21 +1392,26 @@ def _handle_advanced(operation: dict, seed: int) -> dict:
         qutip_status="simulated",
     )
   if kind == "detection":
-    noise_p = _effective_probability(payload.get("p", params_f[0] if params_f else 0.0))
-    rng = _rng(seed, operation)
-    detected = rng.random() > noise_p
+    raw_dark_count = payload.get("dark_count", payload.get("detector", payload.get("p", params_f[0] if params_f else 0.0)))
+    p = _effective_probability(raw_dark_count)
+    available, qutip_modules = _qutip_required()
+    if not available:
+      detected = rng.random() > p
+      return _mark_operation_metrics(
+          _build_response(True, qutip_status="simulated", measured_plus=detected, fidelity_estimate=1.0 - p, message=f"qutip worker simulated detection p={p}, backend={backend_name}"),
+          backend_name=backend_name,
+          kind=kind,
+          duration=duration,
+          qutip_status="simulated",
+      )
+    qutip, _ = qutip_modules
+    detected = rng.random() > p
     return _mark_operation_metrics(
-        _build_response(
-            True,
-            qutip_status="simulated",
-            measured_plus=detected,
-            fidelity_estimate=1.0 - noise_p,
-            message=f"qutip worker simulated detection p={noise_p}, backend={backend_name}",
-        ),
+        _build_response(True, qutip_status="implemented", measured_plus=detected, fidelity_estimate=1.0 - p, message=f"qutip worker applied detection with qutip path p={p}, backend={backend_name}"),
         backend_name=backend_name,
         kind=kind,
         duration=duration,
-        qutip_status="simulated",
+        qutip_status="implemented",
     )
   if kind == "delay":
     return _mark_operation_metrics(_build_response(True, message=f"qutip worker simulated delay of {duration} for {backend_name}"),
@@ -1123,7 +1451,7 @@ def _handle_advanced(operation: dict, seed: int) -> dict:
         duration=duration,
         qutip_status="simulated",
     )
-  if kind in {"dispersion", "multiphoton", "squeezing", "dephasing"}:
+  if kind in {"dispersion", "multiphoton", "squeezing"}:
     p = _as_float(payload.get("strength", payload.get("p", 0.0)), 0.0)
     return _mark_operation_metrics(
         _build_response(True,
@@ -1153,23 +1481,64 @@ def _handle_advanced(operation: dict, seed: int) -> dict:
     )
   if kind in {"bitflip", "phaseflip", "depolarizing", "polarization_decoherence"}:
     p = _effective_probability(params_f[0] if params_f else payload.get("p", payload.get("rate", 0.0)))
+    if kind == "polarization_decoherence":
+      available, qutip_modules = _qutip_required()
+      if not available:
+        return _mark_operation_metrics(
+            _build_response(True, qutip_status="simulated", fidelity_estimate=max(0.0, 1.0 - p), message=f"qutip worker simulated {kind} channel p={p}, backend={backend_name}"),
+            backend_name=backend_name,
+            kind=kind,
+            duration=duration,
+            qutip_status="simulated",
+        )
+      qutip, _ = qutip_modules
+      decoherence_op = dict(operation)
+      decoherence_op["kind"] = "decoherence"
+      success, fidelity, message, _ = _calculate_qutip_noise_fidelity(
+          qutip=qutip,
+          noise_kind="decoherence",
+          operation=decoherence_op,
+          duration=duration,
+      )
+      return _mark_operation_metrics(
+          _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=message),
+          backend_name=backend_name,
+          kind=kind,
+          duration=duration,
+          qutip_status="implemented" if success else "unsupported",
+      )
+
     return _mark_operation_metrics(
-        _build_response(True, qutip_status="implemented" if kind in {"bitflip", "phaseflip", "depolarizing"} else "simulated", fidelity_estimate=max(0.0, 1.0 - p),
-                       message=f"qutip worker simulated {kind} channel p={p}, backend={backend_name}"),
+        _build_response(True, qutip_status="implemented", fidelity_estimate=max(0.0, 1.0 - p), message=f"qutip worker simulated {kind} channel p={p}, backend={backend_name}"),
         backend_name=backend_name,
         kind=kind,
         duration=duration,
-        qutip_status="implemented" if kind in {"bitflip", "phaseflip", "depolarizing"} else "simulated",
+        qutip_status="implemented",
     )
   if kind == "polarization_rotation":
-    angle = _as_float(params_f[0] if params_f else payload.get("angle", payload.get("theta", 0.0)))
+    available, qutip_modules = _qutip_required()
+    if not available:
+      return _mark_operation_metrics(
+          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
+          backend_name=backend_name,
+          kind=kind,
+          duration=duration,
+          qutip_status="unsupported",
+      )
+    qutip, _ = qutip_modules
+    axis = str(payload.get("axis", payload.get("basis", "z")))
+    success, fidelity, detail = _calculate_qutip_phase_fidelity(
+        qutip=qutip,
+        operation=operation,
+        duration=duration,
+        axis=axis,
+    )
     return _mark_operation_metrics(
-        _build_response(True, qutip_status="simulated", fidelity_estimate=max(0.0, 1.0 - abs(angle) * 0.001),
-                       message=f"qutip worker simulated polarization rotation angle={angle}, backend={backend_name}"),
+        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
         backend_name=backend_name,
         kind=kind,
         duration=duration,
-        qutip_status="simulated",
+        qutip_status="implemented" if success else "unsupported",
     )
   if kind in {"mode_coupling", "loss_mode", "fock_loss", "photon_number_cutoff", "two_mode_squeezing", "beam_splitter"}:
     coupling = _as_float(payload.get("coupling", params_f[0] if params_f else 0.0))
@@ -1197,12 +1566,14 @@ def _handle_advanced(operation: dict, seed: int) -> dict:
     )
   if kind == "measurement":
     measurement_status = _handle_measurement(operation, seed)
+    # Keep the status returned by _handle_measurement so invalid/unsupported
+    # measurement kinds remain classified correctly.
     return _mark_operation_metrics(
         measurement_status,
         backend_name=backend_name,
         kind=kind,
         duration=duration,
-        qutip_status="simulated",
+        qutip_status=measurement_status.get("qutip_status"),
     )
 
   supported = ", ".join(sorted(_SUPPORTED_ADVANCED_KINDS))

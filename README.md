@@ -248,6 +248,13 @@ Strict mode is controlled by `qutip_strict_simulated`:
 Examples currently marked `implemented` include `kerr`, `cross_kerr`,
 `beam_splitter`, `hamiltonian`, `lindblad`, `amplitude_damping`,
 `thermal_relaxation`, `bitflip`, `phaseflip`, and `depolarizing`.
+Additional `implemented` kinds now include:
+top-level `unitary` gates (`X`,`Y`,`Z`,`H`,`S`,`T`,`I`,`RX`,`RY`,`RZ`,`SQRT_X`,`SQRTX`,`CX`,`CNOT`)
+with qutip fallback when qutip package is unavailable,
+`phase_shift`, `phase_modulation`, `self_phase_modulation`,
+`cross_phase_modulation`, `nonlinear`, `decoherence`, `dephasing`,
+`detection`, `loss`, `attenuation`, `polarization_rotation`, and
+`polarization_decoherence`.
 
 Unhandled/unknown kinds fail fast with an explicit category (for example `[category=unsupported_kind]`).
 

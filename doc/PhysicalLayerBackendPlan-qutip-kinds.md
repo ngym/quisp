@@ -18,20 +18,20 @@ Legend:
 
 | kind | aliases | C++ status | worker status | qutip status |
 | --- | --- | --- | --- | --- |
-| `unitary` | `X`,`Y`,`Z`,`H`,`S`,`T`,`I`,`RX`,`RY`,`RZ`,`SQRT_X`,`SQRTX`,`CX`,`CNOT` | registered | supported | mixed (qutip when installed / stub fallback) |
+| `unitary` | `X`,`Y`,`Z`,`H`,`S`,`T`,`I`,`RX`,`RY`,`RZ`,`SQRT_X`,`SQRTX`,`CX`,`CNOT` | registered | supported | implemented |
 | `measurement` | `X`,`Y`,`Z`,`BELL` | registered | supported | simulated |
-| `noise` | `dephasing`,`loss`,`reset` | registered | supported | simulated |
+| `noise` | `dephasing`,`loss`,`reset` | registered | supported | mixed (`dephasing` implemented, `loss`/`reset` simulated) |
 | `kerr` | `kerreffect`,`kerr_effect` | registered | supported | implemented |
 | `cross_kerr` | `crosskerr`,`cross_kerr_effect` | registered | supported | implemented |
 | `beam_splitter` | `beamsplitter`,`beam splitter` | registered | supported | implemented |
-| `phase_shift` | `phaseshift`,`phase_shifter` | registered | supported | simulated |
-| `phase_modulation` | `phase_mod`,`phase_modulator` | registered | supported | simulated |
-| `self_phase_modulation` | `self_phase_mod`,`self_phase_modulator` | registered | supported | simulated |
-| `cross_phase_modulation` | `cross_phase_mod`,`cross_phase_modulator` | registered | supported | simulated |
-| `decoherence` | `decay` | registered | supported | simulated |
-| `dephasing` | `dephase` | registered | supported | simulated |
-| `nonlinear` | (direct) | registered | supported | simulated |
-| `detection` | `dark_count`,`detector` | registered | supported | simulated |
+| `phase_shift` | `phaseshift`,`phase_shifter` | registered | supported | implemented |
+| `phase_modulation` | `phase_mod`,`phase_modulator` | registered | supported | implemented |
+| `self_phase_modulation` | `self_phase_mod`,`self_phase_modulator` | registered | supported | implemented |
+| `cross_phase_modulation` | `cross_phase_mod`,`cross_phase_modulator` | registered | supported | implemented |
+| `decoherence` | `decay` | registered | supported | implemented |
+| `dephasing` | `dephase` | registered | supported | implemented |
+| `nonlinear` | (direct) | registered | supported | implemented |
+| `detection` | `dark_count`,`detector` | registered | supported | implemented |
 | `delay` | (direct) | registered | supported | simulated |
 | `hamiltonian` | `expr`/`hamiltonian` | registered | supported | implemented |
 | `lindblad` | `expr`/`collapse` | registered | supported | implemented |
@@ -40,15 +40,15 @@ Legend:
 | `dispersion` | `channel_dispersion`,`fibre_dispersion`,`fiber_dispersion` | registered | supported | simulated |
 | `multiphoton` | `source_multiphoton`, `multiphoton_source` | registered | supported | simulated |
 | `squeezing` | `squeezing` | registered | supported | simulated |
-| `loss` | `attenuation` | registered | supported | simulated |
+| `loss` | `attenuation` | registered | supported | implemented |
 | `reset` | (direct) | registered | supported | simulated |
 | `amplitude_damping` | (direct) | registered | supported | implemented |
 | `thermal_relaxation` | (direct) | registered | supported | implemented |
 | `bitflip` | (direct) | registered | supported | implemented |
 | `phaseflip` | (direct) | registered | supported | implemented |
 | `depolarizing` | (direct) | registered | supported | implemented |
-| `polarization_rotation` | (direct) | registered | supported | simulated |
-| `polarization_decoherence` | (direct) | registered | supported | simulated |
+| `polarization_rotation` | (direct) | registered | supported | implemented |
+| `polarization_decoherence` | (direct) | registered | supported | implemented |
 | `mode_coupling` | (direct) | registered | supported | simulated |
 | `loss_mode` | (direct) | registered | supported | simulated |
 | `two_mode_squeezing` | (direct) | registered | supported | simulated |

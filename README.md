@@ -242,6 +242,8 @@ Implemented `qutip` operation kinds on the high-fidelity path are:
 - `heralded_entanglement`
 - `dispersion`
 - `multiphoton`
+- `hom`, `hom_interference`, `hominterference`, `two_photon_interference`, `twophoton_interference`, `bs_interference`, `bsinterference`
+- `source_multiphoton`, `multiphoton_source`, `multi_photon_source`, `photon_source`
 - `squeezing`
 - `reset`
 

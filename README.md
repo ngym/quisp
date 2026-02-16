@@ -223,31 +223,23 @@ Optional `qutip` tuning parameters are available on `Backend`:
 The default remains error-basis mode (`physical_backend_type = "error_basis"`) for
 large-scale compatibility.
 
-Implemented `qutip` operation kinds on the high-fidelity path are:
+Implemented `qutip` operation kinds on the high-fidelity path are tracked in:
 
-- `unitary` (`X`, `Y`, `Z`, `H`, `S`, `Sdg`, `CNOT`, etc.)
-- `measurement` (`X`, `Y`, `Z`, `Bell`)
-- `noise` (`dephasing`, `loss`, `reset`)
-- `kerr`, `cross_kerr`
-- `beam_splitter`, `beamsplitter`, `beam splitter`
-- `phase_shift`, `phase_modulation`, `self_phase_modulation`, `cross_phase_modulation`,
-  `phase_modulator`, `self_phase_modulator`, `cross_phase_modulator`, `phaseshift`, `phaseshifter`,
-  `phase-shift`, `phase_shift`
-- `dephasing`, `decoherence`
-- `loss`, `attenuation`
-- `detection`
-- `delay`
-- `timing_jitter` (`jitter`, `timingjitter`)
-- `hamiltonian`, `lindblad`
-- `heralded_entanglement`
-- `dispersion`, `channel_dispersion`, `fibre_dispersion`, `fiber_dispersion`
-- `multiphoton`
-- `hom`, `hom_interference`, `hominterference`, `two_photon_interference`, `twophoton_interference`, `bs_interference`, `bsinterference`
-- `source_multiphoton`, `multiphoton_source`, `multi_photon_source`, `photon_source`
-- `squeezing`
-- `reset`
+`doc/PhysicalLayerBackendPlan-qutip-kinds.md`
 
-Unhandled/unknown kinds fail fast with a clear message.
+The worker now implements a mixed set of operation kinds:
+
+- `registered`: C++ + Python worker dispatch is wired.
+- `supported`: request is accepted and a response is returned.
+- `implemented`: operation uses explicit `qutip` operator/evolution based path (for tested subset).
+- `simulated`: request is handled via approximation/fallback path.
+- `unsupported`: explicitly rejected with categorized message (for example `[category=unsupported_kind]`).
+
+Examples currently marked `implemented` include `kerr`, `cross_kerr`,
+`beam_splitter`, `hamiltonian`, `lindblad`, `amplitude_damping`,
+`thermal_relaxation`, `bitflip`, `phaseflip`, and `depolarizing`.
+
+Unhandled/unknown kinds fail fast with an explicit category (for example `[category=unsupported_kind]`).
 
 ## Trying it out on the web
 

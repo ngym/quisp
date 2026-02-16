@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <map>
+#include <set>
 #include <cstdlib>
 #include <fstream>
 #include <sstream>
@@ -202,8 +203,30 @@ std::string normalizeAdvancedKind(const std::string& kind) {
   }
   const std::map<std::string, std::string> aliases = {
       {"no_op", "noop"},
-      {"no-op", "noop"},
+      {"hominterference", "hom_interference"},
       {"measure", "measurement"},
+      {"kerreffect", "kerr"},
+      {"kerr_effect", "kerr"},
+      {"kerr_effects", "kerr"},
+      {"cross_kerring", "cross_kerr"},
+      {"cross_kerr_effect", "cross_kerr"},
+      {"crosskerr", "cross_kerr"},
+      {"amplitude_damping", "amplitude_damping"},
+      {"amplitudedamping", "amplitude_damping"},
+      {"bit_flip", "bitflip"},
+      {"phase_flip", "phaseflip"},
+      {"depolarizing_channel", "depolarizing"},
+      {"thermal_relaxation", "thermal_relaxation"},
+      {"polarization_rotation", "polarization_rotation"},
+      {"polarizationrotation", "polarization_rotation"},
+      {"polarization_decoherence", "polarization_decoherence"},
+      {"polarizationdecoherence", "polarization_decoherence"},
+      {"mode_coupling", "mode_coupling"},
+      {"loss_mode", "loss_mode"},
+      {"two_mode_squeezing", "two_mode_squeezing"},
+      {"two_modes_squeezing", "two_mode_squeezing"},
+      {"fock_loss", "fock_loss"},
+      {"photon_number_cutoff", "photon_number_cutoff"},
       {"hom", "hom_interference"},
       {"twophoton_interference", "hom_interference"},
       {"two_photon_interference", "hom_interference"},
@@ -231,15 +254,11 @@ std::string normalizeAdvancedKind(const std::string& kind) {
       {"decay", "decoherence"},
       {"timingjitter", "timing_jitter"},
       {"timing_jitter", "timing_jitter"},
-      {"timing-jitter", "timing_jitter"},
       {"time_jitter", "timing_jitter"},
       {"timejitter", "timing_jitter"},
       {"jitter", "timing_jitter"},
       {"dark_count", "detection"},
       {"detector", "detection"},
-      {"kerr_effect", "kerr"},
-      {"kerreffect", "kerr"},
-      {"cross_kerr_effect", "cross_kerr"},
       {"heraldedentanglement", "heralded_entanglement"},
   };
   const auto found = aliases.find(normalized);
@@ -248,6 +267,67 @@ std::string normalizeAdvancedKind(const std::string& kind) {
   }
   return normalized;
 }
+
+bool hasTargetCountMismatchForKind(const std::string& kind, const std::vector<QubitHandle>& targets) {
+  if (kind == "measurement" || kind == "noise") {
+    return targets.size() != 1;
+  }
+  return targets.empty();
+}
+
+std::string targetCountMismatchMessage(const std::string& kind, size_t target_count) {
+  std::ostringstream stream;
+  if (kind == "measurement") {
+    stream << "qutip backend measurement operation expects exactly one target, target_count=" << target_count;
+    return stream.str();
+  }
+  if (kind == "noise") {
+    stream << "qutip backend noise operation expects exactly one target, target_count=" << target_count;
+    return stream.str();
+  }
+  stream << "qutip backend operation is missing target(s), target_count=" << target_count;
+  return stream.str();
+}
+
+const std::set<std::string> kSupportedAdvancedKinds{
+    "kerr",
+    "cross_kerr",
+    "beam_splitter",
+    "phase_shift",
+    "phase_modulation",
+    "self_phase_modulation",
+    "cross_phase_modulation",
+    "decoherence",
+    "dephasing",
+    "nonlinear",
+    "detection",
+    "delay",
+    "hamiltonian",
+    "lindblad",
+    "heralded_entanglement",
+    "timing_jitter",
+    "dispersion",
+    "multiphoton",
+    "source_multiphoton",
+    "hom_interference",
+    "squeezing",
+    "loss",
+    "reset",
+    "jitter",
+    "attenuation",
+    "amplitude_damping",
+    "thermal_relaxation",
+    "bitflip",
+    "phaseflip",
+    "depolarizing",
+    "polarization_rotation",
+    "polarization_decoherence",
+    "mode_coupling",
+    "loss_mode",
+    "two_mode_squeezing",
+    "fock_loss",
+    "photon_number_cutoff",
+};
 
 nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
   nlohmann::json params = {
@@ -352,7 +432,7 @@ bool QutipBackend::checkQutipRuntimeAvailable() const {
   }
 
   std::ostringstream reason;
-  reason << "qutip backend dependency check failed: " << command << " (status=" << status << ")";
+  reason << "qutip backend dependency check failed: " << command << " (status=" << status << ") [category=qutip_import]";
   qutip_runtime_check_error_ = reason.str();
   qutip_runtime_available_ = false;
   return false;
@@ -386,12 +466,7 @@ nlohmann::json QutipBackend::collectBackendParameters() const {
 
 bool QutipBackend::isAdvancedOperation(const std::string& kind) const {
   const auto normalized = normalizeAdvancedKind(kind);
-  return normalized == "dephasing" || normalized == "decoherence" || normalized == "loss" || normalized == "reset" || normalized == "kerr" ||
-         normalized == "cross_kerr" || normalized == "beam_splitter" || normalized == "phase_shift" || normalized == "detection" || normalized == "delay" || normalized == "hamiltonian" ||
-         normalized == "lindblad" || normalized == "heralded_entanglement" || normalized == "timing_jitter" || normalized == "jitter" || normalized == "dispersion" || normalized == "multiphoton" || normalized == "source_multiphoton" ||
-         normalized == "hom_interference" || normalized == "attenuation" ||
-         normalized == "squeezing" || normalized == "nonlinear" || normalized == "cross_phase_modulation" || normalized == "self_phase_modulation" ||
-         normalized == "phase_modulation";
+  return kSupportedAdvancedKinds.count(normalized) > 0;
 }
 
 OperationResult QutipBackend::runUnitary(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits, const std::string& context) const {
@@ -599,7 +674,7 @@ OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const Ph
     throw std::runtime_error("QutipBackend has no backend");
   }
   if (operation.kind.empty()) {
-    return unsupported("qutip backend operation.kind is empty");
+    return unsupported("qutip backend operation.kind is empty [category=invalid_payload]");
   }
 
   const auto normalized_kind = normalizeAdvancedKind(operation.kind);
@@ -612,41 +687,53 @@ OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const Ph
   if (normalized_kind == "unitary") {
     const auto gate = parseGateFromPayload(operation);
     if (gate.empty()) {
-      return unsupported("qutip backend unitary operation missing payload kind/gate");
+      return unsupported("qutip backend unitary operation missing payload kind/gate [category=invalid_payload]");
+    }
+    if (hasTargetCountMismatchForKind(normalized_kind, operation.targets)) {
+      return unsupported("qutip backend unitary operation missing target(s) [category=invalid_payload]");
     }
     if (!hasValidTargets(operation.targets)) {
-      return unsupported("qutip backend unitary operation missing target(s)");
+      return unsupported("qutip backend unitary operation received invalid qubit handle [category=invalid_payload]");
     }
     return runUnitary(ctx, gate, operation.targets, operation.payload.value("context", ""));
   }
 
   if (normalized_kind == "measurement") {
+    if (hasTargetCountMismatchForKind(normalized_kind, operation.targets)) {
+      return unsupported(targetCountMismatchMessage(normalized_kind, operation.targets.size()) + " [category=invalid_payload]");
+    }
     if (!hasValidTargets(operation.targets)) {
-      return unsupported("qutip backend measurement operation missing target");
+      return unsupported("qutip backend measurement operation received invalid qubit handle [category=invalid_payload]");
     }
     auto basis = parseBasis(operation);
     return runMeasurement(ctx, operation.targets.front(), basis, operation.payload.value("noiseless", false));
   }
 
   if (normalized_kind == "noise") {
+    if (hasTargetCountMismatchForKind(normalized_kind, operation.targets)) {
+      return unsupported(targetCountMismatchMessage(normalized_kind, operation.targets.size()) + " [category=invalid_payload]");
+    }
     if (!hasValidTargets(operation.targets)) {
-      return unsupported("qutip backend noise operation missing target");
+      return unsupported("qutip backend noise operation received invalid qubit handle [category=invalid_payload]");
     }
     auto noise_kind = parseNoiseFromPayload(operation);
     return runNoise(ctx, operation.targets.front(), noise_kind, operation.payload, operation.params);
   }
 
   if (isAdvancedOperation(normalized_kind)) {
+    if (hasTargetCountMismatchForKind(normalized_kind, operation.targets)) {
+      return unsupported(targetCountMismatchMessage(normalized_kind, operation.targets.size()) + " [category=invalid_payload]");
+    }
     if (!hasValidTargets(operation.targets)) {
-      return unsupported("qutip backend advanced operation missing/invalid target(s)");
+      return unsupported("qutip backend advanced operation missing/invalid target(s) [category=invalid_payload]");
     }
     if (!hasValidControls(operation.controls)) {
-      return unsupported("qutip backend advanced operation invalid control handle(s)");
+      return unsupported("qutip backend advanced operation invalid control handle(s) [category=invalid_payload]");
     }
     return executeQutipWorker(ctx, operation);
   }
 
-  return unsupported("qutip backend does not support operation.kind=" + operation.kind);
+  return unsupported("qutip backend does not support operation.kind=" + operation.kind + " [category=unsupported_kind]");
 }
 
 }  // namespace quisp::modules::backend

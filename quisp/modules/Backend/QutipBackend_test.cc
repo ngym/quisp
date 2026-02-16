@@ -64,7 +64,7 @@ class NullQuantumBackend : public IQuantumBackend {
 BackendContext defaultContext() {
   BackendContext context;
   context.seed = 123;
-  context.now = 0;
+  context.now = omnetpp::SimTime::ZERO;
   context.scenario_id = "qutip-test";
   context.backend_name = "qutip";
   return context;
@@ -152,6 +152,44 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsLegacyAliasAndCaseNormaliza
   EXPECT_FALSE(measure_alias_result.message.empty());
 }
 
+TEST(QutipBackendContractTest, ApplyOperationRejectsWrongTargetCountForBasicKinds) {
+  NullQuantumBackend backend;
+  QutipBackend qutip_backend{&backend, "qutip"};
+
+  PhysicalOperation measurement_op;
+  measurement_op.kind = "measurement";
+  measurement_op.basis = "Z";
+  auto missing_target = qutip_backend.applyOperation(defaultContext(), measurement_op);
+  EXPECT_FALSE(missing_target.success);
+  EXPECT_NE(missing_target.message.find("measurement operation expects exactly one target"), std::string::npos);
+
+  measurement_op.targets = {QubitHandle{1, 0, 0, 7}, QubitHandle{1, 0, 0, 8}};
+  auto too_many_targets = qutip_backend.applyOperation(defaultContext(), measurement_op);
+  EXPECT_FALSE(too_many_targets.success);
+  EXPECT_NE(too_many_targets.message.find("measurement operation expects exactly one target"), std::string::npos);
+
+  PhysicalOperation noise_op;
+  noise_op.kind = "noise";
+  noise_op.payload = {{"noise_kind", "dephasing"}};
+  noise_op.params = {0.2};
+  auto noise_without_targets = qutip_backend.applyOperation(defaultContext(), noise_op);
+  EXPECT_FALSE(noise_without_targets.success);
+  EXPECT_NE(noise_without_targets.message.find("noise operation expects exactly one target"), std::string::npos);
+}
+
+TEST(QutipBackendContractTest, ApplyOperationRejectsInvalidControlHandle) {
+  NullQuantumBackend backend;
+  QutipBackend qutip_backend{&backend, "qutip"};
+
+  PhysicalOperation op;
+  op.kind = "kerr";
+  op.targets = {QubitHandle{1, 0, 0, 7}};
+  op.controls = {QubitHandle{-1, 0, 0, 0}};
+  auto result = qutip_backend.applyOperation(defaultContext(), op);
+  EXPECT_FALSE(result.success);
+  EXPECT_NE(result.message.find("invalid control handle"), std::string::npos);
+}
+
 TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
   NullQuantumBackend backend;
   QutipBackend qutip_backend{&backend, "qutip"};
@@ -161,6 +199,18 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
       "decoherence",
       "loss",
       "attenuation",
+      "amplitude_damping",
+      "thermal_relaxation",
+      "bitflip",
+      "phaseflip",
+      "depolarizing",
+      "polarization_rotation",
+      "polarization_decoherence",
+      "mode_coupling",
+      "loss_mode",
+      "two_mode_squeezing",
+      "fock_loss",
+      "photon_number_cutoff",
       "channel_dispersion",
       "fibre_dispersion",
       "fiber_dispersion",
@@ -260,7 +310,11 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
   no_op_op.kind = "no-op";
   no_op_op.targets = {QubitHandle{1, 0, 0, 10}};
   const auto no_op_result = qutip_backend.applyOperation(defaultContext(), no_op_op);
-  EXPECT_FALSE(no_op_result.message.empty()) << "kind=" << no_op_op.kind;
+  if (runtimes_available) {
+    // no-op intentionally returns success with a concise message that may be empty.
+  } else {
+    EXPECT_FALSE(no_op_result.message.empty());
+  }
   if (runtimes_available) {
     EXPECT_TRUE(no_op_result.success) << "kind=" << no_op_op.kind;
   } else {

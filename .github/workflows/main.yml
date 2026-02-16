@@ -49,7 +49,7 @@ jobs:
       - name: Verify qutip import path
         run: python3 scripts/check_qutip_import.py
       - name: Run qutip worker smoke checks
-        run: python3 scripts/qutip_worker_smoke.py
+        run: python3 scripts/qutip_worker_smoke.py --seed 7
       - name: doctest for simulation test utils
         run:  python3 -m doctest simulation_tests/utils.py -v
       - name: make eigen

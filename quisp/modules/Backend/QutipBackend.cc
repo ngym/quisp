@@ -341,6 +341,9 @@ nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
       {"qutip_worker_timeout_ms", 1000},
       {"qutip_worker_script", "scripts/qutip_worker.py"},
       {"qutip_strict_simulated", false},
+      {"qutip_node_profile", "standard_light"},
+      {"qutip_link_profile", "standard_light"},
+      {"qutip_profile_overrides", ""},
   };
 
   if (module.hasPar("qutip_python_executable")) {
@@ -379,6 +382,15 @@ nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
   if (module.hasPar("qutip_strict_simulated")) {
     params["qutip_strict_simulated"] = module.par("qutip_strict_simulated").boolValue();
   }
+  if (module.hasPar("qutip_node_profile")) {
+    params["qutip_node_profile"] = module.par("qutip_node_profile").stdstringValue();
+  }
+  if (module.hasPar("qutip_link_profile")) {
+    params["qutip_link_profile"] = module.par("qutip_link_profile").stdstringValue();
+  }
+  if (module.hasPar("qutip_profile_overrides")) {
+    params["qutip_profile_overrides"] = module.par("qutip_profile_overrides").stdstringValue();
+  }
 
   return params;
 }
@@ -395,7 +407,8 @@ omnetpp::cModule* getBackendModuleFromContext() {
     }
     if (module->hasPar("qutip_backend_class") || module->hasPar("qutip_python_executable") || module->hasPar("qutip_max_register_qubits") ||
         module->hasPar("qutip_max_hilbert_dim") || module->hasPar("qutip_solver") || module->hasPar("qutip_truncation") || module->hasPar("qutip_worker_timeout_ms") ||
-        module->hasPar("qutip_worker_script") || module->hasPar("qutip_strict_simulated")) {
+        module->hasPar("qutip_worker_script") || module->hasPar("qutip_strict_simulated") || module->hasPar("qutip_node_profile") ||
+        module->hasPar("qutip_link_profile") || module->hasPar("qutip_profile_overrides")) {
       return module;
     }
   }
@@ -452,7 +465,11 @@ nlohmann::json QutipBackend::collectBackendParameters() const {
       {"qutip_solver", "mesolve"},
       {"qutip_truncation", 5.0},
       {"qutip_worker_timeout_ms", 1000},
+      {"qutip_worker_script", "scripts/qutip_worker.py"},
       {"qutip_strict_simulated", false},
+      {"qutip_node_profile", "standard_light"},
+      {"qutip_link_profile", "standard_light"},
+      {"qutip_profile_overrides", ""},
   };
 
   auto* backend_module = getBackendModuleFromContext();

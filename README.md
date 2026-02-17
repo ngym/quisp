@@ -219,7 +219,65 @@ Optional `qutip` tuning parameters are available on `Backend`:
 *.backend.qutip_truncation = 5
 *.backend.qutip_worker_timeout_ms = 1000
 *.backend.qutip_strict_simulated = false
+*.backend.qutip_node_profile = "standard_light"
+*.backend.qutip_link_profile = "standard_light"
+*.backend.qutip_profile_overrides = ""
 ```
+
+`qutip_node_profile` / `qutip_link_profile` enable node/linkごとに異なる準位数を使う切替えです。
+
+- `standard_light`: 2準位ノード/2準位リンク（既定）
+- `standard_qutrit`: ノード3準位、リンク4準位
+- `high_fidelity`: 高精度運用向け（ノード5準位、リンク6準位）
+- `custom`: `qutip_profile_overrides` で `node_dim`, `link_mode_dim`, `leakage_enabled`, `truncation` をJSONで指定
+
+例:
+
+```ini
+*.backend.qutip_node_profile = "standard_light"
+*.backend.qutip_link_profile = "standard_qutrit"
+*.backend.qutip_profile_overrides = "{\"node_dim\":4,\"link_mode_dim\":6,\"leakage_enabled\":true}"
+```
+
+`standard_light` は既定互換 (`2`準位) を保持し、`custom` では
+`qutip_profile_overrides` のJSONが不正な場合のみ `error_category="invalid_profile"` を返して
+既定値にフォールバックします。
+
+分類の目安:
+
+- ノード側: `unitary`, `measurement`, `noise`, `reset`, `hamiltonian`, `lindblad`,
+  `phase_shift`, `decoherence`, `dephasing`, `kerr`, `cross_kerr` など
+- リンク側: `hom_interference`, `heralded_entanglement`, `dispersion`, `multiphoton`,
+  `squeezing`, `loss`, `attenuation`, `mode_coupling`, `loss_mode`, `fock_loss`,
+  `photon_number_cutoff`, `two_mode_squeezing` など
+
+### プロファイル別の推奨INI例
+
+A寄り（既定2準位）:
+
+```ini
+*.backend.qutip_node_profile = "standard_light"
+*.backend.qutip_link_profile = "standard_light"
+*.backend.qutip_profile_overrides = "{}"
+```
+
+B寄り（ノード・リンクを分離）:
+
+```ini
+*.backend.qutip_node_profile = "standard_light"
+*.backend.qutip_link_profile = "standard_qutrit"
+```
+
+高忠実度寄り（必要時のみ）:
+
+```ini
+*.backend.qutip_node_profile = "custom"
+*.backend.qutip_link_profile = "custom"
+*.backend.qutip_profile_overrides = '{"node_dim":5, "link_mode_dim":6, "leakage_enabled":true, "truncation":12}'
+```
+
+`custom`では、`qutip_profile_overrides` の `truncation` は内部のカットオフ値として参照されます。
+必要に応じて `link_mode_dim` を 4〜6、`node_dim` を 3〜5 の範囲で切り替えるのが実用的です。
 
 The default remains error-basis mode (`physical_backend_type = "error_basis"`) for
 large-scale compatibility.
@@ -250,11 +308,11 @@ Examples currently marked `implemented` include `kerr`, `cross_kerr`,
 `thermal_relaxation`, `bitflip`, `phaseflip`, and `depolarizing`.
 Additional `implemented` kinds now include:
 top-level `unitary` gates (`X`,`Y`,`Z`,`H`,`S`,`T`,`I`,`RX`,`RY`,`RZ`,`SQRT_X`,`SQRTX`,`CX`,`CNOT`)
-with qutip fallback when qutip package is unavailable,
+when the required `qutip` modules are available.
 `phase_shift`, `phase_modulation`, `self_phase_modulation`,
 `cross_phase_modulation`, `nonlinear`, `decoherence`, `dephasing`,
 `detection`, `loss`, `attenuation`, `polarization_rotation`, and
-`polarization_decoherence`.
+`polarization_decoherence`, `delay`, `timing_jitter`, `reset`, and `hom_interference`.
 
 Unhandled/unknown kinds fail fast with an explicit category (for example `[category=unsupported_kind]`).
 

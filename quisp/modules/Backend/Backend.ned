@@ -17,6 +17,9 @@ simple Backend
         double qutip_truncation = default(5);
         int qutip_worker_timeout_ms = default(1000);
         bool qutip_strict_simulated = default(false);
+        string qutip_node_profile = default("standard_light");
+        string qutip_link_profile = default("standard_light");
+        string qutip_profile_overrides = default("");
 
         // Default characteristics of qubits in the hardware
         double memory_error_rate = default(0);

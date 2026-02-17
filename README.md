@@ -230,6 +230,8 @@ Optional `qutip` tuning parameters are available on `Backend`:
 - `standard_qutrit`: ノード3準位、リンク4準位
 - `high_fidelity`: 高精度運用向け（ノード5準位、リンク6準位）
 - `custom`: `qutip_profile_overrides` で `node_dim`, `link_mode_dim`, `leakage_enabled`, `truncation` をJSONで指定
+- `custom` では `node_dim` / `link_mode_dim` / `truncation` の最小値は `2` です。未対応値は `2` へフォールバックし、`error_category="invalid_profile"` を返します。
+- `leakage_enabled` は `true`/`false` の他、`1`/`0`, `"on"`/`"off"`, `"yes"`/`"no"` も受理します。
 
 例:
 

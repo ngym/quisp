@@ -88,6 +88,13 @@ def _measurement_probabilities(response: Dict[str, Any], plus: float, minus: flo
     assert float(meta["measurement_minus_probability"]) == minus
 
 
+def _assert_profile_meta_shape(response: Dict[str, Any], expected_keys: set[str]) -> None:
+    meta = response.get("meta")
+    assert isinstance(meta, dict)
+    missing = sorted(expected_keys - set(meta.keys()))
+    assert missing == []
+
+
 @pytest.mark.parametrize(
     "name,operation,checks",
     [
@@ -311,6 +318,20 @@ def _measurement_probabilities(response: Dict[str, Any], plus: float, minus: flo
                 ("meta", "dim", 2),
             ],
         ),
+        (
+            "standard_qutrit_node_measurement",
+            {
+                "kind": "measurement",
+                "basis": "Z",
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_node_profile": "standard_qutrit"},
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "node"),
+                ("meta", "dim", 3),
+            ],
+        ),
     ],
 )
 def test_profile_matrix(name: str, operation: Dict[str, Any], checks: Iterable[tuple[str, str, Any]]) -> None:
@@ -337,6 +358,246 @@ def test_profile_matrix(name: str, operation: Dict[str, Any], checks: Iterable[t
 
 
 @pytest.mark.parametrize(
+    "name,operation,checks",
+    [
+        (
+            "link_profile_defaulting_on_herald",
+            {
+                "kind": "heralded_entanglement",
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {
+                    "qutip_node_profile": "standard_qutrit",
+                    "qutip_link_profile": "standard_qutrit",
+                },
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "link_dispersion",
+            {
+                "kind": "dispersion",
+                "duration": 0.1,
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {
+                    "qutip_node_profile": "high_fidelity",
+                    "qutip_link_profile": "standard_qutrit",
+                },
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "link_multiphoton",
+            {
+                "kind": "multiphoton",
+                "duration": 0.05,
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {
+                    "qutip_node_profile": "standard_qutrit",
+                    "qutip_link_profile": "standard_qutrit",
+                },
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "link_squeezing",
+            {
+                "kind": "squeezing",
+                "duration": 0.05,
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_link_profile": "standard_qutrit"},
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "link_mode_coupling",
+            {
+                "kind": "mode_coupling",
+                "duration": 0.05,
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_link_profile": "standard_qutrit"},
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "link_loss_mode",
+            {
+                "kind": "loss_mode",
+                "duration": 0.05,
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_link_profile": "standard_qutrit"},
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "link_fock_loss",
+            {
+                "kind": "fock_loss",
+                "duration": 0.05,
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_link_profile": "standard_qutrit"},
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "link_photon_number_cutoff",
+            {
+                "kind": "photon_number_cutoff",
+                "duration": 0.05,
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_link_profile": "standard_qutrit"},
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "link_two_mode_squeezing",
+            {
+                "kind": "two_mode_squeezing",
+                "duration": 0.05,
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_link_profile": "standard_qutrit"},
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 4),
+            ],
+        ),
+        (
+            "node_noise_uses_node_profile",
+            {
+                "kind": "noise",
+                "payload": {"kind": "noise", "noise_kind": "dephasing", "p": 0.01},
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {
+                    "qutip_node_profile": "standard_qutrit",
+                    "qutip_link_profile": "standard_light",
+                },
+            },
+            [
+                ("meta", "profile", "standard_qutrit"),
+                ("meta", "mode", "node"),
+                ("meta", "dim", 3),
+            ],
+        ),
+    ],
+)
+def test_profile_type_routing(name: str, operation: Dict[str, Any], checks: Iterable[tuple[str, str, Any]]) -> None:
+    _qutip_available()
+    response = _call_worker(operation, seed=12345)
+    _assert_response(response, success=True)
+    for level, key, expected in checks:
+        if level == "meta":
+            _assert_meta(response, key, expected)
+    _assert_profile_meta_shape(response, {"profile", "mode", "dim", "node_dim", "link_dim", "truncation", "requested_profile", "errors", "leakage_enabled"})
+
+
+@pytest.mark.parametrize(
+    "name,overrides,kind,expected_dim,error_code_expected",
+    [
+        ("node_dim_string", {"node_dim": "4"}, "unitary", 4, None),
+        ("node_dim_none", {"node_dim": None}, "unitary", 2, None),
+        ("node_dim_decimal", {"node_dim": 3.9}, "unitary", 3, None),
+        ("node_dim_negative", {"node_dim": -1}, "unitary", 2, "invalid_profile"),
+        ("node_dim_decimal_string", "{\"node_dim\": \"3.7\"}", "unitary", 2, "invalid_profile"),
+        ("link_mode_dim_string", {"link_mode_dim": "5"}, "heralded_entanglement", 5, None),
+        ("link_dim_none", {"link_mode_dim": None}, "heralded_entanglement", 2, None),
+        ("truncation_zero", {"truncation": 0}, "unitary", 2, "invalid_profile"),
+        ("truncation_one", {"truncation": 1}, "unitary", 2, "invalid_profile"),
+    ],
+)
+def test_custom_override_boundary_values(
+    name: str,
+    overrides: Any,
+    kind: str,
+    expected_dim: int,
+    error_code_expected: str | None,
+) -> None:
+    _qutip_available()
+    target = [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]
+    operation = {"kind": kind, "targets": list(target)}
+    if kind == "unitary":
+        operation["payload"] = {"kind": "unitary", "gate": "X"}
+
+    response = _call_worker({
+        **operation,
+        "backend_config": {
+            "qutip_node_profile": "custom",
+            "qutip_link_profile": "custom",
+            "qutip_profile_overrides": overrides,
+        },
+    }, seed=12345)
+    _assert_response(response, success=True)
+    _assert_meta(response, "profile", "custom")
+    _assert_meta(response, "dim", expected_dim)
+    if error_code_expected is None:
+        assert response.get("error_category") is None
+    else:
+        assert response.get("error_category") == "invalid_profile"
+
+
+@pytest.mark.parametrize(
+    "name,leakage_value,expected",
+    [
+        ("bool_true", True, True),
+        ("bool_false", False, False),
+        ("on", "on", True),
+        ("off", "off", False),
+        ("upper_false", "FALSE", False),
+        ("int_one", 1, True),
+        ("int_zero", 0, False),
+    ],
+)
+def test_custom_leakage_bool_aliases(name: str, leakage_value: Any, expected: bool) -> None:
+    _qutip_available()
+    response = _call_worker(
+        {
+            "kind": "unitary",
+            "payload": {"kind": "unitary", "gate": "X"},
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+            "backend_config": {
+                "qutip_node_profile": "custom",
+                "qutip_profile_overrides": {"leakage_enabled": leakage_value},
+            },
+        },
+        seed=12345,
+    )
+    _assert_response(response, success=True)
+    _assert_meta(response, "leakage_enabled", expected)
+
+
+@pytest.mark.parametrize(
     "operation,plus,minus",
     [
         (
@@ -352,12 +613,35 @@ def test_profile_matrix(name: str, operation: Dict[str, Any], checks: Iterable[t
         (
             {
                 "kind": "measurement",
-                "basis": "BELL",
+                "basis": "Z",
                 "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-                "backend_config": {"qutip_node_profile": "custom", "qutip_profile_overrides": {"node_dim": 3}},
+                "backend_config": {"qutip_node_profile": "standard_qutrit"},
             },
+            1.0,
+            0.0,
+        ),
+        (
+            {
+            "kind": "measurement",
+            "basis": "BELL",
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+            "backend_config": {"qutip_node_profile": "custom", "qutip_profile_overrides": {"node_dim": 3}},
+        },
             0.5,
             0.5,
+        ),
+        (
+            {
+                "kind": "measurement",
+                "basis": "Z",
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {
+                    "qutip_node_profile": "custom",
+                    "qutip_profile_overrides": "{\"node_dim\": 5, \"link_mode_dim\": 6, \"leakage_enabled\": false, \"truncation\": 9}",
+                },
+            },
+            1.0,
+            0.0,
         ),
     ],
 )
@@ -404,6 +688,23 @@ def test_profile_invalid_error_paths(operation: Dict[str, Any], expected_error_c
     _assert_response(response, success=True)
     assert response.get("error_category") == expected_error_category
     _assert_meta(response, "profile", "custom")
+
+
+def test_default_profile_preserves_baseline_compatibility() -> None:
+    _qutip_available()
+    response = _call_worker(
+        {
+            "kind": "unitary",
+            "payload": {"kind": "unitary", "gate": "X"},
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+        },
+        seed=12345,
+    )
+    _assert_response(response, success=True)
+    _assert_meta(response, "profile", "standard_light")
+    _assert_meta(response, "dim", 2)
+    assert response.get("qutip_status") == "implemented"
+    assert 0.0 <= response.get("fidelity_estimate", 1.0) <= 1.0
 
 
 if __name__ == "__main__":

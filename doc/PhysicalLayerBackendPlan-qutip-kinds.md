@@ -103,6 +103,13 @@ Legend:
 ```
 
 `custom`では、`node_dim` と `link_mode_dim` が実行時に `dim`/`link_mode_dim` に反映される。
+`custom` の受理値は次の通り:
+- `node_dim`, `link_mode_dim`, `truncation`: 最小値2、未達時は `2` にフォールバックして `invalid_profile` を付与
+- `leakage_enabled`: `true`/`false`/`1`/`0`/`"on"`/`"off"`/`"yes"`/`"no"` を受理
+
+ノード/リンクプロファイル境界:
+- `qutip_link_profile` は干渉/雑音/チャネル系の操作 (例: `hom_interference`, `heralded_entanglement`, `dispersion`, `multiphoton`, `squeezing`, `loss_mode`, ...) に適用
+- `qutip_node_profile` は局所操作 (例: `unitary`, `measurement`, `noise`, `reset`, `hamiltonian` など) に適用
 
 ## Known intentional unsupported kinds
 

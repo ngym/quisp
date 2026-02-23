@@ -254,7 +254,6 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
       "timing_jitter",
       "time-jitter",
       "timing-jitter",
-      "heralded_entanglement",
       "dispersion",
       "multiphoton",
       "squeezing",
@@ -264,7 +263,28 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
   for (const auto& kind : advanced_kinds) {
     PhysicalOperation op;
     op.kind = kind;
-    op.targets = {QubitHandle{1, 0, 0, 7}};
+    if (
+        kind == "cross_kerr" ||
+        kind == "beam_splitter" ||
+        kind == "beamsplitter" ||
+        kind == "beam splitter" ||
+        kind == "beam-splitter" ||
+        kind == "cross_phase_modulation" ||
+        kind == "cross_phase_modulator" ||
+        kind == "mode_coupling" ||
+        kind == "hom" ||
+        kind == "hom_interference" ||
+        kind == "hominterference" ||
+        kind == "bs_interference" ||
+        kind == "bsinterference" ||
+        kind == "two_photon_interference" ||
+        kind == "twophoton_interference" ||
+        kind == "two_mode_squeezing"
+    ) {
+      op.targets = {QubitHandle{1, 0, 0, 7}, QubitHandle{1, 0, 0, 8}};
+    } else {
+      op.targets = {QubitHandle{1, 0, 0, 7}};
+    }
     if (kind == "phase_shift" || kind == "phase-shift") {
       op.params = {0.13};
     }
@@ -292,9 +312,6 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
     }
     if (kind == "hamiltonian" || kind == "lindblad") {
       op.payload = {{"expr", "sx"}};
-    }
-    if (kind == "heralded_entanglement") {
-      op.params = {0.9};
     }
 
     const auto result = qutip_backend.applyOperation(defaultContext(), op);

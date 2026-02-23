@@ -59,6 +59,22 @@ def _call_worker(operation: Dict[str, Any], seed: int = 12345) -> Dict[str, Any]
     return qutip_worker.run_operation(request)
 
 
+def _call_cluster_worker(
+    operation: Dict[str, Any],
+    cluster_id: int,
+    seed: int = 12345,
+) -> Dict[str, Any]:
+    operation = dict(operation)
+    operation["cluster_id"] = cluster_id
+    return _call_worker(operation, seed=seed)
+
+
+def _clear_qutip_cluster_state() -> None:
+    qutip_worker = _qutip_worker_module()
+    if hasattr(qutip_worker, "_QUTIP_CLUSTER_STATES"):
+        qutip_worker._QUTIP_CLUSTER_STATES.clear()
+
+
 def _assert_response(response: Dict[str, Any], success: bool = True) -> None:
     assert response.get("success") is success
     assert response.get("message", "") != ""
@@ -224,7 +240,55 @@ def _assert_profile_meta_shape(response: Dict[str, Any], expected_keys: set[str]
             ],
         ),
         (
-            "invalid_name_fallback_node",
+            "invalid_node_profile_empty",
+            {
+                "kind": "unitary",
+                "payload": {"kind": "unitary", "gate": "X"},
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_node_profile": ""},
+            },
+            [
+                ("meta", "profile", ""),
+                ("meta", "requested_profile", ""),
+                ("meta", "mode", "node"),
+                ("meta", "dim", 2),
+            ],
+        ),
+        (
+            "invalid_link_profile_empty",
+            {
+                "kind": "hom_interference",
+                "duration": 0.2,
+                "targets": [
+                    {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
+                    {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
+                ],
+                "backend_config": {"qutip_link_profile": ""},
+            },
+            [
+                ("meta", "profile", ""),
+                ("meta", "requested_profile", ""),
+                ("meta", "mode", "link"),
+                ("meta", "dim", 2),
+            ],
+        ),
+        (
+            "invalid_node_profile_none",
+            {
+                "kind": "unitary",
+                "payload": {"kind": "unitary", "gate": "X"},
+                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "backend_config": {"qutip_node_profile": None},
+            },
+            [
+                ("meta", "profile", "none"),
+                ("meta", "requested_profile", "none"),
+                ("meta", "mode", "node"),
+                ("meta", "dim", 2),
+            ],
+        ),
+        (
+            "invalid_profile_node_name",
             {
                 "kind": "unitary",
                 "payload": {"kind": "unitary", "gate": "X"},
@@ -232,14 +296,14 @@ def _assert_profile_meta_shape(response: Dict[str, Any], expected_keys: set[str]
                 "backend_config": {"qutip_node_profile": "does_not_exist"},
             },
             [
-                ("meta", "profile", "standard_light"),
-                ("meta", "mode", "node"),
+                ("meta", "profile", "does_not_exist"),
                 ("meta", "requested_profile", "does_not_exist"),
+                ("meta", "mode", "node"),
                 ("meta", "dim", 2),
             ],
         ),
         (
-            "invalid_name_fallback_link",
+            "invalid_profile_link_name",
             {
                 "kind": "hom_interference",
                 "duration": 0.2,
@@ -250,9 +314,9 @@ def _assert_profile_meta_shape(response: Dict[str, Any], expected_keys: set[str]
                 "backend_config": {"qutip_link_profile": "does_not_exist"},
             },
             [
-                ("meta", "profile", "standard_light"),
-                ("meta", "mode", "link"),
+                ("meta", "profile", "does_not_exist"),
                 ("meta", "requested_profile", "does_not_exist"),
+                ("meta", "mode", "link"),
                 ("meta", "dim", 2),
             ],
         ),
@@ -336,24 +400,29 @@ def _assert_profile_meta_shape(response: Dict[str, Any], expected_keys: set[str]
 )
 def test_profile_matrix(name: str, operation: Dict[str, Any], checks: Iterable[tuple[str, str, Any]]) -> None:
     _qutip_available()
+    _clear_qutip_cluster_state()
     response = _call_worker(operation, seed=12345)
-    _assert_response(response, success=True)
+    should_fail = name in {
+        "invalid_node_profile_empty",
+        "invalid_link_profile_empty",
+        "invalid_node_profile_none",
+        "invalid_profile_node_name",
+        "invalid_profile_link_name",
+        "invalid_override_bool",
+        "invalid_override_json_type",
+    }
+    _assert_response(response, success=not should_fail)
     for level, key, expected in checks:
         if level == "meta":
             _assert_meta(response, key, expected)
 
-    if name == "invalid_name_fallback_node":
-        assert response.get("error_category") == "invalid_profile"
-
-    if name == "invalid_name_fallback_link":
+    if should_fail:
         assert response.get("error_category") == "invalid_profile"
 
     if name == "invalid_override_json_type":
-        assert response.get("error_category") == "invalid_profile"
         _assert_meta_contains(response, "errors", "qutip_profile_overrides must be a JSON string/object")
 
     if name == "invalid_override_bool":
-        assert response.get("error_category") == "invalid_profile"
         _assert_meta_contains(response, "errors", "invalid boolean value")
 
 
@@ -361,13 +430,18 @@ def test_profile_matrix(name: str, operation: Dict[str, Any], checks: Iterable[t
     "name,operation,checks",
     [
         (
-            "link_profile_defaulting_on_herald",
+            "link_profile_defaulting_on_detection",
             {
-                "kind": "heralded_entanglement",
-                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "kind": "detection",
+                "targets": [
+                    {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
+                    {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
+                ],
                 "backend_config": {
                     "qutip_node_profile": "standard_qutrit",
                     "qutip_link_profile": "standard_qutrit",
+                    "qutip_worker_timeout_ms": 5000,
+                    "qutip_backend_class": "qutip_density_matrix",
                 },
             },
             [
@@ -427,9 +501,12 @@ def test_profile_matrix(name: str, operation: Dict[str, Any], checks: Iterable[t
         (
             "link_mode_coupling",
             {
-                "kind": "mode_coupling",
+                "kind": "hom_interference",
                 "duration": 0.05,
-                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "targets": [
+                    {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
+                    {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
+                ],
                 "backend_config": {"qutip_link_profile": "standard_qutrit"},
             },
             [
@@ -485,7 +562,10 @@ def test_profile_matrix(name: str, operation: Dict[str, Any], checks: Iterable[t
             {
                 "kind": "two_mode_squeezing",
                 "duration": 0.05,
-                "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+                "targets": [
+                    {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
+                    {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
+                ],
                 "backend_config": {"qutip_link_profile": "standard_qutrit"},
             },
             [
@@ -515,6 +595,7 @@ def test_profile_matrix(name: str, operation: Dict[str, Any], checks: Iterable[t
 )
 def test_profile_type_routing(name: str, operation: Dict[str, Any], checks: Iterable[tuple[str, str, Any]]) -> None:
     _qutip_available()
+    _clear_qutip_cluster_state()
     response = _call_worker(operation, seed=12345)
     _assert_response(response, success=True)
     for level, key, expected in checks:
@@ -528,11 +609,11 @@ def test_profile_type_routing(name: str, operation: Dict[str, Any], checks: Iter
     [
         ("node_dim_string", {"node_dim": "4"}, "unitary", 4, None),
         ("node_dim_none", {"node_dim": None}, "unitary", 2, None),
-        ("node_dim_decimal", {"node_dim": 3.9}, "unitary", 3, None),
+        ("node_dim_decimal", {"node_dim": 3.9}, "unitary", 2, "invalid_profile"),
         ("node_dim_negative", {"node_dim": -1}, "unitary", 2, "invalid_profile"),
         ("node_dim_decimal_string", "{\"node_dim\": \"3.7\"}", "unitary", 2, "invalid_profile"),
-        ("link_mode_dim_string", {"link_mode_dim": "5"}, "heralded_entanglement", 5, None),
-        ("link_dim_none", {"link_mode_dim": None}, "heralded_entanglement", 2, None),
+        ("link_mode_dim_string", {"link_mode_dim": "5"}, "detection", 5, None),
+        ("link_dim_none", {"link_mode_dim": None}, "detection", 2, None),
         ("truncation_zero", {"truncation": 0}, "unitary", 2, "invalid_profile"),
         ("truncation_one", {"truncation": 1}, "unitary", 2, "invalid_profile"),
     ],
@@ -545,6 +626,7 @@ def test_custom_override_boundary_values(
     error_code_expected: str | None,
 ) -> None:
     _qutip_available()
+    _clear_qutip_cluster_state()
     target = [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]
     operation = {"kind": kind, "targets": list(target)}
     if kind == "unitary":
@@ -558,7 +640,7 @@ def test_custom_override_boundary_values(
             "qutip_profile_overrides": overrides,
         },
     }, seed=12345)
-    _assert_response(response, success=True)
+    _assert_response(response, success=(error_code_expected is None))
     _assert_meta(response, "profile", "custom")
     _assert_meta(response, "dim", expected_dim)
     if error_code_expected is None:
@@ -647,10 +729,19 @@ def test_custom_leakage_bool_aliases(name: str, leakage_value: Any, expected: bo
 )
 def test_measurement_profile_probabilities(operation: Dict[str, Any], plus: float, minus: float) -> None:
     _qutip_available()
+    _clear_qutip_cluster_state()
     response = _call_worker(operation, seed=12345)
     _assert_response(response, success=True)
+    assert response.get("operation_model") == "sampled_kraus"
     _measurement_probabilities(response, plus, minus)
     assert isinstance(response.get("measured_plus"), bool)
+    measured_plus = bool(response.get("measured_plus"))
+    branch_probability = response.get("branch_probability")
+    assert branch_probability is not None
+    if measured_plus:
+        assert float(branch_probability) == pytest.approx(plus)
+    else:
+        assert float(branch_probability) == pytest.approx(minus)
 
 
 @pytest.mark.parametrize(
@@ -685,9 +776,356 @@ def test_measurement_profile_probabilities(operation: Dict[str, Any], plus: floa
 def test_profile_invalid_error_paths(operation: Dict[str, Any], expected_error_category: str) -> None:
     _qutip_available()
     response = _call_worker(operation, seed=12345)
-    _assert_response(response, success=True)
+    _assert_response(response, success=False)
     assert response.get("error_category") == expected_error_category
     _assert_meta(response, "profile", "custom")
+
+
+_ADVANCED_SUCCESS_CASES: list[tuple[str, Dict[str, Any]]] = [
+    ("kerr", {"kind": "kerr", "params": [0.3], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "payload": {"strength": 0.3}}),
+    ("cross_kerr", {"kind": "cross_kerr", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 2}] }),
+    ("beam_splitter", {"kind": "beam_splitter", "params": [0.15], "duration": 0.2, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 3}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 4}] }),
+    ("loss", {"kind": "loss", "params": [0.05], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 5}]}),
+    ("decoherence", {"kind": "decoherence", "params": [0.04], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 6}]}),
+    ("phase_shift", {"kind": "phase_shift", "params": [0.6], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 7}]}),
+    ("phase_modulation", {"kind": "phase_modulation", "params": [0.6], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 8}]}),
+    ("self_phase_modulation", {"kind": "self_phase_modulation", "params": [0.6], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 9}]}),
+    ("cross_phase_modulation", {"kind": "cross_phase_modulation", "params": [0.1], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 10}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 11}] }),
+    ("nonlinear", {"kind": "nonlinear", "params": [0.1], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 12}]}),
+    ("polarization_rotation", {"kind": "polarization_rotation", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 13}]}),
+    ("mode_coupling", {"kind": "mode_coupling", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 14}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 15}] }),
+    ("two_mode_squeezing", {"kind": "two_mode_squeezing", "params": [0.11], "duration": 0.1, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 16}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 17}]}),
+    ("detection", {"kind": "detection", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 18}], "payload": {"dark_count": 0.02}}),
+    (
+        "detection",
+        {
+            "kind": "detection",
+            "targets": [
+                {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 19},
+                {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 20},
+            ],
+            "payload": {"dark_count": 0.02},
+        },
+    ),
+    ("dispersion", {"kind": "dispersion", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 20}], "payload": {"strength": 0.02}}),
+    ("squeezing", {"kind": "squeezing", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 21}], "payload": {"strength": 0.04}}),
+    ("fock_loss", {"kind": "fock_loss", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 22}], "params": [0.03]}),
+    ("photon_number_cutoff", {"kind": "photon_number_cutoff", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 23}], "params": [4]}),
+    ("loss_mode", {"kind": "loss_mode", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 24}], "payload": {"coupling": 0.02}}),
+    ("multiphoton", {"kind": "multiphoton", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 25}], "payload": {"strength": 0.02}}),
+    ("source_multiphoton", {"kind": "source_multiphoton", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 26}], "payload": {"strength": 0.02}}),
+    ("hom_interference", {"kind": "hom_interference", "duration": 0.2, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 27}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 28}], "payload": {"visibility": 0.92}}),
+    ("photon_emission", {"kind": "photon_emission", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 30}], "payload": {"efficiency": 0.9}}),
+    ("photon_collect", {"kind": "photon_collect", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 31}], "payload": {"coupling": 0.8}}),
+    ("photon_propagation", {"kind": "photon_propagation", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 32}], "payload": {"attenuation": 0.1, "phase_dispersion": 0.02}}),
+    ("reset", {"kind": "reset", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 29}], "duration": 0.2}),
+    ("timing_jitter", {"kind": "timing_jitter", "duration": 0.3, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 30}], "params": [0.11]}),
+    ("jitter", {"kind": "jitter", "duration": 0.3, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 31}], "params": [0.11]}),
+    ("delay", {"kind": "delay", "duration": 0.4, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 32}], "params": [0.1], "payload": {"rate": 0.05}}),
+    ("hamiltonian", {"kind": "hamiltonian", "duration": 0.2, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 33}], "payload": {"expr": "sx"}}),
+    ("lindblad", {"kind": "lindblad", "duration": 0.2, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 34}], "payload": {"collapse": ["sx"]}}),
+    ("dephasing", {"kind": "dephasing", "params": [0.03], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 35}]}),
+    ("attenuation", {"kind": "attenuation", "params": [0.03], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 36}]}),
+    ("phaseflip", {"kind": "phaseflip", "params": [0.03], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 37}]}),
+    ("bitflip", {"kind": "bitflip", "params": [0.03], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 38}]}),
+    ("depolarizing", {"kind": "depolarizing", "params": [0.03], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 39}]}),
+    ("polarization_decoherence", {"kind": "polarization_decoherence", "params": [0.03], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 40}]}),
+    ("thermal_relaxation", {"kind": "thermal_relaxation", "params": [0.03], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 41}]}),
+]
+
+
+@pytest.mark.parametrize("kind,operation", _ADVANCED_SUCCESS_CASES)
+def test_supported_advanced_kinds_cluster_success(kind: str, operation: Dict[str, Any]) -> None:
+    del kind
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    response = _call_worker(operation, seed=555)
+    _assert_response(response, success=True)
+    qutip_worker = _qutip_worker_module()
+    expected_model = qutip_worker._operation_model_for_kind(qutip_worker._canonicalize_kind(operation["kind"]))
+    assert response.get("operation_model") == expected_model
+    assert response.get("error_category") is None
+
+
+def test_detection_success_probability_depends_on_cluster_state() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}
+    cluster_id = 9001
+
+    response_fail = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target0],
+            "backend_config": {
+                "qutip_link_profile": "standard_light",
+            },
+        },
+        cluster_id=cluster_id,
+        seed=777,
+    )
+    _assert_response(response_fail, success=True)
+    assert response_fail.get("operation_model") == "sampled_kraus"
+    assert response_fail.get("outcome") == "no_click"
+    fail_success_probability = float(response_fail.get("meta", {}).get("detection_success_probability", 0.0))
+    fail_failure_probability = float(response_fail.get("meta", {}).get("detection_failure_probability", 1.0))
+    assert fail_success_probability == pytest.approx(0.0)
+    assert fail_failure_probability == pytest.approx(1.0)
+    assert float(response_fail.get("branch_probability", -1.0)) == pytest.approx(1.0)
+    assert response_fail.get("measured_plus") is False
+
+    response_success = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target0],
+            "backend_config": {
+                "qutip_link_profile": "standard_light",
+            },
+            "payload": {"dark_count": 1.0},
+        },
+        cluster_id=cluster_id,
+        seed=778,
+    )
+    _assert_response(response_success, success=True)
+    assert response_success.get("operation_model") == "sampled_kraus"
+    assert response_success.get("outcome") == "click"
+    success_success_probability = float(response_success.get("meta", {}).get("detection_success_probability", 1.0))
+    success_failure_probability = float(response_success.get("meta", {}).get("detection_failure_probability", 0.0))
+    assert success_success_probability == pytest.approx(1.0)
+    assert success_failure_probability == pytest.approx(0.0)
+    assert float(response_success.get("branch_probability", -1.0)) == pytest.approx(1.0)
+    assert response_success.get("measured_plus") is True
+
+
+def test_photon_pipeline_representation_transitions() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+
+    cluster_id = 5001
+    base_target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}
+    second_target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}
+    profile = {"qutip_link_profile": "standard_qutrit"}
+
+    response_emission = _call_cluster_worker(
+        {
+            "kind": "photon_emission",
+            "targets": [base_target],
+            "payload": {"efficiency": 0.93},
+            "backend_config": profile,
+        },
+        cluster_id=cluster_id,
+        seed=501,
+    )
+    _assert_response(response_emission, success=True)
+    _assert_meta(response_emission, "cluster_id", cluster_id)
+    _assert_meta(response_emission, "cluster_mode", "link")
+    _assert_meta(response_emission, "cluster_representation", "emission")
+    _assert_meta(response_emission, "cluster_size", 1)
+
+    response_collect = _call_cluster_worker(
+        {
+            "kind": "photon_collect",
+            "targets": [base_target],
+            "payload": {"coupling": 0.75},
+            "backend_config": profile,
+        },
+        cluster_id=cluster_id,
+        seed=502,
+    )
+    _assert_response(response_collect, success=True)
+    _assert_meta(response_collect, "cluster_representation", "collect")
+    _assert_meta(response_collect, "cluster_size", 1)
+    transition_collect = response_collect.get("meta", {}).get("cluster_representation_transition", "")
+    assert transition_collect.startswith("link/emission->link/collect")
+
+    response_propagation = _call_cluster_worker(
+        {
+            "kind": "photon_propagation",
+            "targets": [base_target],
+            "payload": {"attenuation": 0.08, "phase_dispersion": 0.05},
+            "duration": 0.2,
+            "backend_config": profile,
+        },
+        cluster_id=cluster_id,
+        seed=503,
+    )
+    _assert_response(response_propagation, success=True)
+    _assert_meta(response_propagation, "cluster_representation", "propagation")
+    _assert_meta(response_propagation, "cluster_size", 1)
+    transition_propagation = response_propagation.get("meta", {}).get("cluster_representation_transition", "")
+    assert transition_propagation.startswith("link/collect->link/propagation")
+    _assert_meta(response_propagation, "propagation_attenuation", 0.08)
+    _assert_meta(response_propagation, "propagation_dispersion", 0.05)
+
+    response_hom = _call_cluster_worker(
+        {
+            "kind": "hom_interference",
+            "duration": 0.3,
+            "targets": [base_target, second_target],
+            "payload": {"visibility": 0.9},
+            "backend_config": profile,
+        },
+        cluster_id=cluster_id,
+        seed=504,
+    )
+    _assert_response(response_hom, success=True)
+    _assert_meta(response_hom, "cluster_representation", "hom_interference")
+    _assert_meta(response_hom, "cluster_id", cluster_id)
+    _assert_meta(response_hom, "cluster_size", 2)
+    transition_hom = response_hom.get("meta", {}).get("cluster_representation_transition", "")
+    assert transition_hom.startswith("link/propagation->link/hom_interference")
+
+
+_ADVANCED_SINGLE_TARGET_INVALID_CASES = [
+    ("cross_kerr", {"kind": "cross_kerr", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}] }),
+    ("beam_splitter", {"kind": "beam_splitter", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}] }),
+    ("two_mode_squeezing", {"kind": "two_mode_squeezing", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 2}] }),
+    ("mode_coupling", {"kind": "mode_coupling", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 3}] }),
+]
+
+
+@pytest.mark.parametrize("kind,operation", _ADVANCED_SINGLE_TARGET_INVALID_CASES)
+def test_two_target_advanced_kinds_reject_single_target(kind: str, operation: Dict[str, Any]) -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    response = _call_worker(operation, seed=556)
+    assert response.get("success") is False
+    assert response.get("error_category") == "invalid_payload"
+    message = str(response.get("message", "")).lower()
+    assert ("at least 2 target" in message) or ("exactly 2 target" in message)
+
+
+def test_cluster_state_isolated_profiles() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+
+    qutip_worker = _qutip_worker_module()
+    response_node = _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "payload": {"kind": "unitary", "gate": "X"},
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+            "backend_config": {"qutip_node_profile": "standard_qutrit"},
+        },
+        cluster_id=3001,
+        seed=100,
+    )
+    _assert_response(response_node, success=True)
+    _assert_meta(response_node, "cluster_id", 3001)
+    _assert_meta(response_node, "cluster_size", 1)
+    _assert_meta(response_node, "cluster_mode", "node")
+
+    response_node_2 = _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "payload": {"kind": "unitary", "gate": "Y"},
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}],
+            "backend_config": {"qutip_node_profile": "standard_qutrit"},
+        },
+        cluster_id=3002,
+        seed=100,
+    )
+    _assert_response(response_node_2, success=True)
+    _assert_meta(response_node_2, "cluster_id", 3002)
+    _assert_meta(response_node_2, "cluster_size", 1)
+    _assert_meta(response_node_2, "cluster_mode", "node")
+
+    assert (3001, "node") in qutip_worker._QUTIP_CLUSTER_STATES
+    assert (3002, "node") in qutip_worker._QUTIP_CLUSTER_STATES
+    assert len(qutip_worker._QUTIP_CLUSTER_STATES) >= 2
+
+
+def test_cluster_state_node_and_link_modes_separate() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+
+    qutip_worker = _qutip_worker_module()
+    cluster_id = 3003
+
+    response_node = _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "payload": {"kind": "unitary", "gate": "X"},
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+            "backend_config": {"qutip_node_profile": "standard_qutrit"},
+        },
+        cluster_id=cluster_id,
+        seed=200,
+    )
+    _assert_response(response_node, success=True)
+    _assert_meta(response_node, "cluster_mode", "node")
+    _assert_meta(response_node, "cluster_size", 1)
+
+    response_link = _call_cluster_worker(
+        {
+            "kind": "loss",
+            "targets": [
+                {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
+            ],
+            "payload": {"p": 0.05},
+            "backend_config": {"qutip_link_profile": "standard_qutrit"},
+        },
+        cluster_id=cluster_id,
+        seed=201,
+    )
+    _assert_response(response_link, success=True)
+    _assert_meta(response_link, "cluster_mode", "link")
+    _assert_meta(response_link, "cluster_size", 1)
+
+    assert (cluster_id, "node") in qutip_worker._QUTIP_CLUSTER_STATES
+    assert (cluster_id, "link") in qutip_worker._QUTIP_CLUSTER_STATES
+    assert len(qutip_worker._QUTIP_CLUSTER_STATES) >= 2
+
+
+def test_cluster_state_entangle_measurement_detach() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    qutip_worker = _qutip_worker_module()
+
+    response_entangle = _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "payload": {"kind": "unitary", "gate": "CNOT"},
+            "targets": [
+                {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
+                {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
+            ],
+            "backend_config": {"qutip_node_profile": "standard_qutrit"},
+        },
+        cluster_id=4001,
+        seed=101,
+    )
+    _assert_response(response_entangle, success=True)
+    _assert_meta(response_entangle, "cluster_id", 4001)
+    _assert_meta(response_entangle, "cluster_size", 2)
+
+    response_measure_first = _call_cluster_worker(
+        {
+            "kind": "measurement",
+            "basis": "Z",
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+            "backend_config": {"qutip_node_profile": "standard_qutrit"},
+        },
+        cluster_id=4001,
+        seed=102,
+    )
+    _assert_response(response_measure_first, success=True)
+    _assert_meta(response_measure_first, "cluster_id", 4001)
+    _assert_meta(response_measure_first, "cluster_size", 1)
+
+    response_measure_second = _call_cluster_worker(
+        {
+            "kind": "measurement",
+            "basis": "Z",
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}],
+            "backend_config": {"qutip_node_profile": "standard_qutrit"},
+        },
+        cluster_id=4001,
+        seed=103,
+    )
+    _assert_response(response_measure_second, success=True)
+    assert "cluster_size" not in response_measure_second.get("meta", {})
+    assert (4001, "node") not in qutip_worker._QUTIP_CLUSTER_STATES
 
 
 def test_default_profile_preserves_baseline_compatibility() -> None:
@@ -703,7 +1141,7 @@ def test_default_profile_preserves_baseline_compatibility() -> None:
     _assert_response(response, success=True)
     _assert_meta(response, "profile", "standard_light")
     _assert_meta(response, "dim", 2)
-    assert response.get("qutip_status") == "implemented"
+    assert response.get("operation_model") == "unitary"
     assert 0.0 <= response.get("fidelity_estimate", 1.0) <= 1.0
 
 

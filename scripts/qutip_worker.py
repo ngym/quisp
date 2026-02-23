@@ -2,8 +2,8 @@
 """Lightweight qutip command worker used by QuISP.
 
 The worker receives a JSON request and emits a JSON response.
-This worker is intentionally strict: if qutip/qutip_qip/qutip.qip cannot be
-imported, operations are rejected with an explicit import-related error.
+If qutip/qutip_qip/qutip.qip cannot be imported, operations are rejected
+with an explicit import-related error.
 """
 
 from __future__ import annotations
@@ -59,15 +59,522 @@ _QUTIP_IMPORT_CACHE_ERROR: Optional[str] = None
 _OPERATION_SEQUENCE = 0
 
 
+@dataclass
+class _ClusterState:
+  cluster_id: int
+  mode: str
+  representation: str
+  dim: int
+  qubits: list[tuple[int, int, int, int]]
+  density_matrix: Any
+
+
+_QUTIP_CLUSTER_STATES: dict[tuple[int, str], _ClusterState] = {}
+_QUTIP_CLUSTER_ID_SIGNATURES: dict[tuple[str, tuple[tuple[int, int, int, int], ...]], int] = {}
+_QUTIP_NEXT_CLUSTER_ID = 10_000
+
+
+_NODE_REPRESENTATION = "node"
+_LINK_REPRESENTATION = "link"
+_EMISSION_REPRESENTATION = "emission"
+_COLLECT_REPRESENTATION = "collect"
+_PROPAGATION_REPRESENTATION = "propagation"
+_HOM_REPRESENTATION = "hom_interference"
+
+
+def _canonical_representation(mode: str) -> str:
+  if mode == "link":
+    return _LINK_REPRESENTATION
+  return _NODE_REPRESENTATION
+
+
+def _advanced_representation(kind: str) -> str:
+  normalized = _canonicalize_kind(kind)
+  if normalized in {"photon_emission", "emission", "emit", "photon_emit", "photon_emit_event"}:
+    return _EMISSION_REPRESENTATION
+  if normalized in {"photon_collect", "collect", "fiber_collect", "collect_in_fiber"}:
+    return _COLLECT_REPRESENTATION
+  if normalized in {"photon_propagation", "propagation", "fiber_propagation", "propagate", "propagate_fiber"}:
+    return _PROPAGATION_REPRESENTATION
+  if normalized == "hom_interference":
+    return _HOM_REPRESENTATION
+  return _canonical_representation(normalized)
+
+
+def _cluster_id_from_signature(mode: str, qubits: list[tuple[int, int, int, int]]) -> int:
+  global _QUTIP_NEXT_CLUSTER_ID
+  signature = (mode, tuple(qubits))
+  cluster_id = _QUTIP_CLUSTER_ID_SIGNATURES.get(signature)
+  if cluster_id is None:
+    cluster_id = _QUTIP_NEXT_CLUSTER_ID
+    _QUTIP_NEXT_CLUSTER_ID += 1
+    _QUTIP_CLUSTER_ID_SIGNATURES[signature] = cluster_id
+  return cluster_id
+
+
+def _normalize_cluster_id(value: Any) -> Optional[int]:
+  if value is None:
+    return None
+  if isinstance(value, bool):
+    return None
+  try:
+    candidate = int(value)
+  except (TypeError, ValueError):
+    return None
+  if candidate < 0:
+    return None
+  return candidate
+
+
+def _coerce_qubit_key(qubit: Any) -> Optional[tuple[int, int, int, int]]:
+  if isinstance(qubit, dict):
+    try:
+      node_id = int(qubit.get("node_id"))
+      qnic_index = int(qubit.get("qnic_index"))
+      qnic_type = int(qubit.get("qnic_type"))
+      qubit_index = int(qubit.get("qubit_index"))
+    except (TypeError, ValueError):
+      return None
+    return (node_id, qnic_index, qnic_type, qubit_index)
+
+  if isinstance(qubit, (list, tuple)) and len(qubit) == 4:
+    try:
+      node_id = int(qubit[0])
+      qnic_index = int(qubit[1])
+      qnic_type = int(qubit[2])
+      qubit_index = int(qubit[3])
+    except (TypeError, ValueError):
+      return None
+    return (node_id, qnic_index, qnic_type, qubit_index)
+
+  return None
+
+
+def _operation_qubit_keys(operation: dict) -> list[tuple[int, int, int, int]]:
+  ordered: list[tuple[int, int, int, int]] = []
+  seen: set[tuple[int, int, int, int]] = set()
+
+  for key in ("targets", "controls"):
+    entries = operation.get(key, [])
+    if not isinstance(entries, list):
+      continue
+    for entry in entries:
+      qubit_key = _coerce_qubit_key(entry)
+      if qubit_key is None:
+        continue
+      if qubit_key in seen:
+        continue
+      seen.add(qubit_key)
+      ordered.append(qubit_key)
+  return ordered
+
+
+def _cluster_mode_from_profile(profile_meta: Optional[dict[str, Any]]) -> str:
+  if not isinstance(profile_meta, dict):
+    return "node"
+  mode = profile_meta.get("mode")
+  if mode == "link":
+    return "link"
+  return "node"
+
+
+def _cluster_key(operation: dict, profile_meta: Optional[dict[str, Any]]) -> Optional[tuple[int, str]]:
+  cluster_id = _normalize_cluster_id(operation.get("cluster_id"))
+  mode = _cluster_mode_from_profile(profile_meta)
+  if cluster_id is None:
+    required_qubits = _operation_qubit_keys(operation)
+    if not required_qubits:
+      return None
+    cluster_id = _cluster_id_from_signature(mode, required_qubits)
+  return (cluster_id, mode)
+
+
+def _cluster_keys_for_cluster_id(cluster_id: int) -> list[tuple[int, str]]:
+  return [key for key in _QUTIP_CLUSTER_STATES if key[0] == cluster_id]
+
+
+def _identity_map_from_dim(qutip: Any, source_dim: int, target_dim: int) -> Optional[Any]:
+  normalized_source = max(2, int(source_dim))
+  normalized_target = max(2, int(target_dim))
+  if normalized_source <= 0 or normalized_target <= 0:
+    return None
+  if normalized_source == normalized_target:
+    return qutip.qeye(normalized_source)
+
+  min_dim = min(normalized_source, normalized_target)
+  terms = []
+  for index in range(min_dim):
+    ket_target = qutip.basis(normalized_target, index)
+    bra_source = qutip.basis(normalized_source, index).dag()
+    terms.append(ket_target * bra_source)
+  if not terms:
+    return None
+  mapped = terms[0]
+  for term in terms[1:]:
+    mapped += term
+  return mapped
+
+
+def _convert_cluster_state_representation(
+    state: _ClusterState,
+    target_dim: int,
+    target_representation: str,
+    qutip: Any,
+) -> str:
+  target_dim_int = max(2, int(target_dim))
+  source_dim = max(2, int(state.dim))
+  if state.dim != target_dim_int or state.representation != target_representation:
+    if not state.qubits:
+      return "cluster state has no qubits"
+
+  if state.dim != target_dim_int:
+    mapping_op = _identity_map_from_dim(qutip, source_dim, target_dim_int)
+    if mapping_op is None:
+      return "cannot create representation map"
+    if len(state.qubits) == 1:
+      full_mapping = mapping_op
+    else:
+      full_mapping = qutip.tensor(*([mapping_op] * len(state.qubits)))
+    converted = full_mapping * state.density_matrix * full_mapping.dag()
+    norm = float(converted.tr())
+    if norm <= 0.0:
+      return "cluster conversion produced zero trace"
+    if abs(norm - 1.0) > 1e-12:
+      converted = converted / norm
+    state.density_matrix = converted
+    state.dim = target_dim_int
+
+  state.representation = target_representation
+  return ""
+
+
+def _ensure_cluster_state(
+    operation: dict,
+    dim: int,
+    profile_meta: Optional[dict[str, Any]],
+    qutip: Any,
+    *,
+    target_representation: Optional[str] = None,
+) -> tuple[Optional[_ClusterState], bool, str]:
+  key = _cluster_key(operation, profile_meta)
+  if key is None:
+    return None, False, ""
+
+  normalized_dim = max(2, int(dim))
+  cluster_id, mode = key
+  requested_representation = target_representation or _canonical_representation(mode)
+  state = _QUTIP_CLUSTER_STATES.get(key)
+  required_qubits = _operation_qubit_keys(operation)
+  if not required_qubits:
+    return None, False, ""
+
+  if state is None:
+    fallback_state = None
+    for candidate_key in _cluster_keys_for_cluster_id(cluster_id):
+      if candidate_key == key:
+        continue
+      if candidate_key[1] != mode:
+        continue
+      fallback_state = _QUTIP_CLUSTER_STATES.get(candidate_key)
+      if fallback_state is not None:
+        del _QUTIP_CLUSTER_STATES[candidate_key]
+        break
+
+    if fallback_state is not None:
+      convert_error = _convert_cluster_state_representation(
+          fallback_state,
+          target_dim=normalized_dim,
+          target_representation=requested_representation,
+          qutip=qutip,
+      )
+      if convert_error:
+        return fallback_state, False, convert_error
+      fallback_state.cluster_id = cluster_id
+      fallback_state.mode = mode
+      state = fallback_state
+      _QUTIP_CLUSTER_STATES[key] = state
+
+    else:
+      base = qutip.basis(normalized_dim, 0)
+      rho0 = base * base.dag()
+      if len(required_qubits) == 1:
+        rho = rho0
+      else:
+        rho = qutip.tensor(*([rho0] * len(required_qubits)))
+      state = _ClusterState(
+          cluster_id=cluster_id,
+          mode=mode,
+          representation=requested_representation,
+          dim=normalized_dim,
+          qubits=list(required_qubits),
+          density_matrix=rho,
+      )
+      _QUTIP_CLUSTER_STATES[key] = state
+      return state, True, ""
+
+  if state is None:
+    return None, False, ""
+
+  if state.mode != mode:
+    state.mode = mode
+
+  if state.dim != normalized_dim or state.representation != requested_representation:
+    convert_error = _convert_cluster_state_representation(
+        state,
+        target_dim=normalized_dim,
+        target_representation=requested_representation,
+        qutip=qutip,
+    )
+    if convert_error:
+      return state, True, convert_error
+
+  if state.dim != normalized_dim:
+    base = qutip.basis(normalized_dim, 0)
+    return state, True, f"cluster dimension mismatch (stored={state.dim}, requested={normalized_dim})"
+
+  base = qutip.basis(normalized_dim, 0) * qutip.basis(normalized_dim, 0).dag()
+  for qubit_key in required_qubits:
+    if qubit_key in state.qubits:
+      continue
+    state.qubits.append(qubit_key)
+    state.density_matrix = qutip.tensor(state.density_matrix, base)
+
+  return state, False, ""
+
+
+def _cluster_state_meta(state: Optional[_ClusterState], key: Optional[tuple[int, str]]) -> dict[str, Any]:
+  if state is None:
+    return {}
+  meta = {"cluster_id": state.cluster_id, "cluster_mode": state.mode, "cluster_size": len(state.qubits)}
+  meta["cluster_representation"] = state.representation
+  if key is not None:
+    meta["cluster_key"] = f"{key[0]}:{key[1]}"
+  return meta
+
+
+def _cluster_target_positions(state: _ClusterState, targets: list[tuple[int, int, int, int]]) -> Optional[list[int]]:
+  if state is None:
+    return None
+  positions: list[int] = []
+  for target in targets:
+    try:
+      positions.append(state.qubits.index(target))
+    except ValueError:
+      return None
+  return positions
+
+
+def _apply_local_operator_to_cluster(state: _ClusterState, local_operator: Any, target_positions: list[int], qutip: Any) -> tuple[bool, Optional[Any]]:
+  if state.density_matrix is None:
+    return False, None
+  if not target_positions:
+    return True, qutip.qeye(state.density_matrix.shape[0])
+
+  cluster_size = len(state.qubits)
+  if local_operator is None:
+    return False, None
+  if cluster_size <= 0:
+    return False, None
+  if any(position < 0 or position >= cluster_size for position in target_positions):
+    return False, None
+
+  if len(set(target_positions)) != len(target_positions):
+    return False, None
+
+  if cluster_size == len(set(target_positions)):
+    full_operator = local_operator
+  else:
+    ordered_indices = [int(position) for position in target_positions]
+    other_indices = [index for index in range(cluster_size) if index not in ordered_indices]
+    permutation = ordered_indices + other_indices
+    inverse_permutation = [0] * cluster_size
+    for new_index, old_index in enumerate(permutation):
+      inverse_permutation[old_index] = new_index
+
+    other_dim_count = max(0, cluster_size - len(target_positions))
+    if other_dim_count > 0:
+      lifted_operator = qutip.tensor(local_operator, *([qutip.qeye(state.dim)] * other_dim_count))
+    else:
+      lifted_operator = local_operator
+    full_operator = lifted_operator.permute(inverse_permutation)
+  
+  return True, full_operator
+
+  
+
+
+def _apply_unitary_to_cluster(state: _ClusterState, unitary: Any, targets: list[Any], qutip: Any) -> tuple[bool, Optional[Any]]:
+  if unitary is None or state is None:
+    return False, None
+  target_positions = _cluster_target_positions(state, [_coerce_qubit_key(target) for target in targets] if isinstance(targets, list) else [])
+  if target_positions is None:
+    return False, None
+
+  success, operator = _apply_local_operator_to_cluster(state, unitary, target_positions, qutip)
+  if not success or operator is None:
+    return False, None
+
+  evolved = operator * state.density_matrix * operator.dag()
+  return True, evolved
+
+
+def _apply_kraus_to_cluster(
+    state: _ClusterState,
+    ops: list[Any],
+    target_positions: list[int],
+    qutip: Any,
+) -> tuple[bool, Optional[Any]]:
+  if state is None or state.density_matrix is None:
+    return False, None
+  if not ops:
+    return True, state.density_matrix
+
+  embedded: list[Any] = []
+  for op in ops:
+    success, full_op = _apply_local_operator_to_cluster(state, op, target_positions, qutip)
+    if not success or full_op is None:
+      return False, None
+    embedded.append(full_op)
+
+  rho0 = state.density_matrix
+  rho1 = None
+  for op in embedded:
+    term = op * rho0 * op.dag()
+    rho1 = term if rho1 is None else rho1 + term
+  if rho1 is None:
+    rho1 = rho0
+  norm = float(rho1.tr())
+  if norm <= 0.0:
+    return False, None
+  if abs(norm - 1.0) > 1e-12:
+    rho1 = rho1 / norm
+  return True, rho1
+
+
+def _build_cluster_noise_ops(
+    qutip: Any,
+    noise_kind: str,
+    operation: dict,
+    duration: float,
+    dim: int,
+    leakage_enabled: bool,
+) -> tuple[list[Any], dict[str, Any], Optional[str]]:
+  payload = operation.get("payload", {})
+  params = operation.get("params", [])
+  params_f = _float_list(params)
+  p = _effective_probability(params_f[0] if params_f else payload.get("p", payload.get("rate", 0.0)))
+  effective_duration = duration if duration > 0.0 else 1.0
+  rate = _as_float(payload.get("rate"), _qutip_rate_from_probability(p, effective_duration))
+  if rate < 0.0:
+    rate = 0.0
+  metadata: dict[str, Any] = {"effective_probability": p, "rate": rate}
+
+  normalized_dim = max(2, int(dim))
+  sigma_x = _logical_pauli_in_dim(qutip, dim, "sx")
+  sigma_y = _logical_pauli_in_dim(qutip, dim, "sy")
+  sigma_z = _logical_pauli_in_dim(qutip, dim, "sz")
+  sigma_m = _logical_pauli_in_dim(qutip, dim, "sxm")
+  sigma_p = _logical_pauli_in_dim(qutip, dim, "sxp")
+  identity = qutip.qeye(normalized_dim)
+  survival_amp = math.sqrt(max(0.0, 1.0 - max(0.0, min(1.0, p))))
+
+  if noise_kind in {"loss", "amplitude_damping", "thermal_relaxation"}:
+    if sigma_m is None or sigma_p is None:
+      return [], metadata, _categorize_error("unsupported_profile", "qutip worker cannot build sigma+/sigma- for selected profile")
+    local_ops = [survival_amp * identity]
+    jump_amp = math.sqrt(max(0.0, min(1.0, p)) / 2.0)
+    local_ops.extend([jump_amp * sigma_m, jump_amp * sigma_p])
+    if leakage_enabled and normalized_dim > 2 and noise_kind in {"amplitude_damping", "thermal_relaxation", "loss"}:
+      leakage = qutip.basis(normalized_dim, 2) * qutip.basis(normalized_dim, 1).dag()
+      local_ops.append(jump_amp * math.sqrt(2.0) * leakage)
+    return [op for op in local_ops if op is not None], metadata, None
+
+  if noise_kind in {"dephasing", "decoherence", "phaseflip"}:
+    if sigma_z is None:
+      return [], metadata, _categorize_error("unsupported_profile", "qutip worker cannot build sigma-z for selected profile")
+    return [math.sqrt(rate) * sigma_z], metadata, None
+
+  if noise_kind == "bitflip":
+    if sigma_x is None:
+      return [], metadata, _categorize_error("unsupported_profile", "qutip worker cannot build sigma-x for selected profile")
+    return [math.sqrt(rate) * sigma_x], metadata, None
+
+  if noise_kind == "depolarizing":
+    if sigma_x is None or sigma_y is None or sigma_z is None:
+      return [], metadata, _categorize_error("unsupported_profile", "qutip worker cannot build depolarizing operators for selected profile")
+    return [
+        math.sqrt(rate / 3.0) * sigma_x if rate else None,
+        math.sqrt(rate / 3.0) * sigma_y if rate else None,
+        math.sqrt(rate / 3.0) * sigma_z if rate else None,
+    ], metadata, None
+
+  if noise_kind == "reset":
+    if normalized_dim < 2:
+      return [], metadata, _categorize_error("unsupported_profile", f"qutip worker invalid dim for reset: {normalized_dim}")
+    basis0 = qutip.basis(normalized_dim, 0)
+    basis1 = qutip.basis(normalized_dim, 1)
+    local_ops = [basis0 * basis0.dag(), basis0 * basis1.dag()]
+    if leakage_enabled and normalized_dim > 2:
+      basis2 = qutip.basis(normalized_dim, 2)
+      local_ops.append(basis0 * basis2.dag())
+    return local_ops, metadata, None
+
+  return [], metadata, _categorize_error("unsupported_noise", f"qutip worker unsupported noise kind: {noise_kind}")
+
+
+def _remove_cluster_key(cluster_key: tuple[int, str]) -> None:
+  if cluster_key in _QUTIP_CLUSTER_STATES:
+    del _QUTIP_CLUSTER_STATES[cluster_key]
+
+
+def _remove_qubit_from_cluster(operation: dict, cluster_key: tuple[int, str]) -> Optional[_ClusterState]:
+  state = _QUTIP_CLUSTER_STATES.get(cluster_key)
+  if state is None:
+    return None
+
+  target_keys = _operation_qubit_keys(operation)
+  if not target_keys:
+    return state
+
+  target_key = target_keys[0]
+  try:
+    index = state.qubits.index(target_key)
+  except ValueError:
+    return state
+
+  if len(state.qubits) <= 1:
+    _remove_cluster_key(cluster_key)
+    return None
+
+  remaining_indices = [i for i in range(len(state.qubits)) if i != index]
+  state.density_matrix = state.density_matrix.ptrace(remaining_indices)
+  state.qubits.pop(index)
+  return state
+
+
 def _coerce_profile_int(value: Any, default: int, minimum: int = 1) -> tuple[int, Optional[str]]:
   if value is None:
     return default, None
-  try:
+  if isinstance(value, bool):
+    return default, f"invalid integer value: {value}"
+  if isinstance(value, int):
+    parsed = value
+  elif isinstance(value, str):
+    stripped = value.strip()
+    if not re.fullmatch(r"[+-]?\d+", stripped):
+      return default, f"invalid integer value: {value}"
+    try:
+      parsed = int(stripped)
+    except ValueError:
+      return default, f"invalid integer value: {value}"
+  elif isinstance(value, float):
+    if not value.is_integer():
+      return default, f"invalid integer value: {value}"
     parsed = int(value)
-  except (TypeError, ValueError):
+  else:
     return default, f"invalid integer value: {value}"
   if parsed < minimum:
-    return minimum, f"profile value below minimum ({minimum}): {value}"
+    return default, f"profile value below minimum ({minimum}): {value}"
   return parsed, None
 
 
@@ -77,6 +584,8 @@ def _coerce_profile_bool(value: Any, default: bool) -> tuple[bool, Optional[str]
   if isinstance(value, bool):
     return value, None
   if isinstance(value, (int, float)):
+    if not float(value).is_integer():
+      return default, f"invalid boolean value: {value}"
     return bool(int(value)), None
   text = str(value).strip().lower()
   if text in {"1", "true", "yes", "on"}:
@@ -90,15 +599,6 @@ def _resolve_profile_bool(profile_meta: Optional[dict[str, Any]], key: str, defa
   if not isinstance(profile_meta, dict):
     return default
   return bool(_as_bool(profile_meta.get(key), default))
-
-
-def _effective_profile_dim(profile_meta: Optional[dict[str, Any]], fallback: int) -> int:
-  base_dim, _ = _coerce_profile_int(fallback, max(2, int(fallback)), 2)
-  if not isinstance(profile_meta, dict):
-    return base_dim
-
-  requested_dim, _ = _coerce_profile_int(profile_meta.get("dim"), base_dim, 2)
-  return int(max(2, requested_dim))
 
 
 def _parse_profile_overrides(raw: Any) -> tuple[dict[str, Any], Optional[str]]:
@@ -129,27 +629,157 @@ def _normalize_profile_name(value: str) -> str:
 
 
 _LINK_KIND_SET = {
-    "heralded_entanglement",
-    "attenuation",
-    "loss",
-    "hom_interference",
+    "photon_emission",
+    "emission",
+    "photon_collect",
+    "collect",
+    "photon_propagation",
+    "propagation",
+    "fiber_propagation",
+    "beam_splitter",
+    "cross_kerr",
+    "decoherence",
+    "dephasing",
+    "delay",
     "dispersion",
-    "multiphoton",
-    "source_multiphoton",
-    "squeezing",
-    "mode_coupling",
-    "loss_mode",
+    "attenuation",
+    "detection",
     "fock_loss",
+    "hamiltonian",
+    "hom_interference",
+    "jitter",
+    "kerr",
+    "lindblad",
+    "loss",
+    "loss_mode",
+    "mode_coupling",
+    "nonlinear",
+    "multiphoton",
+    "phase_shift",
+    "phase_modulation",
+    "self_phase_modulation",
+    "cross_phase_modulation",
+    "polarization_decoherence",
+    "polarization_rotation",
     "photon_number_cutoff",
+    "reset",
+    "squeezing",
+    "source_multiphoton",
+    "timing_jitter",
     "two_mode_squeezing",
+    "amplitude_damping",
+    "thermal_relaxation",
+    "bitflip",
+    "phaseflip",
+    "depolarizing",
 }
+
+_SUPPORTED_OPERATION_MODELS = {"unitary", "kraus", "sampled_kraus", "formula", "unsupported"}
+
+_KIND_OPERATION_MODEL: dict[str, str] = {
+    "unitary": "unitary",
+    "measurement": "sampled_kraus",
+    "noise": "kraus",
+    "noop": "formula",
+    "kerr": "unitary",
+    "cross_kerr": "unitary",
+    "beam_splitter": "unitary",
+    "loss": "kraus",
+    "attenuation": "kraus",
+    "phase_shift": "unitary",
+    "phase_modulation": "unitary",
+    "self_phase_modulation": "unitary",
+    "cross_phase_modulation": "unitary",
+    "decoherence": "kraus",
+    "dephasing": "kraus",
+    "amplitude_damping": "kraus",
+    "thermal_relaxation": "kraus",
+    "bitflip": "kraus",
+    "phaseflip": "kraus",
+    "depolarizing": "kraus",
+    "nonlinear": "unitary",
+    "polarization_rotation": "unitary",
+    "polarization_decoherence": "kraus",
+    "mode_coupling": "unitary",
+    "loss_mode": "unitary",
+    "two_mode_squeezing": "unitary",
+    "fock_loss": "formula",
+    "photon_number_cutoff": "formula",
+    "photon_emission": "formula",
+    "photon_collect": "formula",
+    "photon_propagation": "formula",
+    "emission": "formula",
+    "collect": "formula",
+    "propagation": "formula",
+    "fiber_propagation": "formula",
+    "detection": "sampled_kraus",
+    "delay": "formula",
+    "hamiltonian": "unitary",
+    "lindblad": "kraus",
+    "timing_jitter": "formula",
+    "jitter": "formula",
+    "dispersion": "formula",
+    "multiphoton": "formula",
+    "source_multiphoton": "formula",
+    "hom_interference": "unitary",
+    "squeezing": "formula",
+    "reset": "kraus",
+}
+
+
+def _normalize_operation_model(model: Optional[str]) -> str:
+  if model is None:
+    return "unsupported"
+  normalized = str(model).strip().lower()
+  if normalized in _SUPPORTED_OPERATION_MODELS:
+    return normalized
+  return "unsupported"
+
+
+def _operation_model_for_kind(kind: str) -> str:
+  return _normalize_operation_model(_KIND_OPERATION_MODEL.get(_canonicalize_kind(kind), "unsupported"))
 
 
 def _is_link_kind(kind: str, operation: dict) -> bool:
   normalized = _canonicalize_kind(kind)
+  if normalized == "detection":
+    targets = operation.get("targets", [])
+    if isinstance(targets, list) and len(targets) >= 2:
+      return True
   if not isinstance(operation, dict):
     return normalized in _LINK_KIND_SET
   return normalized in _LINK_KIND_SET
+
+
+def _resolve_cluster_targets(
+    operation: dict,
+    cluster_state: _ClusterState,
+    *,
+    exact_targets: Optional[int] = None,
+    min_targets: Optional[int] = None,
+) -> tuple[list[tuple[int, int, int, int]], list[int], Optional[str]]:
+  targets = operation.get("targets", [])
+  if not isinstance(targets, list):
+    return [], [], _categorize_error("invalid_payload", "qutip worker advanced targets must be a list")
+
+  if exact_targets is not None and len(targets) != exact_targets:
+    return [], [], _categorize_error("invalid_payload", f"qutip worker {operation.get('kind', '')} requires exactly {exact_targets} target(s)")
+
+  if min_targets is not None and len(targets) < min_targets:
+    return [], [], _categorize_error("invalid_payload", f"qutip worker {operation.get('kind', '')} requires at least {min_targets} target(s)")
+
+  target_keys: list[tuple[int, int, int, int]] = []
+  for target in targets:
+    target_key = _coerce_qubit_key(target)
+    if target_key is None:
+      return [], [], _categorize_error("invalid_payload", f"qutip worker invalid target for advanced kind {operation.get('kind', '')}")
+    target_keys.append(target_key)
+
+  target_positions = _cluster_target_positions(cluster_state, target_keys)
+  if target_positions is None:
+    return [], [], _categorize_error("invalid_payload", f"qutip worker cannot resolve advanced target in cluster state for kind {operation.get('kind', '')}")
+
+  return target_keys, target_positions, None
 
 
 def _resolve_profile(request: dict, kind: str, operation: dict) -> tuple[str, dict[str, Any], str | None]:
@@ -157,17 +787,13 @@ def _resolve_profile(request: dict, kind: str, operation: dict) -> tuple[str, di
   if not isinstance(config, dict):
     config = {}
 
-  requested_node_profile = _normalize_profile_name(config.get("qutip_node_profile", "standard_light"))
-  requested_link_profile = _normalize_profile_name(config.get("qutip_link_profile", "standard_light"))
-  if not requested_node_profile:
-    requested_node_profile = "standard_light"
-  if not requested_link_profile:
-    requested_link_profile = "standard_light"
+  has_node_profile = isinstance(config, dict) and "qutip_node_profile" in config
+  has_link_profile = isinstance(config, dict) and "qutip_link_profile" in config
+  requested_node_profile = _normalize_profile_name(config.get("qutip_node_profile", "standard_light")) if has_node_profile else "standard_light"
+  requested_link_profile = _normalize_profile_name(config.get("qutip_link_profile", "standard_light")) if has_link_profile else "standard_light"
 
   is_link_operation = _is_link_kind(kind, operation)
   requested_profile = requested_link_profile if is_link_operation else requested_node_profile
-  if not requested_profile:
-    requested_profile = "standard_light"
 
   if requested_profile == "custom":
     return _resolve_custom_profile(
@@ -177,7 +803,9 @@ def _resolve_profile(request: dict, kind: str, operation: dict) -> tuple[str, di
     )
 
   requested_profile_name = requested_profile
-  preset_profile = _QUTIP_PROFILE_PRESETS.get(requested_profile)
+  requested_profile_meta = _QUTIP_PROFILE_PRESETS.get(requested_profile)
+  default_profile = _QUTIP_PROFILE_PRESETS["standard_light"]
+  effective_profile = requested_profile_meta if requested_profile_meta is not None else default_profile
 
   _, parse_error = _parse_profile_overrides(config.get("qutip_profile_overrides"))
   errors = []
@@ -185,29 +813,28 @@ def _resolve_profile(request: dict, kind: str, operation: dict) -> tuple[str, di
     errors.append(parse_error)
 
   profile_error: str | None = None
-  if preset_profile is None:
-    errors.append(f"unsupported profile '{requested_profile_name}', fallback to standard_light")
-    preset_profile = _QUTIP_PROFILE_PRESETS["standard_light"]
+  if requested_profile_meta is None:
+    errors.append(f"unsupported profile '{requested_profile_name}'")
     profile_error = "invalid_profile"
   elif parse_error is not None:
     profile_error = "invalid_profile"
 
   mode = "link" if is_link_operation else "node"
-  chosen_dim = preset_profile.link_mode_dim if is_link_operation else preset_profile.node_dim
+  chosen_dim = effective_profile.link_mode_dim if is_link_operation else effective_profile.node_dim
 
   profile_meta = {
-      "profile": preset_profile.name,
+      "profile": requested_profile_name,
       "requested_profile": requested_profile_name,
-      "node_dim": int(preset_profile.node_dim),
-      "link_dim": int(preset_profile.link_mode_dim),
+      "node_dim": int(effective_profile.node_dim),
+      "link_dim": int(effective_profile.link_mode_dim),
       "mode": mode,
       "dim": int(chosen_dim),
-      "leakage_enabled": bool(preset_profile.leakage_enabled),
-      "truncation": int(preset_profile.truncation),
+      "leakage_enabled": bool(effective_profile.leakage_enabled),
+      "truncation": int(effective_profile.truncation),
       "errors": " | ".join(errors) if errors else None,
   }
 
-  return preset_profile.name, profile_meta, profile_error
+  return requested_profile_name, profile_meta, profile_error
 
 
 def _resolve_custom_profile(
@@ -216,6 +843,7 @@ def _resolve_custom_profile(
   base_profile = _QUTIP_PROFILE_PRESETS["standard_light"]
   overrides, parse_error = _parse_profile_overrides(parse_profile)
   errors = []
+  profile_error: str | None = None
   if parse_error is not None:
     errors.append(parse_error)
     profile_error = "invalid_profile"
@@ -294,7 +922,6 @@ def _get_qutip_modules() -> Optional[tuple[Any, Any]]:
 def _qutip_unavailable_response(kind: str) -> dict:
   return _build_response(
       False,
-      qutip_status="unsupported",
       error_category="qutip_import",
       message=_categorize_error("qutip_import", f"qutip backend unavailable for kind={kind}: {_QUTIP_IMPORT_CACHE_ERROR or 'qutip import failed'}"),
   )
@@ -330,7 +957,7 @@ def _rng(seed: int, operation: dict) -> random.Random:
 def _build_response(
     success: bool,
     error_category: Optional[str] = None,
-    qutip_status: Optional[str] = None,
+    operation_model: Optional[str] = None,
     meta: Optional[dict[str, Any]] = None,
     **fields,
 ) -> dict:
@@ -351,8 +978,7 @@ def _build_response(
     response["backend_name"] = fields.pop("backend_name")
   if "backend_class" in fields:
     response["backend_class"] = fields.pop("backend_class")
-  if qutip_status in {"implemented", "simulated", "unsupported"}:
-    response["qutip_status"] = qutip_status
+  response["operation_model"] = _normalize_operation_model(operation_model)
   if meta is not None:
     response["meta"] = dict(meta)
   response.update(fields)
@@ -379,6 +1005,70 @@ def _measurement_plus_probability(basis: str, dim: int = 2) -> tuple[float, floa
   if basis in {"X", "Y", "BELL"}:
     return 0.5, 0.5
   return 0.0, 0.0
+
+
+def _measurement_projectors_for_basis(qutip: Any, basis: str, dim: int) -> tuple[Any, Any]:
+  normalized_dim = max(2, int(dim))
+  basis_state_zero = qutip.basis(normalized_dim, 0)
+  basis_state_one = qutip.basis(normalized_dim, 1)
+  if normalized_dim < 2:
+    normalized_dim = 2
+    basis_state_zero = qutip.basis(normalized_dim, 0)
+    basis_state_one = qutip.basis(normalized_dim, 1)
+
+  normalized_basis = str(basis or "").upper()
+  if normalized_basis == "Z":
+    plus = basis_state_zero * basis_state_zero.dag()
+    minus = basis_state_one * basis_state_one.dag()
+    return plus, minus
+
+  if normalized_basis == "X":
+    plus = ((basis_state_zero + basis_state_one) / math.sqrt(2))
+    minus = ((basis_state_zero - basis_state_one) / math.sqrt(2))
+  elif normalized_basis == "Y":
+    minus = (basis_state_zero - 1j * basis_state_one) / math.sqrt(2)
+    plus = (basis_state_zero + 1j * basis_state_one) / math.sqrt(2)
+  else:
+    plus = ((basis_state_zero + basis_state_one) / math.sqrt(2))
+    minus = ((basis_state_zero - basis_state_one) / math.sqrt(2))
+  return plus * plus.dag(), minus * minus.dag()
+
+
+def _bell_detection_projectors_for_two_targets(qutip: Any, dim: int) -> tuple[Any, Any]:
+  normalized_dim = max(2, int(dim))
+  basis0 = qutip.basis(normalized_dim, 0)
+  basis1 = qutip.basis(normalized_dim, 1)
+  psi_plus = (qutip.tensor(basis0, basis1) + qutip.tensor(basis1, basis0)) / math.sqrt(2)
+  psi_minus = (qutip.tensor(basis0, basis1) - qutip.tensor(basis1, basis0)) / math.sqrt(2)
+  success = (psi_plus * psi_plus.dag()) + (psi_minus * psi_minus.dag())
+  identity = qutip.tensor(qutip.qeye(normalized_dim), qutip.qeye(normalized_dim))
+  failure = identity - success
+  return success, failure
+
+
+def _onoff_detection_projectors_for_one_target(qutip: Any, dim: int) -> tuple[Any, Any]:
+  normalized_dim = max(2, int(dim))
+  basis1 = qutip.basis(normalized_dim, 1)
+  click = basis1 * basis1.dag()
+  no_click = qutip.qeye(normalized_dim) - click
+  return click, no_click
+
+
+def _embed_local_operator(
+    state: Any,
+    local_operator: Any,
+    cluster_state: _ClusterState,
+    target_positions: list[int],
+    qutip: Any,
+) -> tuple[bool, Optional[Any]]:
+  if local_operator is None:
+    return False, None
+  success, operator = _apply_local_operator_to_cluster(cluster_state, local_operator, target_positions, qutip)
+  if not success:
+    return False, None
+  if operator is None:
+    return False, None
+  return True, operator
 
 
 def _get_payload(request: dict) -> dict:
@@ -434,27 +1124,6 @@ def _as_bool(value: Any, default: bool = False) -> bool:
   return default
 
 
-def _strict_simulated_enabled(request: dict) -> bool:
-  config = request.get("backend_config", {}) if isinstance(request, dict) else {}
-  if not isinstance(config, dict):
-    return False
-  return _as_bool(config.get("qutip_strict_simulated", False), False)
-
-
-def _apply_strict_simulated_mode(response: dict, strict: bool, kind: str) -> dict:
-  if not strict:
-    return response
-  if response.get("qutip_status") != "simulated" or not response.get("success"):
-    return response
-  rejected = response.copy()
-  rejected["success"] = False
-  rejected["fidelity_estimate"] = rejected.get("fidelity_estimate", 1.0)
-  rejected["message"] = f"qutip strict mode rejected simulated kind: {kind}"
-  rejected["error_category"] = "simulated_operation_rejected"
-  rejected["qutip_status"] = "simulated"
-  return rejected
-
-
 def _float_list(values: Any, expected: int = 0) -> list[float]:
   if not isinstance(values, list):
     return []
@@ -484,7 +1153,13 @@ def _simple_fidelity_decay(rate: float, duration: float) -> float:
   return min(1.0, max(0.0, decay))
 
 
-def _mark_operation_metrics(response: dict, backend_name: str, kind: str, duration: float, qutip_status: Optional[str] = None) -> dict:
+def _mark_operation_metrics(
+    response: dict,
+    backend_name: str,
+    kind: str,
+    duration: float,
+    operation_model: Optional[str] = None,
+) -> dict:
   response.update(
       {
           "backend_name": backend_name,
@@ -493,16 +1168,24 @@ def _mark_operation_metrics(response: dict, backend_name: str, kind: str, durati
           "qutip_import_status": _qutip_import_status(),
       }
   )
-  if qutip_status in {"implemented", "simulated", "unsupported"}:
-    response["qutip_status"] = qutip_status
+  if operation_model is None:
+    operation_model = _operation_model_for_kind(kind)
+  response["operation_model"] = _normalize_operation_model(operation_model or response.get("operation_model"))
+  if response["operation_model"] == "unsupported":
+    response["operation_model"] = _operation_model_for_kind(kind)
   return response
 
 
-def _normalize_status(status: str) -> str:
-  status_lower = str(status).lower()
-  if status_lower in {"implemented", "simulated", "unsupported"}:
-    return status_lower
-  return "unsupported"
+def _effective_profile_dim(profile_meta: Optional[dict[str, Any]], fallback: int = 2) -> int:
+  if not isinstance(profile_meta, dict):
+    return fallback
+  try:
+    dim = int(profile_meta.get("dim", fallback))
+  except (TypeError, ValueError):
+    return fallback
+  if dim < 2:
+    return fallback
+  return dim
 
 
 def _coerce_qutip_modules() -> Optional[tuple[Any, Any]]:
@@ -1106,7 +1789,7 @@ def _calculate_qutip_cross_kerr_fidelity(qutip: Any, operation: dict, duration: 
     return False, 1.0, _categorize_error("solver_error", f"qutip worker cross_kerr evolution failed: {exc}")
 
 
-def _calculate_qutip_unitary_fidelity(qutip: Any, operation: dict, dim: int = 2) -> tuple[bool, float, str]:
+def _build_unitary_operator(qutip: Any, operation: dict, dim: int = 2) -> tuple[bool, Optional[Any], str]:
   gate = str(operation.get("payload", {}).get("gate", "")).upper()
   params = operation.get("params", [])
   payload = operation.get("payload", {})
@@ -1114,7 +1797,7 @@ def _calculate_qutip_unitary_fidelity(qutip: Any, operation: dict, dim: int = 2)
   targets = operation.get("targets", []) if isinstance(operation.get("targets", []), list) else []
   n_targets = len(targets)
   if n_targets <= 0:
-    return False, 1.0, _categorize_error("invalid_payload", "qutip worker unitary requires at least one target")
+    return False, None, _categorize_error("invalid_payload", "qutip worker unitary requires at least one target")
 
   angle = _as_float(
       params_f[0] if params_f else payload.get("theta", payload.get("angle", payload.get("phi", 0.0))),
@@ -1132,32 +1815,32 @@ def _calculate_qutip_unitary_fidelity(qutip: Any, operation: dict, dim: int = 2)
     if gate in {"RX", "RY", "RZ"}:
       if gate == "RX":
         if sx is None:
-          return False, 1.0, _categorize_error("invalid_profile", f"qutip worker cannot build RX for dim={dim}")
+          return False, None, _categorize_error("invalid_profile", f"qutip worker cannot build RX for dim={dim}")
         operator = (-(1j * angle / 2.0) * sx).expm()
       elif gate == "RY":
         if sy is None:
-          return False, 1.0, _categorize_error("invalid_profile", f"qutip worker cannot build RY for dim={dim}")
+          return False, None, _categorize_error("invalid_profile", f"qutip worker cannot build RY for dim={dim}")
         operator = (-(1j * angle / 2.0) * sy).expm()
       else:
         if sz is None:
-          return False, 1.0, _categorize_error("invalid_profile", f"qutip worker cannot build RZ for dim={dim}")
+          return False, None, _categorize_error("invalid_profile", f"qutip worker cannot build RZ for dim={dim}")
         operator = (-(1j * angle / 2.0) * sz).expm()
     elif gate in {"CX", "CNOT"}:
       if n_targets != 2:
-        return False, 1.0, _categorize_error("unsupported_gate", "qutip worker unsupported CNOT/CX target arity")
+        return False, None, _categorize_error("unsupported_gate", "qutip worker unsupported CNOT/CX target arity")
       projected_zero = _qubit_subspace_projector(qutip, normalized_dim, 0)
       projected_one = _qubit_subspace_projector(qutip, normalized_dim, 1)
       if projected_zero is None or projected_one is None:
-        return False, 1.0, _categorize_error("invalid_payload", "qutip worker cannot build CNOT projectors")
+        return False, None, _categorize_error("invalid_payload", "qutip worker cannot build CNOT projectors")
       x_local = _logical_pauli_in_dim(qutip, normalized_dim, "sx")
       if x_local is None:
-        return False, 1.0, _categorize_error("invalid_profile", f"qutip worker cannot build CNOT X for dim={dim}")
+        return False, None, _categorize_error("invalid_profile", f"qutip worker cannot build CNOT X for dim={dim}")
       control_zero = _embed_qubit_operator(qutip, projected_zero, n_targets, 0, dim=normalized_dim)
       control_one = _embed_qubit_operator(qutip, projected_one, n_targets, 0, dim=normalized_dim)
       x_on_target = _embed_qubit_operator(qutip, x_local, n_targets, 1, dim=normalized_dim)
       control_identity = _embed_qubit_operator(qutip, _identity_in_dim(qutip, normalized_dim), n_targets, 1, dim=normalized_dim)
       if control_zero is None or control_one is None or x_on_target is None or control_identity is None:
-        return False, 1.0, _categorize_error("invalid_payload", "qutip worker cannot build CNOT operator")
+        return False, None, _categorize_error("invalid_payload", "qutip worker cannot build CNOT operator")
       operator = control_zero * control_identity + control_one * x_on_target
     elif gate in {"X", "Y", "Z", "H", "S", "SDG", "T", "I", "SQRT_X", "SQRTX"}:
       if gate == "X":
@@ -1178,33 +1861,46 @@ def _calculate_qutip_unitary_fidelity(qutip: Any, operation: dict, dim: int = 2)
         operator_2d = ident
       elif gate == "SQRT_X":
         if sx is None or ident is None:
-          return False, 1.0, _categorize_error("invalid_profile", f"qutip worker cannot build SQRT_X for dim={dim}")
+          return False, None, _categorize_error("invalid_profile", f"qutip worker cannot build SQRT_X for dim={dim}")
         operator_2d = (sx + ident) / 2 * (1 + 1j)
       else:  # SQRTX
         if sx is None or ident is None:
-          return False, 1.0, _categorize_error("invalid_profile", f"qutip worker cannot build SQRT_X† for dim={dim}")
+          return False, None, _categorize_error("invalid_profile", f"qutip worker cannot build SQRT_X† for dim={dim}")
         operator_2d = (sx + ident) / 2 * (1 - 1j)
 
       if operator_2d is None:
-        return False, 1.0, _categorize_error("invalid_profile", f"qutip worker cannot build gate operator for dim={dim}")
+        return False, None, _categorize_error("invalid_profile", f"qutip worker cannot build gate operator for dim={dim}")
       operator = _lift_2d_operator_to_dim(qutip, operator_2d, normalized_dim)
       if operator is None:
-        return False, 1.0, _categorize_error("invalid_profile", f"qutip worker cannot lift gate operator for dim={dim}")
+        return False, None, _categorize_error("invalid_profile", f"qutip worker cannot lift gate operator for dim={dim}")
     else:
-      return False, 1.0, _categorize_error("unsupported_gate", f"qutip worker unsupported unitary: {gate}")
+      return False, None, _categorize_error("unsupported_gate", f"qutip worker unsupported unitary: {gate}")
 
     if n_targets == 1:
       op = _embed_qubit_operator(qutip, operator, 1, 0, dim=normalized_dim)
       if op is None:
-        return False, 1.0, _categorize_error("invalid_payload", "qutip worker cannot embed unitary operator")
+        return False, None, _categorize_error("invalid_payload", "qutip worker cannot embed unitary operator")
     else:
       op = operator
+    return True, op, f"qutip worker applied unitary {gate} with qutip evolution"
+  except Exception as exc:
+    return False, None, _categorize_error("solver_error", f"qutip worker unitary evolution failed: {exc}")
 
-    state = _basis_state_from_targets(qutip, n_targets, dim=normalized_dim)
+
+def _calculate_qutip_unitary_fidelity(qutip: Any, operation: dict, dim: int = 2) -> tuple[bool, float, str]:
+  success, op, message = _build_unitary_operator(qutip=qutip, operation=operation, dim=dim)
+  if not success or op is None:
+    return False, 1.0, message
+
+  try:
+    n_targets = len(operation.get("targets", []) if isinstance(operation.get("targets", []), list) else [])
+    if n_targets <= 0:
+      return False, 1.0, _categorize_error("invalid_payload", "qutip worker unitary requires at least one target")
+    state = _basis_state_from_targets(qutip, n_targets, dim=max(2, int(dim)))
     rho0 = state * state.dag()
     rho_t = op * rho0 * op.dag()
     fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
-    return True, fidelity, f"qutip worker applied unitary {gate} with qutip evolution"
+    return True, fidelity, message
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker unitary evolution failed: {exc}")
 
@@ -1261,38 +1957,102 @@ def _handle_unitary(operation: dict, seed: int, dim: int = 2, profile_meta: Opti
     return _qutip_unavailable_response(f"unitary:{gate}")
 
   qutip, _ = mods
-  success, fidelity, message = _calculate_qutip_unitary_fidelity(qutip=qutip, operation=operation, dim=max(2, int(dim)))
-  qutip_status = _normalize_status("implemented" if success else "unsupported")
-  error_category = _extract_error_category(message) if not success else None
-  if error_category is None and not success:
-    error_category = "unsupported_gate"
-  return _build_response(
-      success,
-      qutip_status=qutip_status,
+  normalized_dim = max(2, int(dim))
+  cluster_key = _cluster_key(operation, profile_meta)
+  if cluster_key is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster id"), error_category="invalid_cluster")
+  cluster_state, _, cluster_error = _ensure_cluster_state(operation, normalized_dim, profile_meta, qutip)
+  if cluster_state is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster qubits"), error_category="invalid_cluster")
+  if cluster_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  op_success, op, message = _build_unitary_operator(qutip=qutip, operation=operation, dim=normalized_dim)
+  if not op_success or op is None:
+    return _build_response(False, message=message, error_category=_extract_error_category(message) or "unsupported_gate", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  previous_state = cluster_state.density_matrix
+  apply_success, evolved_state = _apply_unitary_to_cluster(cluster_state, op, operation.get("targets", []), qutip)
+  if not apply_success or evolved_state is None:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply unitary on cluster"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+  cluster_state.density_matrix = evolved_state
+  fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state)) if previous_state is not None else 1.0
+  response = _build_response(
+      True,
       fidelity_estimate=fidelity,
       message=message,
-      error_category=error_category,
+      meta=_cluster_state_meta(cluster_state, cluster_key),
   )
+  return response
 
 
 def _handle_measurement(operation: dict, seed: int, dim: int = 2, profile_meta: Optional[dict[str, Any]] = None) -> dict:
   basis = str(operation.get("basis", "")).upper()
   if basis not in {"X", "Y", "Z", "BELL"}:
-    return _build_response(False, qutip_status="unsupported", message=_categorize_error("unsupported_measurement", f"qutip worker unsupported measurement basis: {basis}"), error_category="unsupported_measurement")
+    return _build_response(False, message=_categorize_error("unsupported_measurement", f"qutip worker unsupported measurement basis: {basis}"), error_category="unsupported_measurement")
   normalized_dim = max(2, int(dim))
-  probability_plus, probability_minus = _measurement_plus_probability(basis, dim=normalized_dim)
-  if probability_plus == 0.0 and probability_minus == 0.0:
-    return _build_response(False, qutip_status="unsupported", message=_categorize_error("unsupported_measurement", f"qutip worker unsupported measurement basis: {basis}"), error_category="unsupported_measurement")
-  rng = _rng(seed, {"kind": "measurement_rng", "basis": basis, "dim": normalized_dim, "probability_plus": probability_plus, "probability_minus": probability_minus})
+  mods = _coerce_qutip_modules()
+  if mods is None:
+    return _qutip_unavailable_response("measurement")
 
+  qutip, _ = mods
+  cluster_key = _cluster_key(operation, profile_meta)
+  if cluster_key is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster id"), error_category="invalid_cluster")
+
+  cluster_state, _, cluster_error = _ensure_cluster_state(operation, normalized_dim, profile_meta, qutip)
+  if cluster_state is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster qubits"), error_category="invalid_cluster")
+  if cluster_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  operation_targets = operation.get("targets", [])
+  if len(operation_targets) != 1:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker measurement requires exactly one target in cluster mode"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+  target = _coerce_qubit_key(operation_targets[0])
+  if target is None:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker invalid measurement target"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  target_positions = _cluster_target_positions(cluster_state, [target])
+  if target_positions is None:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker cannot resolve measurement target in cluster state"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  plus_projector_local, minus_projector_local = _measurement_projectors_for_basis(qutip, basis, normalized_dim)
+  plus_success, plus_full = _embed_local_operator(cluster_state.density_matrix, plus_projector_local, cluster_state, target_positions, qutip)
+  minus_success, minus_full = _embed_local_operator(cluster_state.density_matrix, minus_projector_local, cluster_state, target_positions, qutip)
+  if not plus_success or not minus_success or plus_full is None or minus_full is None:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to build measurement projector"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  rho = cluster_state.density_matrix
+  probability_plus = float((plus_full * rho * plus_full.dag()).tr())
+  probability_minus = float((minus_full * rho * minus_full.dag()).tr())
+  total_probability = max(0.0, probability_plus + probability_minus)
+  if total_probability <= 0.0:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker measured zero total probability"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  probability_plus = max(0.0, min(1.0, probability_plus / total_probability))
+  probability_minus = 1.0 - probability_plus
+  rng = _rng(seed, {"kind": "measurement_rng", "basis": basis, "dim": normalized_dim, "probability_plus": probability_plus})
   measured_plus = rng.random() < probability_plus
-  meta = {"measurement_plus_probability": probability_plus, "measurement_minus_probability": probability_minus}
+  collapsed = plus_full * rho * plus_full.dag() if measured_plus else minus_full * rho * minus_full.dag()
+  collapsed_norm = float((collapsed * collapsed.dag()).tr())
+  if collapsed_norm <= 0.0:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker collapsed measurement state has zero norm"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+  cluster_state.density_matrix = collapsed / collapsed_norm
+  branch_probability = probability_plus if measured_plus else probability_minus
+  remaining_state = _remove_qubit_from_cluster(operation, cluster_key)
+  meta = {
+      "measurement_plus_probability": probability_plus,
+      "measurement_minus_probability": probability_minus,
+  }
+  meta.update(_cluster_state_meta(cluster_state if remaining_state is not None else None, cluster_key))
   return _build_response(
-    True,
-    qutip_status="simulated",
-    meta=meta,
-    measured_plus=measured_plus,
-    message=f"qutip worker simulated measurement in {basis} basis (dim={normalized_dim})",
+      True,
+      measured_plus=measured_plus,
+      branch_probability=branch_probability,
+      fidelity_estimate=collapsed_norm,
+      meta=meta,
+      message=f"qutip worker measured {basis} in cluster {cluster_key}",
   )
 
 
@@ -1307,100 +2067,105 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     p = _as_float(params[0], 0.0)
   elif isinstance(payload, dict) and "p" in payload:
     p = _as_float(payload.get("p", 0.0), 0.0)
+  normalized_dim = max(2, int(dim))
+  cluster_key = _cluster_key(operation, profile_meta)
+  if cluster_key is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster id"), error_category="invalid_cluster")
+  mods = _coerce_qutip_modules()
+  if mods is None:
+    return _qutip_unavailable_response(f"noise:{noise_kind}")
+  qutip, _ = mods
+  cluster_state, _, cluster_error = _ensure_cluster_state(operation, normalized_dim, profile_meta, qutip)
+  if cluster_state is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster qubits"), error_category="invalid_cluster")
+  if cluster_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_cluster_state_meta(cluster_state, cluster_key))
 
+  operation_targets = operation.get("targets", [])
+  if len(operation_targets) != 1:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker noise requires exactly one target in cluster mode"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  target = _coerce_qubit_key(operation_targets[0])
+  if target is None:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker invalid noise target"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  target_positions = _cluster_target_positions(cluster_state, [target])
+  if target_positions is None:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker cannot resolve noise target in cluster state"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  qubit_lost = _rng(seed, operation).random() < _effective_probability(p, 0.0)
   if noise_kind == "loss":
-    qubit_lost = _rng(seed, operation).random() < _effective_probability(p, 0.0)
-    modules = _coerce_qutip_modules()
-    if modules is None:
-      return _qutip_unavailable_response("loss")
-    qutip, _ = modules
-    loss_operation = dict(operation)
-    loss_operation["kind"] = "loss"
-    success, fidelity, message, _ = _calculate_qutip_loss_fidelity(
-        qutip=qutip,
-        operation=loss_operation,
-        duration=_as_float(operation.get("duration", 0.0)),
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    if success:
-      return _build_response(
-          True,
-          qutip_status="implemented",
-          qubit_lost=qubit_lost,
-          fidelity_estimate=fidelity,
-          message=message,
-      )
-    return _build_response(
-        False,
-        qutip_status="unsupported",
-        qubit_lost=qubit_lost,
-        fidelity_estimate=_effective_probability(1.0 - p, 1.0),
-        message=message if isinstance(message, str) else "qutip worker loss evolution failed",
-        error_category="solver_error",
-    )
-
-  if noise_kind in {"dephasing", "dephase", "decoherence"}:
-    duration = _as_float(operation.get("duration", 0.0))
-    mods = _coerce_qutip_modules()
-    if mods is None:
-      return _qutip_unavailable_response("dephasing/decoherence")
-
-    qutip, _ = mods
-    normalized_noise_kind = "decoherence" if noise_kind == "decoherence" else "dephasing"
-    success, fidelity, message, _ = _calculate_qutip_noise_fidelity(
-        qutip=qutip,
-        noise_kind=normalized_noise_kind,
-        operation=operation,
-        duration=duration,
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    return _build_response(
-        success,
-        qutip_status=_normalize_status("implemented" if success else "unsupported"),
-        fidelity_estimate=fidelity,
-        message=message,
-    )
-
-  if noise_kind == "reset":
-    modules = _coerce_qutip_modules()
-    if modules is None:
-      return _qutip_unavailable_response("reset")
-    qutip, _ = modules
-    success, fidelity, detail = _calculate_qutip_reset_fidelity(
-        qutip=qutip,
-        operation=operation,
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    return _build_response(
-        success,
-        qutip_status="implemented" if success else "unsupported",
-        fidelity_estimate=fidelity,
-        message=detail,
-        error_category=None if success else "solver_error",
-    )
-
-  if noise_kind in {"amplitude_damping", "thermal_relaxation", "bitflip", "phaseflip", "depolarizing", "polarization_decoherence"}:
-    duration = _as_float(operation.get("duration", 0.0))
-    mods = _coerce_qutip_modules()
-    if mods is None:
-      p = _effective_probability(params_f[0] if params_f else payload.get("p", 0.0))
-      return _qutip_unavailable_response(noise_kind)
-
-    qutip, _ = mods
-    success, fidelity, message, _meta = _calculate_qutip_noise_fidelity(
+    ops, meta, build_error = _build_cluster_noise_ops(
         qutip=qutip,
         noise_kind=noise_kind,
         operation=operation,
-        duration=duration,
-        dim=dim,
+        duration=_as_float(operation.get("duration", 0.0)),
+        dim=normalized_dim,
         leakage_enabled=leakage_enabled,
     )
-    return _build_response(success, qutip_status=_normalize_status("implemented" if success else "unsupported"), message=message, fidelity_estimate=fidelity)
+    if build_error is not None:
+      return _build_response(False, message=build_error, error_category=_extract_error_category(build_error) or "unsupported_noise", meta=_cluster_state_meta(cluster_state, cluster_key))
+    success_apply, evolved_state = _apply_kraus_to_cluster(cluster_state, ops, target_positions, qutip)
+    if not success_apply or evolved_state is None:
+      return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply loss in cluster"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+    previous_state = cluster_state.density_matrix
+    cluster_state.density_matrix = evolved_state
+    try:
+      fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state))
+    except Exception:
+      fidelity = _effective_probability(1.0 - _effective_probability(p, 0.0), 1.0)
+    response = _build_response(
+        True,
+        qubit_lost=qubit_lost,
+        fidelity_estimate=fidelity,
+        message=f"qutip worker applied loss in cluster with p={_effective_probability(p, 0.0)}, mode=cluster",
+        meta=meta,
+    )
+    response = _attach_profile_metadata(response, profile_meta)
+    response_meta = response.get("meta")
+    if isinstance(response_meta, dict):
+      response_meta.update(_cluster_state_meta(cluster_state, cluster_key))
+    return response
 
-  return _build_response(False, qutip_status="unsupported", message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind: {noise_kind}"), error_category="unsupported_noise")
+  if noise_kind in {"dephasing", "dephase", "decoherence", "amplitude_damping", "thermal_relaxation", "bitflip", "phaseflip", "depolarizing", "reset", "polarization_decoherence"}:
+    canonical_noise_kind = "decoherence" if noise_kind == "decoherence" else noise_kind
+    if canonical_noise_kind == "dephase":
+      canonical_noise_kind = "dephasing"
+    ops, meta, build_error = _build_cluster_noise_ops(
+      qutip=qutip,
+      noise_kind=canonical_noise_kind if canonical_noise_kind in {"decoherence", "dephasing", "amplitude_damping", "thermal_relaxation", "bitflip", "phaseflip", "depolarizing", "reset", "loss"} else noise_kind,
+      operation=operation,
+      duration=_as_float(operation.get("duration", 0.0)),
+      dim=normalized_dim,
+      leakage_enabled=leakage_enabled,
+    )
+    if build_error is not None:
+      return _build_response(False, message=build_error, error_category=_extract_error_category(build_error) or "unsupported_noise", meta=_cluster_state_meta(cluster_state, cluster_key))
+    success_apply, evolved_state = _apply_kraus_to_cluster(cluster_state, ops, target_positions, qutip)
+    if not success_apply or evolved_state is None:
+      return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply noise in cluster"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+    previous_state = cluster_state.density_matrix
+    cluster_state.density_matrix = evolved_state
+    try:
+      fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state))
+    except Exception:
+      fidelity = 1.0
+    response = _build_response(
+      True,
+      fidelity_estimate=fidelity,
+      message=f"qutip worker applied {canonical_noise_kind} in cluster mode",
+    )
+    response = _attach_profile_metadata(response, profile_meta)
+    response_meta = response.get("meta")
+    if isinstance(response_meta, dict):
+      response_meta.update(meta)
+      response_meta.update(_cluster_state_meta(cluster_state, cluster_key))
+    return response
+
+  if noise_kind in {"timing_jitter", "jitter", "delay"}:
+    return _build_response(False, message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind in cluster mode: {noise_kind}"), error_category="unsupported_noise", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  return _build_response(False, message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind in cluster mode: {noise_kind}"), error_category="unsupported_noise", meta=_cluster_state_meta(cluster_state, cluster_key))
 
 
 def _collect_unique_qubits(operation: dict) -> set[tuple]:
@@ -1430,7 +2195,6 @@ def _validate_backend_limits(request: dict, operation: dict) -> Optional[dict]:
   if backend_class not in {"qutip_density_matrix", "qutip_state_vector", "qutip", "qutip_sv"}:
     return _build_response(
         False,
-        qutip_status="unsupported",
         message=f"qutip worker unsupported backend class: {backend_class}",
         error_category="unsupported_backend_class",
     )
@@ -1442,7 +2206,6 @@ def _validate_backend_limits(request: dict, operation: dict) -> Optional[dict]:
     except (TypeError, ValueError):
       return _build_response(
           False,
-          qutip_status="unsupported",
           message=_categorize_error("invalid_payload", "invalid qutip_max_register_qubits payload value"),
           error_category="invalid_payload",
       )
@@ -1451,7 +2214,6 @@ def _validate_backend_limits(request: dict, operation: dict) -> Optional[dict]:
       if len(unique_qubits) > max_register_qubits:
         return _build_response(
             False,
-            qutip_status="unsupported",
             message=f"qutip backend config limit exceeded: register_qubits={len(unique_qubits)} > {max_register_qubits}",
             error_category="exceeded_limit",
         )
@@ -1463,7 +2225,6 @@ def _validate_backend_limits(request: dict, operation: dict) -> Optional[dict]:
     if max_hilbert_dim is not None:
       return _build_response(
           False,
-          qutip_status="unsupported",
           message=_categorize_error("invalid_payload", "invalid qutip_max_hilbert_dim payload value"),
           error_category="invalid_payload",
       )
@@ -1473,7 +2234,6 @@ def _validate_backend_limits(request: dict, operation: dict) -> Optional[dict]:
     if isinstance(ancillary_modes, list) and len(ancillary_modes) > max_hilbert_dim:
       return _build_response(
           False,
-          qutip_status="unsupported",
           message=f"qutip backend config limit exceeded: ancillary_modes={len(ancillary_modes)} > {max_hilbert_dim}",
           error_category="exceeded_limit",
       )
@@ -1485,6 +2245,8 @@ def _trace_fields(request: dict, operation: dict) -> dict:
   backend_name = str(request.get("backend_type", "qutip") if isinstance(request, dict) else "qutip")
   backend_class = _normalized_backend_class(str(config.get("qutip_backend_class", backend_name)))
   time = request.get("time", 0.0)
+  cluster_id = operation.get("cluster_id", -1)
+  cluster_event = operation.get("cluster_event", "")
   return {
       "backend_name": backend_name,
       "backend_class": backend_class,
@@ -1495,6 +2257,8 @@ def _trace_fields(request: dict, operation: dict) -> dict:
       "targets": len(operation.get("targets", []) if isinstance(operation.get("targets", []), list) else []),
       "controls": len(operation.get("controls", []) if isinstance(operation.get("controls", []), list) else []),
       "ancillary_modes": len(operation.get("ancillary_modes", []) if isinstance(operation.get("ancillary_modes", []), list) else []),
+      "cluster_id": int(cluster_id) if isinstance(cluster_id, int) else -1,
+      "cluster_event": str(cluster_event) if cluster_event is not None else "",
   }
 
 
@@ -1559,7 +2323,19 @@ def _canonicalize_kind(kind: str) -> str:
       "two_photon_interference": "hom_interference",
       "bs_interference": "hom_interference",
       "bsinterference": "hom_interference",
-      "heraldedentanglement": "heralded_entanglement",
+      "emit": "photon_emission",
+      "photonemission": "photon_emission",
+      "photon_emission": "photon_emission",
+      "collect": "photon_collect",
+      "photoncollect": "photon_collect",
+      "photon_collect": "photon_collect",
+      "collect_in_fiber": "photon_collect",
+      "fiber_collect": "photon_collect",
+      "propagation": "photon_propagation",
+      "photonpropagation": "photon_propagation",
+      "photon_propagation": "photon_propagation",
+      "fiber_propagation": "photon_propagation",
+      "propagate": "photon_propagation",
       "source_multiphoton": "source_multiphoton",
       "multiphoton_source": "source_multiphoton",
       "multi_photon_source": "source_multiphoton",
@@ -1579,6 +2355,13 @@ def _canonicalize_kind(kind: str) -> str:
 
 
 _SUPPORTED_ADVANCED_KINDS = {
+    "photon_emission",
+    "emission",
+    "photon_collect",
+    "collect",
+    "photon_propagation",
+    "propagation",
+    "fiber_propagation",
     "kerr",
     "cross_kerr",
     "beam_splitter",
@@ -1607,7 +2390,6 @@ _SUPPORTED_ADVANCED_KINDS = {
     "delay",
     "hamiltonian",
     "lindblad",
-    "heralded_entanglement",
     "timing_jitter",
     "jitter",
     "dispersion",
@@ -1618,35 +2400,7 @@ _SUPPORTED_ADVANCED_KINDS = {
     "reset",
 }
 
-_IMPLEMENTED_ADVANCED_KINDS = {
-    "phase_shift",
-    "phase_modulation",
-    "self_phase_modulation",
-    "cross_phase_modulation",
-    "nonlinear",
-    "kerr",
-    "cross_kerr",
-    "beam_splitter",
-    "loss",
-    "attenuation",
-    "hamiltonian",
-    "lindblad",
-    "decoherence",
-    "dephasing",
-    "amplitude_damping",
-    "thermal_relaxation",
-    "bitflip",
-    "phaseflip",
-    "depolarizing",
-    "hom_interference",
-    "detection",
-    "polarization_rotation",
-    "polarization_decoherence",
-    "delay",
-    "timing_jitter",
-    "jitter",
-    "reset",
-}
+SUPPORTED_ADVANCED_CLUSTER_HANDLERS = {kind: "cluster" for kind in sorted(_SUPPORTED_ADVANCED_KINDS)}
 
 
 def _is_advanced_operation_kind(kind: str) -> bool:
@@ -1676,7 +2430,6 @@ def _run_with_timeout(operation_func, operation: dict, seed: int, timeout_ms: in
     return _attach_profile_metadata(
       _build_response(
         False,
-        qutip_status="unsupported",
         message=_categorize_error("timeout", f"qutip worker timed out after {int(timeout_seconds * 1000)} ms ({elapsed_ms} ms elapsed)"),
         error_category="timeout",
       ),
@@ -1689,7 +2442,6 @@ def _run_with_timeout(operation_func, operation: dict, seed: int, timeout_ms: in
   return _attach_profile_metadata(
     _build_response(
       False,
-      qutip_status="unsupported",
       message=_categorize_error("solver_error", f"qutip worker internal error: {value}"),
       error_category="solver_error",
     ),
@@ -1700,517 +2452,660 @@ def _run_with_timeout(operation_func, operation: dict, seed: int, timeout_ms: in
 def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Optional[dict[str, Any]] = None) -> dict:
   kind = _canonicalize_kind(operation.get("kind", ""))
   params = operation.get("params", [])
+  params_f = _float_list(params)
   payload = operation.get("payload", {})
   duration = _as_float(operation.get("duration", 0.0))
   backend_name = str(payload.get("backend_name", ""))
-  params_f = _float_list(params)
-  rng = _rng(seed, operation)
+  requested_representation = _advanced_representation(kind)
+  transition_from = None
+
+  cluster_key = _cluster_key(operation, profile_meta)
+  if cluster_key is None:
+    return _build_response(
+      False,
+      message=_categorize_error("invalid_cluster", "missing cluster id"),
+      error_category="invalid_cluster",
+    )
+
+  qutip_modules = _coerce_qutip_modules()
+  if qutip_modules is None:
+    return _qutip_unavailable_response(f"advanced:{kind}")
+  qutip, _ = qutip_modules
+
+  normalized_dim = max(2, int(dim))
+  if cluster_key in _QUTIP_CLUSTER_STATES:
+    existing_state = _QUTIP_CLUSTER_STATES.get(cluster_key)
+    if existing_state is not None:
+      transition_from = f"{existing_state.mode}/{existing_state.representation}"
+  cluster_state, _, cluster_error = _ensure_cluster_state(
+      operation,
+      normalized_dim,
+      profile_meta,
+      qutip,
+      target_representation=requested_representation,
+  )
+  if cluster_state is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster qubits"), error_category="invalid_cluster")
+  if cluster_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_cluster_state_meta(cluster_state, cluster_key))
+  transition_to = f"{cluster_state.mode}/{cluster_state.representation}"
+
   leakage_enabled = _resolve_profile_bool(profile_meta, "leakage_enabled", False)
 
-  def _qutip_required() -> tuple[bool, Any]:
-    qutip_modules = _coerce_qutip_modules()
-    if qutip_modules is None:
-      return False, "qutip worker cannot execute qutip operation: missing qutip/qutip_qip"
-    return True, qutip_modules
+  def _finalize(response: dict) -> dict:
+    response = _attach_profile_metadata(response, profile_meta)
+    response_meta = response.get("meta")
+    if not isinstance(response_meta, dict):
+      response_meta = {}
+    response_meta.update(_cluster_state_meta(cluster_state, cluster_key))
+    if transition_from is not None and transition_from != transition_to:
+      response_meta["cluster_representation_transition"] = f"{transition_from}->{transition_to}"
+    response["meta"] = response_meta
+    return _mark_operation_metrics(response, backend_name=backend_name, kind=kind, duration=duration)
 
-  if kind == "kerr":
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    success, fidelity, detail = _calculate_qutip_kerr_fidelity(qutip=qutip, operation=operation, duration=duration, dim=dim)
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind == "cross_kerr":
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    success, fidelity, detail = _calculate_qutip_cross_kerr_fidelity(qutip=qutip, operation=operation, duration=duration, dim=dim)
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind == "beam_splitter":
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    success, fidelity, detail = _calculate_qutip_beam_splitter_fidelity(qutip=qutip, operation=operation, duration=duration, dim=dim)
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind == "phase_shift":
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    success, fidelity, detail = _calculate_qutip_phase_fidelity(qutip=qutip, operation=operation, duration=duration, axis="z", dim=dim)
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind in {"phase_modulation", "self_phase_modulation", "cross_phase_modulation", "nonlinear"}:
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    success, fidelity, detail = _calculate_qutip_coupled_phase_fidelity(qutip=qutip, operation=operation, duration=duration, mode=kind, dim=dim)
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind == "hom_interference":
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules), error_category="qutip_import"),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    visibility = _as_float(params_f[0] if params_f else payload.get("visibility", 1.0))
-    visibility = max(0.0, min(1.0, visibility))
-    theta = math.acos(visibility)
-    hom_op = dict(operation)
-    hom_op["params"] = [theta]
-    success, fidelity, detail = _calculate_qutip_beam_splitter_fidelity(qutip=qutip, operation=hom_op, duration=duration, dim=dim)
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=f"qutip worker applied hom interference with visibility={visibility}: {detail}"),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind in {"decoherence", "dephasing"}:
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules), error_category="qutip_import"),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    success, fidelity, detail, _meta = _calculate_qutip_noise_fidelity(
-        qutip=qutip,
-        noise_kind="decoherence" if kind == "decoherence" else "dephasing",
-        operation=operation,
-        duration=duration,
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind in {"loss", "attenuation"}:
-    p = _effective_probability(params_f[0] if params_f else payload.get("p", payload.get("rate", 0.0)))
-    qubit_lost = rng.random() < p
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(True, qutip_status="simulated", qubit_lost=qubit_lost, fidelity_estimate=1.0 - p, message=f"qutip worker simulated channel loss/decoherence with p={p}, backend={backend_name} in {duration}"),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="simulated",
-      )
-    qutip, _ = qutip_modules
-    success, fidelity, detail, _meta = _calculate_qutip_loss_fidelity(qutip=qutip, operation=operation, duration=duration, dim=dim, leakage_enabled=leakage_enabled)
-    return _mark_operation_metrics(
-        _build_response(
-            success,
-            qutip_status=_normalize_status("implemented" if success else "unsupported"),
-            fidelity_estimate=fidelity if success else 1.0 - p,
-            qubit_lost=qubit_lost,
-            message=detail,
-        ),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status=_normalize_status("implemented" if success else "unsupported"),
-    )
-  if kind in {"timing_jitter", "jitter"}:
-    jitter_std = _as_float(payload.get("jitter", params_f[0] if params_f else payload.get("std", 0.0)))
-    jitter_std = abs(jitter_std)
-    p = _effective_probability(payload.get("p", 0.01 * jitter_std * max(duration, 1.0)))
-    jitter_payload = dict(payload)
-    jitter_payload.setdefault("noise_kind", "decoherence")
-    jitter_payload["p"] = p
-    available, qutip_modules = _qutip_required()
-    if not available:
-      fidelity = _simple_fidelity_decay(0.01 * jitter_std, duration)
-      return _mark_operation_metrics(
-          _build_response(True, qutip_status="simulated", fidelity_estimate=fidelity, message=f"qutip worker simulated timing jitter with std={jitter_std}, backend={backend_name} in {duration}"),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="simulated",
-      )
-    qutip, _ = qutip_modules
-    jitter_op = dict(operation)
-    jitter_op["kind"] = "decoherence"
-    jitter_op["payload"] = jitter_payload
-    jitter_op["params"] = [p]
-    success, fidelity, detail, _meta = _calculate_qutip_noise_fidelity(
-        qutip=qutip,
-        noise_kind="decoherence",
-        operation=jitter_op,
-        duration=duration,
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=f"qutip worker applied timing jitter with p={p}, backend={backend_name}: {detail}"),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind == "reset":
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(True, qutip_status="simulated", message=f"qutip worker simulated reset in backend={backend_name} during {duration}"),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="simulated",
-      )
-    qutip, _ = qutip_modules
-    success, fidelity, detail = _calculate_qutip_reset_fidelity(
-        qutip=qutip,
-        operation=operation,
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    return _mark_operation_metrics(
-        _build_response(
-            success,
-            qutip_status=_normalize_status("implemented" if success else "unsupported"),
-            fidelity_estimate=fidelity if success else 1.0,
-            message=detail,
-            error_category=None if success else "solver_error",
-        ),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status=_normalize_status("implemented" if success else "unsupported"),
-    )
-  if kind == "detection":
-    raw_dark_count = payload.get("dark_count", payload.get("detector", payload.get("p", params_f[0] if params_f else 0.0)))
-    p = _effective_probability(raw_dark_count)
-    available, qutip_modules = _qutip_required()
-    if not available:
-      detected = rng.random() > p
-      return _mark_operation_metrics(
-          _build_response(True, qutip_status="simulated", measured_plus=detected, fidelity_estimate=1.0 - p, message=f"qutip worker simulated detection p={p}, backend={backend_name}"),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="simulated",
-      )
-    qutip, _ = qutip_modules
-    detected = rng.random() > p
-    return _mark_operation_metrics(
-        _build_response(True, qutip_status="implemented", measured_plus=detected, fidelity_estimate=1.0 - p, message=f"qutip worker applied detection with qutip path p={p}, backend={backend_name}"),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented",
-    )
-  if kind == "delay":
-    available, qutip_modules = _qutip_required()
-    if not available:
-      p = _effective_probability(payload.get("p", 0.0))
-      return _mark_operation_metrics(
-          _build_response(True, qutip_status="simulated", fidelity_estimate=1.0 - p, message=f"qutip worker simulated delay of {duration} for {backend_name}"),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="simulated",
-      )
-    qutip, _ = qutip_modules
-    delay_payload = dict(payload)
-    delay_payload.setdefault("noise_kind", "decoherence")
-    if "rate" in delay_payload:
-      rate = _as_float(delay_payload.get("rate"), 0.0)
-      if rate > 0.0:
-        delay_payload["p"] = 1.0 - math.exp(-rate * max(duration, 1e-12))
-    p = _effective_probability(delay_payload.get("p", 0.0))
-    delay_op = dict(operation)
-    delay_op["kind"] = "decoherence"
-    delay_op["payload"] = delay_payload
-    delay_op["params"] = [p]
-    success, fidelity, detail, _meta = _calculate_qutip_noise_fidelity(
-        qutip=qutip,
-        noise_kind="decoherence",
-        operation=delay_op,
-        duration=duration,
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind in {"lindblad", "hamiltonian"}:
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    if kind == "hamiltonian":
-      success, fidelity, detail = _calculate_qutip_hamiltonian_fidelity(qutip=qutip, operation=operation, duration=duration, dim=dim)
-    else:
-      success, fidelity, detail = _calculate_qutip_lindblad_fidelity(qutip=qutip, operation=operation, duration=duration, dim=dim)
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", message=detail, fidelity_estimate=fidelity),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind == "heralded_entanglement":
-    threshold = _effective_probability(payload.get("success_probability", params_f[0] if params_f else 0.8), 0.8)
-    success = rng.random() < threshold
-    return _mark_operation_metrics(
-        _build_response(True, qutip_status="simulated", measured_plus=success, message=f"qutip worker simulated heralded entanglement in {backend_name}, success={success}", fidelity_estimate=threshold),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="simulated",
-    )
-  if kind in {"dispersion", "multiphoton", "squeezing"}:
-    p = _as_float(payload.get("strength", payload.get("p", 0.0)), 0.0)
-    return _mark_operation_metrics(
-        _build_response(True,
-                        qutip_status="simulated",
-                        fidelity_estimate=_simple_fidelity_decay(p, duration),
-                        message=f"qutip worker simulated channel effect kind={kind} in backend={backend_name}"),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="simulated",
-    )
-  if kind in {"amplitude_damping", "thermal_relaxation", "bitflip", "phaseflip", "depolarizing"}:
-    p = _effective_probability(params_f[0] if params_f else payload.get("p", payload.get("rate", 0.0)))
-    relaxed = rng.random() < p
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(
-              True,
-              qutip_status="simulated",
-              relaxed_to_ground=relaxed if kind in {"amplitude_damping", "thermal_relaxation"} else False,
-              fidelity_estimate=max(0.0, 1.0 - p),
-              message=f"qutip worker simulated {kind} with p={p}, backend={backend_name}",
-          ),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="simulated",
-      )
-
-    qutip, _ = qutip_modules
-    success, fidelity, detail, _meta = _calculate_qutip_noise_fidelity(
-        qutip=qutip,
-        noise_kind=kind,
-        operation=operation,
-        duration=duration,
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    return _mark_operation_metrics(
-        _build_response(
-            success,
-            qutip_status="implemented" if success else "unsupported",
-            relaxed_to_ground=relaxed if kind in {"amplitude_damping", "thermal_relaxation"} else False,
-            fidelity_estimate=fidelity if success else max(0.0, 1.0 - p),
-            message=detail,
-        ),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind == "polarization_decoherence":
-    p = _effective_probability(params_f[0] if params_f else payload.get("p", payload.get("rate", 0.0)))
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(True, qutip_status="simulated", fidelity_estimate=max(0.0, 1.0 - p), message=f"qutip worker simulated {kind} channel p={p}, backend={backend_name}"),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="simulated",
-      )
-    qutip, _ = qutip_modules
-    decoherence_op = dict(operation)
-    decoherence_op["kind"] = "decoherence"
-    success, fidelity, message, _ = _calculate_qutip_noise_fidelity(
-        qutip=qutip,
-        noise_kind="decoherence",
-        operation=decoherence_op,
-        duration=duration,
-        dim=dim,
-        leakage_enabled=leakage_enabled,
-    )
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=message),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind == "polarization_rotation":
-    available, qutip_modules = _qutip_required()
-    if not available:
-      return _mark_operation_metrics(
-          _build_response(False, qutip_status="unsupported", message=_categorize_error("qutip_import", qutip_modules)),
-          backend_name=backend_name,
-          kind=kind,
-          duration=duration,
-          qutip_status="unsupported",
-      )
-    qutip, _ = qutip_modules
-    axis = str(payload.get("axis", payload.get("basis", "z")))
-    success, fidelity, detail = _calculate_qutip_phase_fidelity(
-        qutip=qutip,
-        operation=operation,
-        duration=duration,
-        axis=axis,
-        dim=dim,
-    )
-    return _mark_operation_metrics(
-        _build_response(success, qutip_status="implemented" if success else "unsupported", fidelity_estimate=fidelity, message=detail),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="implemented" if success else "unsupported",
-    )
-  if kind in {"mode_coupling", "loss_mode", "fock_loss", "photon_number_cutoff", "two_mode_squeezing", "beam_splitter"}:
-    coupling = _as_float(payload.get("coupling", params_f[0] if params_f else 0.0))
-    return _mark_operation_metrics(
-        _build_response(True, qutip_status="simulated", fidelity_estimate=_simple_fidelity_decay(abs(coupling), duration),
-                       message=f"qutip worker simulated {kind} with coupling={coupling}, backend={backend_name}"),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="simulated",
-    )
-  if kind == "source_multiphoton":
-    strength = _as_float(payload.get("strength", params_f[0] if params_f else 0.0), 0.0)
-    return _mark_operation_metrics(
-        _build_response(
-            True,
-            qutip_status="simulated",
-            fidelity_estimate=_simple_fidelity_decay(strength, duration),
-            message=f"qutip worker simulated source multiphoton with strength={strength}, backend={backend_name} in {duration}",
-        ),
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status="simulated",
-    )
-  if kind == "measurement":
-    measurement_status = _handle_measurement(operation, seed, dim=dim, profile_meta=profile_meta)
-    # Keep the status returned by _handle_measurement so invalid/unsupported
-    # measurement kinds remain classified correctly.
-    return _mark_operation_metrics(
-        measurement_status,
-        backend_name=backend_name,
-        kind=kind,
-        duration=duration,
-        qutip_status=measurement_status.get("qutip_status"),
-    )
-
-  supported = ", ".join(sorted(_SUPPORTED_ADVANCED_KINDS))
-  return _mark_operation_metrics(
+  def _invalid_payload(message: str) -> dict:
+    return _finalize(
       _build_response(
-          False,
-          qutip_status="unsupported",
-          message=_categorize_error("unsupported_kind", f"qutip worker advanced operation not supported yet: {kind}. supported_advanced={supported}"),
-          error_category="unsupported_kind",
+        False,
+        message=_categorize_error("invalid_payload", message),
+        error_category="invalid_payload",
+        meta=_cluster_state_meta(cluster_state, cluster_key),
       ),
-      backend_name=backend_name,
-      kind=kind,
-      duration=duration,
-      qutip_status="unsupported",
-  )
+    )
 
+  def _resolve_targets(*, exact_targets: Optional[int] = None, min_targets: Optional[int] = None) -> tuple[list[tuple[int, int, int, int]], list[int], Optional[str]]:
+    return _resolve_cluster_targets(
+      operation,
+      cluster_state,
+      exact_targets=exact_targets,
+      min_targets=min_targets,
+    )
+
+  def _apply_cluster_unitary(operation_targets: list[tuple[int, int, int, int]], unitary: Any, message: str) -> dict:
+    previous_state = cluster_state.density_matrix
+    success, evolved = _apply_unitary_to_cluster(cluster_state, unitary, operation_targets, qutip)
+    if not success or evolved is None:
+      return _finalize(
+        _build_response(
+          False,
+          message=_categorize_error("invalid_payload", "qutip worker failed to apply advanced operation on cluster"),
+          error_category="invalid_payload",
+          meta=_cluster_state_meta(cluster_state, cluster_key),
+        ),
+      )
+    cluster_state.density_matrix = evolved
+    try:
+      fidelity = float(qutip.metrics.fidelity(previous_state, evolved))
+    except Exception:
+      fidelity = 1.0
+    return _finalize(_build_response(True, fidelity_estimate=fidelity, message=message))
+
+  def _apply_cluster_kraus(
+    noise_kind_for_ops: str,
+    operation_for_ops: dict,
+    operation_targets: list[tuple[int, int, int, int]],
+    target_positions: list[int],
+    message: Optional[str] = None,
+  ) -> dict:
+    ops, meta, build_error = _build_cluster_noise_ops(
+      qutip=qutip,
+      noise_kind=noise_kind_for_ops,
+      operation=operation_for_ops,
+      duration=duration,
+      dim=normalized_dim,
+      leakage_enabled=leakage_enabled,
+    )
+    if build_error is not None:
+      return _finalize(
+        _build_response(
+          False,
+          message=build_error,
+          error_category=_extract_error_category(build_error) or "unsupported_noise",
+          meta=_cluster_state_meta(cluster_state, cluster_key),
+        ),
+      )
+
+    previous_state = cluster_state.density_matrix
+    success_apply, evolved_state = _apply_kraus_to_cluster(cluster_state, ops, target_positions, qutip)
+    if not success_apply or evolved_state is None:
+      return _invalid_payload("qutip worker failed to apply advanced operation on cluster")
+    cluster_state.density_matrix = evolved_state
+    try:
+      fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state))
+    except Exception:
+      fidelity = 1.0
+
+    response = _build_response(True, fidelity_estimate=fidelity, message=message or f"qutip worker applied {kind} in cluster mode")
+    if isinstance(meta, dict):
+      response_meta = dict(response.get("meta") or {})
+      response_meta.update(meta)
+      response["meta"] = response_meta
+    return _finalize(response)
+
+  def _handle_unitary_kind(kind_for_handler: str) -> Optional[dict]:
+    min_targets = 1
+    if kind_for_handler in {
+        "cross_kerr",
+        "beam_splitter",
+        "hom_interference",
+        "cross_phase_modulation",
+        "mode_coupling",
+        "two_mode_squeezing",
+    }:
+      min_targets = 2
+
+    if min_targets > 1:
+      operation_targets, target_positions, error = _resolve_targets(min_targets=min_targets)
+    else:
+      operation_targets, target_positions, error = _resolve_targets(exact_targets=1)
+
+    if error is not None:
+      return _invalid_payload(error)
+
+    n_targets = len(operation_targets)
+    def _cluster_identity_for_targets() -> Any:
+      if n_targets <= 1:
+        return _identity_in_dim(qutip, normalized_dim)
+      return qutip.tensor(*([_identity_in_dim(qutip, normalized_dim)] * n_targets))
+
+    if kind_for_handler == "kerr":
+      params_value = _as_float(params_f[0] if params_f else payload.get("chi", payload.get("theta", 0.0)))
+      sigma_z = _logical_pauli_in_dim(qutip, normalized_dim, "sz")
+      if sigma_z is None:
+        return _invalid_payload(f"qutip worker cannot build kerr operator for dim={normalized_dim}")
+      n_op = (_identity_in_dim(qutip, normalized_dim) - sigma_z) * 0.5
+      local_h = n_op * n_op * params_value
+      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _identity_in_dim(qutip, normalized_dim ** n_targets)
+      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with chi={params_value} for duration={duration}")
+
+    if kind_for_handler == "cross_kerr":
+      if n_targets < 2:
+        return _invalid_payload("qutip worker cross_kerr requires at least two targets")
+      params_value = _as_float(params_f[0] if params_f else payload.get("chi", payload.get("theta", 0.0)))
+      sigma_z = _logical_pauli_in_dim(qutip, normalized_dim, "sz")
+      if sigma_z is None:
+        return _invalid_payload(f"qutip worker cannot build cross_kerr operator for dim={normalized_dim}")
+      n_op_left = _embed_qubit_operator(qutip, (_identity_in_dim(qutip, normalized_dim) - sigma_z) * 0.5, n_targets, 0, dim=normalized_dim)
+      n_op_right = _embed_qubit_operator(qutip, (_identity_in_dim(qutip, normalized_dim) - sigma_z) * 0.5, n_targets, 1, dim=normalized_dim)
+      if n_op_left is None or n_op_right is None:
+        return _invalid_payload("qutip worker cannot build cross_kerr operator")
+      local_h = params_value * n_op_left * n_op_right
+      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
+      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied cross_kerr with chi={params_value} for duration={duration}")
+
+    if kind_for_handler in {"beam_splitter", "hom_interference", "mode_coupling", "two_mode_squeezing"}:
+      coupling_raw = payload.get("theta", payload.get("coupling", payload.get("strength", 0.0)))
+      coupling_or_angle = _as_float(params_f[0] if params_f else coupling_raw)
+      if kind_for_handler in {"hom_interference", "mode_coupling"} and kind_for_handler != "beam_splitter":
+        if kind_for_handler == "hom_interference":
+          visibility = _as_float(payload.get("visibility", coupling_or_angle), coupling_or_angle)
+          visibility = max(0.0, min(1.0, visibility))
+          coupling_or_angle = math.acos(visibility)
+
+      sx = _logical_pauli_in_dim(qutip, normalized_dim, "sx")
+      sy = _logical_pauli_in_dim(qutip, normalized_dim, "sy")
+      if sx is None or sy is None:
+        return _invalid_payload(f"qutip worker cannot build {kind_for_handler} operator")
+
+      if kind_for_handler == "two_mode_squeezing":
+        if n_targets < 2:
+          return _invalid_payload("qutip worker two_mode_squeezing requires at least two targets")
+        sx_l = _embed_qubit_operator(qutip, sx, n_targets, 0, dim=normalized_dim)
+        sx_r = _embed_qubit_operator(qutip, sx, n_targets, 1, dim=normalized_dim)
+        local_h = coupling_or_angle * (sx_l * sx_r)
+      else:
+        sx_l = _embed_qubit_operator(qutip, sx, n_targets, 0, dim=normalized_dim)
+        sy_l = _embed_qubit_operator(qutip, sy, n_targets, 0, dim=normalized_dim)
+        sx_r = _embed_qubit_operator(qutip, sx, n_targets, 1, dim=normalized_dim) if n_targets > 1 else None
+        sy_r = _embed_qubit_operator(qutip, sy, n_targets, 1, dim=normalized_dim) if n_targets > 1 else None
+        if sx_l is None or sy_l is None or sx_r is None or sy_r is None:
+          return _invalid_payload(f"qutip worker cannot build {kind_for_handler} operator")
+
+        if kind_for_handler in {"hom_interference", "beam_splitter", "mode_coupling"}:
+          local_h = 0.5 * coupling_or_angle * (sx_l * sx_r + sy_l * sy_r)
+        else:
+          return _invalid_payload(f"qutip worker unsupported configuration for {kind_for_handler}")
+
+      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
+      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with angle={coupling_or_angle}")
+
+    if kind_for_handler in {"phase_shift", "phase_modulation", "self_phase_modulation", "cross_phase_modulation", "nonlinear"}:
+      phase_raw = payload.get("angle", payload.get("phi", payload.get("theta", 0.0)))
+      params_value = _as_float(params_f[0] if params_f else phase_raw)
+      sigma_z = _logical_pauli_in_dim(qutip, normalized_dim, "sz")
+      if sigma_z is None:
+        return _invalid_payload(f"qutip worker cannot build phase operator for {kind_for_handler}")
+      if kind_for_handler in {"cross_phase_modulation", "nonlinear"} and n_targets >= 2:
+        left = _embed_qubit_operator(qutip, sigma_z, n_targets, 0, dim=normalized_dim)
+        right = _embed_qubit_operator(qutip, sigma_z, n_targets, 1, dim=normalized_dim)
+        if left is None or right is None:
+          return _invalid_payload(f"qutip worker cannot build coupled phase operator for {kind_for_handler}")
+        local_h = params_value * left * right
+      else:
+        embedded = _embed_qubit_operator(qutip, params_value * sigma_z, n_targets, 0, dim=normalized_dim)
+        if embedded is None:
+          return _invalid_payload(f"qutip worker cannot build phase operator for {kind_for_handler}")
+        local_h = -0.5 * embedded
+
+      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
+      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with coeff={params_value}")
+
+    if kind_for_handler == "polarization_rotation":
+      axis = str(payload.get("axis", payload.get("basis", "z"))).lower()
+      sigma_map = {"x": "sx", "y": "sy", "z": "sz"}
+      local_op = _logical_pauli_in_dim(qutip, normalized_dim, sigma_map.get(axis, "sz"))
+      if local_op is None:
+        return _invalid_payload(f"qutip worker cannot build polarization rotation operator axis={axis}")
+      local_h = local_op
+      embedded = _embed_qubit_operator(qutip, local_h, n_targets, 0, dim=normalized_dim)
+      if embedded is None:
+        return _invalid_payload("qutip worker cannot build polarization rotation operator")
+      unitary = (-1j * embedded * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
+      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied polarization_rotation axis={axis} for duration={duration}")
+
+    return None
+
+  def _handle_representation_transition(
+      kind_for_handler: str,
+      *,
+      success_message: str,
+      extra_meta: Optional[dict[str, Any]] = None,
+  ) -> dict:
+    operation_targets, _, error = _resolve_targets(exact_targets=1)
+    if error is not None:
+      return _invalid_payload(error)
+    if not operation_targets:
+      return _invalid_payload("qutip worker missing required target for advanced representation transition")
+
+    response = _build_response(
+      True,
+      fidelity_estimate=1.0,
+      message=success_message,
+    )
+    response_meta = response.get("meta")
+    if not isinstance(response_meta, dict):
+      response_meta = {}
+    response_meta["representation_mode"] = _advanced_representation(kind_for_handler)
+    response_meta["representation_targets"] = len(operation_targets)
+    if extra_meta:
+      response_meta.update(extra_meta)
+    response["meta"] = response_meta
+    return _finalize(response)
+
+  def _handle_photon_emission() -> dict:
+    operation_targets, target_positions, error = _resolve_targets(exact_targets=1)
+    if error is not None:
+      return _invalid_payload(error)
+    efficiency = _effective_probability(
+      payload.get("efficiency", payload.get("eta", payload.get("p", 1.0))),
+      1.0,
+    )
+    loss_probability = max(0.0, min(1.0, 1.0 - efficiency))
+    if loss_probability > 0.0:
+      temp_payload = dict(payload)
+      temp_payload["noise_kind"] = "loss"
+      temp_payload["p"] = _effective_probability(loss_probability)
+      temp_operation = dict(operation)
+      temp_operation["payload"] = temp_payload
+      loss_response = _apply_cluster_kraus(
+        "loss",
+        temp_operation,
+        operation_targets,
+        target_positions,
+        message=f"qutip worker simulated emission loss with p={loss_probability}",
+      )
+      if not loss_response.get("success"):
+        return loss_response
+
+    return _handle_representation_transition(
+      "photon_emission",
+      success_message=f"qutip worker applied photon emission with efficiency={efficiency}",
+      extra_meta={"emission_efficiency": efficiency},
+    )
+
+  def _handle_photon_collect() -> dict:
+    return _handle_representation_transition(
+      "photon_collect",
+      success_message="qutip worker applied photon collect coupling",
+      extra_meta={"collect_coupling": _effective_probability(payload.get("coupling", payload.get("eta", 1.0)))},
+    )
+
+  def _handle_photon_propagation() -> dict:
+    operation_targets, target_positions, error = _resolve_targets(exact_targets=1)
+    if error is not None:
+      return _invalid_payload(error)
+
+    attenuation_raw = payload.get("attenuation", payload.get("loss", payload.get("eta", 0.0)))
+    attenuation = _effective_probability(attenuation_raw)
+    response: Optional[dict] = None
+    if attenuation > 0.0:
+      temp_payload = dict(payload)
+      temp_payload["noise_kind"] = "loss"
+      temp_payload["p"] = _effective_probability(attenuation)
+      temp_operation = dict(operation)
+      temp_operation["payload"] = temp_payload
+      response = _apply_cluster_kraus(
+        "loss",
+        temp_operation,
+        operation_targets,
+        target_positions,
+        message=f"qutip worker simulated photon propagation loss with p={attenuation}",
+      )
+      if not response.get("success"):
+        return response
+
+    dispersion = _as_float(payload.get("phase_dispersion", payload.get("dispersion", 0.0)))
+    if dispersion != 0.0:
+      sigma_z = _logical_pauli_in_dim(qutip, normalized_dim, "sz")
+      if sigma_z is None:
+        return _invalid_payload("qutip worker cannot build phase operator for propagation")
+      if _embed_qubit_operator(qutip, sigma_z, 1, 0, dim=normalized_dim) is None:
+        return _invalid_payload("qutip worker cannot build propagation phase operator")
+      local_h = (-0.5 * dispersion) * sigma_z
+      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _identity_in_dim(qutip, normalized_dim)
+      response = _apply_cluster_unitary(
+        operation_targets,
+        unitary,
+        f"qutip worker applied photon propagation with phase_dispersion={dispersion}",
+      )
+
+    if response is None:
+      return _handle_representation_transition(
+        "photon_propagation",
+        success_message="qutip worker applied photon propagation channel",
+        extra_meta={"propagation_attenuation": attenuation, "propagation_dispersion": dispersion},
+      )
+
+    response_meta = dict(response.get("meta") or {})
+    response_meta["propagation_attenuation"] = attenuation
+    response_meta["propagation_dispersion"] = dispersion
+    response["meta"] = response_meta
+    return _finalize(response)
+
+  def _handle_advanced_noise(kind_for_handler: str) -> Optional[dict]:
+    if kind_for_handler in {"reset"}:
+      operation_targets, target_positions, error = _resolve_targets(exact_targets=1)
+    elif kind_for_handler in {"timing_jitter", "jitter", "delay"}:
+      operation_targets, target_positions, error = _resolve_targets(exact_targets=1)
+    else:
+      operation_targets, target_positions, error = _resolve_targets(exact_targets=1)
+    if error is not None:
+      return _invalid_payload(error)
+
+    if kind_for_handler in {"timing_jitter", "jitter"}:
+      jitter_raw = payload.get("jitter", params_f[0] if params_f else payload.get("std", 0.0))
+      jitter_std = abs(_as_float(jitter_raw))
+      p = _effective_probability(payload.get("p", 0.01 * jitter_std * max(duration, 1.0)))
+      temp_payload = dict(payload)
+      temp_payload["noise_kind"] = "decoherence"
+      temp_payload["p"] = p
+      temp_operation = dict(operation)
+      temp_operation["payload"] = temp_payload
+      return _apply_cluster_kraus("decoherence", temp_operation, operation_targets, target_positions, f"qutip worker applied timing_jitter with p={p}")
+
+    if kind_for_handler == "delay":
+      p = _effective_probability(payload.get("p", 0.0))
+      temp_payload = dict(payload)
+      if "rate" in temp_payload:
+        rate = _as_float(temp_payload.get("rate"), 0.0)
+        if rate > 0.0:
+          p = 1.0 - math.exp(-rate * max(duration, 1e-12))
+      temp_payload["noise_kind"] = "decoherence"
+      temp_payload["p"] = p
+      temp_operation = dict(operation)
+      temp_operation["payload"] = temp_payload
+      return _apply_cluster_kraus("decoherence", temp_operation, operation_targets, target_positions, f"qutip worker applied delay with p={p}")
+
+    noise_kind = kind_for_handler
+    if kind_for_handler in {"dephasing", "polarization_decoherence", "decoherence"}:
+      noise_kind = "decoherence"
+    if kind_for_handler in {"attenuation", "loss"}:
+      noise_kind = "loss"
+    return _apply_cluster_kraus(noise_kind, operation, operation_targets, target_positions, f"qutip worker applied {kind_for_handler} in cluster mode")
+
+  def _handle_hamiltonian_lindblad() -> dict:
+    operation_targets, _, error = _resolve_targets(min_targets=1)
+    if error is not None:
+      return _invalid_payload(error)
+    n_targets = len(operation_targets)
+
+    if kind == "hamiltonian":
+      expression = str(payload.get("expr", payload.get("hamilbertian", "")))
+      if (not expression or expression == "") and params_f:
+        expression = str(params_f[0])
+      if not expression.strip():
+        return _invalid_payload("qutip worker requires expr/hamiltonian")
+      h_op = _parse_operator_expr(expression, n_targets, qutip, normalized_dim)
+      if h_op is None:
+        return _invalid_payload(f"qutip worker cannot parse hamiltonian expr: {expression}")
+      if duration <= 0.0:
+        unitary = _identity_in_dim(qutip, h_op.shape[0])
+      else:
+        unitary = (-1j * h_op * duration).expm()
+      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied hamiltonian with expr={expression} for duration={duration}")
+
+    expression = payload.get("collapse", payload.get("expr", []))
+    collapse_specs = _coerce_expr_as_list(expression)
+    if not collapse_specs:
+      return _invalid_payload("qutip worker requires expr/collapse for lindblad")
+    collapse_ops = []
+    for item in collapse_specs:
+      c_op = _parse_operator_expr(str(item), n_targets, qutip, normalized_dim)
+      if c_op is None:
+        return _invalid_payload(f"qutip worker cannot parse lindblad collapse expr: {item}")
+      collapse_ops.append(c_op)
+
+    if duration <= 0.0:
+      return _finalize(
+        _build_response(
+          True,
+          fidelity_estimate=1.0,
+          message="qutip worker applied zero-duration lindblad with identity effect",
+        ),
+      )
+
+    state = cluster_state.density_matrix
+    rho_t = None
+    target_positions = [cluster_state.qubits.index(target) for target in operation_targets]
+    for c_op in collapse_ops:
+      embedded = _embed_local_operator(state, c_op, cluster_state, target_positions, qutip)
+      if not isinstance(embedded, tuple) or len(embedded) != 2:
+        return _invalid_payload("qutip worker failed to build lindblad collapse operator")
+      success_embed, full_op = embedded
+      if not success_embed or full_op is None:
+        return _invalid_payload("qutip worker failed to build lindblad collapse operator")
+      term = full_op * state * full_op.dag()
+      rho_t = term if rho_t is None else rho_t + term
+
+    if rho_t is None:
+      return _invalid_payload("qutip worker failed to apply advanced operation on cluster")
+    norm = float(rho_t.tr())
+    if norm <= 0.0:
+      return _invalid_payload("qutip worker failed to apply advanced operation on cluster")
+    if abs(norm - 1.0) > 1e-12:
+      rho_t = rho_t / norm
+
+    previous_state = cluster_state.density_matrix
+    cluster_state.density_matrix = rho_t
+    try:
+      fidelity = float(qutip.metrics.fidelity(previous_state, rho_t))
+    except Exception:
+      fidelity = 1.0
+
+    return _finalize(
+      _build_response(True, fidelity_estimate=fidelity, message=f"qutip worker applied lindblad with {len(collapse_ops)} collapse operator(s) for duration={duration}"),
+    )
+
+  def _handle_event_kind(kind_for_handler: str) -> dict:
+    params_raw = params_f[0] if params_f else payload.get(
+      "p",
+      payload.get(
+        "success_probability",
+        payload.get("visibility", payload.get("strength", 0.0)),
+      ),
+    )
+    params_like = _as_float(params_raw)
+    if kind_for_handler == "detection":
+      operation_targets, target_positions, error = _resolve_targets(min_targets=1)
+      if error is not None:
+        return _invalid_payload(error)
+
+      n_targets = len(operation_targets)
+      if n_targets not in {1, 2}:
+        return _invalid_payload(f"qutip worker detection supports one or two targets, target_count={n_targets}")
+
+      if n_targets == 1:
+        plus_projector_local, minus_projector_local = _onoff_detection_projectors_for_one_target(qutip, normalized_dim)
+        success_event = "click"
+        failure_event = "no_click"
+      else:
+        plus_projector_local, minus_projector_local = _bell_detection_projectors_for_two_targets(qutip, normalized_dim)
+        success_event = "success"
+        failure_event = "failure"
+
+      raw_efficiency = payload.get("efficiency", payload.get("eta", 1.0))
+      efficiency = _effective_probability(_as_float(raw_efficiency), 1.0)
+      raw_dark_count = payload.get("dark_count", payload.get("detector", params_like))
+      dark_count = _effective_probability(_as_float(raw_dark_count), 0.0)
+      sqrt_efficiency = math.sqrt(max(0.0, efficiency))
+      sqrt_dark = math.sqrt(max(0.0, dark_count))
+      sqrt_no_dark = math.sqrt(max(0.0, 1.0 - dark_count))
+      sqrt_miss = math.sqrt(max(0.0, 1.0 - efficiency))
+
+      success_operator_local = sqrt_efficiency * plus_projector_local + sqrt_dark * minus_projector_local
+      failure_operator_local = sqrt_miss * plus_projector_local + sqrt_no_dark * minus_projector_local
+
+      success_ok, success_operator = _apply_local_operator_to_cluster(cluster_state, success_operator_local, target_positions, qutip)
+      failure_ok, failure_operator = _apply_local_operator_to_cluster(cluster_state, failure_operator_local, target_positions, qutip)
+      if not success_ok or not failure_ok or success_operator is None or failure_operator is None:
+        return _invalid_payload("qutip worker failed to build detection operator")
+
+      rho = cluster_state.density_matrix
+      probability_success = float((success_operator * rho * success_operator.dag()).tr())
+      probability_failure = float((failure_operator * rho * failure_operator.dag()).tr())
+      total_probability = probability_success + probability_failure
+      if total_probability <= 0.0:
+        return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker detection has zero branch norm"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+      probability_success = max(0.0, min(1.0, probability_success / total_probability))
+      probability_failure = max(0.0, 1.0 - probability_success)
+      rng = _rng(seed, {"kind": "detection_rng", "targets": n_targets, "success_probability": probability_success, "efficiency": efficiency, "dark_count": dark_count})
+      measured_plus = rng.random() < probability_success
+      selected_operator = success_operator if measured_plus else failure_operator
+      selected_event = success_event if measured_plus else failure_event
+      branch_probability = probability_success if measured_plus else probability_failure
+
+      collapsed = selected_operator * rho * selected_operator.dag()
+      collapsed_norm = float((collapsed * collapsed.dag()).tr())
+      if collapsed_norm <= 0.0:
+        return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker collapsed detection state has zero norm"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+      cluster_state.density_matrix = collapsed / collapsed_norm
+
+      response_meta = _cluster_state_meta(cluster_state, cluster_key)
+      response_meta.update(
+        {
+          "detection_success_probability": probability_success,
+          "detection_failure_probability": probability_failure,
+          "detection_efficiency": efficiency,
+          "detection_dark_count": dark_count,
+        },
+      )
+      return _finalize(
+        _build_response(
+          True,
+          outcome=selected_event,
+          branch_probability=branch_probability,
+          measured_plus=measured_plus,
+          fidelity_estimate=branch_probability,
+          meta=response_meta,
+          message=f"qutip worker simulated detection ({selected_event}) with efficiency={efficiency}, dark_count={dark_count}",
+        ),
+      )
+
+    if kind_for_handler in {"dispersion", "squeezing", "fock_loss", "photon_number_cutoff", "loss_mode", "multiphoton", "source_multiphoton", "mode_coupling", "two_mode_squeezing"}:
+      strength = abs(_effective_probability(params_like))
+      return _finalize(
+        _build_response(
+          True,
+          fidelity_estimate=_simple_fidelity_decay(strength, duration),
+          message=f"qutip worker simulated {kind_for_handler} with strength={strength}",
+        ),
+      )
+
+    return _invalid_payload(f"qutip worker unsupported cluster event kind {kind_for_handler}")
+
+  handlers: dict[str, Any] = {
+      "kerr": lambda: _handle_unitary_kind("kerr"),
+      "cross_kerr": lambda: _handle_unitary_kind("cross_kerr"),
+      "beam_splitter": lambda: _handle_unitary_kind("beam_splitter"),
+      "hom_interference": lambda: _handle_unitary_kind("hom_interference"),
+      "mode_coupling": lambda: _handle_unitary_kind("mode_coupling"),
+      "two_mode_squeezing": lambda: _handle_unitary_kind("two_mode_squeezing"),
+      "photon_emission": lambda: _handle_photon_emission(),
+      "photon_collect": lambda: _handle_photon_collect(),
+      "photon_propagation": lambda: _handle_photon_propagation(),
+      "emission": lambda: _handle_photon_emission(),
+      "collect": lambda: _handle_photon_collect(),
+      "propagation": lambda: _handle_photon_propagation(),
+      "fiber_propagation": lambda: _handle_photon_propagation(),
+      "phase_shift": lambda: _handle_unitary_kind("phase_shift"),
+      "phase_modulation": lambda: _handle_unitary_kind("phase_modulation"),
+      "self_phase_modulation": lambda: _handle_unitary_kind("self_phase_modulation"),
+      "cross_phase_modulation": lambda: _handle_unitary_kind("cross_phase_modulation"),
+      "nonlinear": lambda: _handle_unitary_kind("nonlinear"),
+      "polarization_rotation": lambda: _handle_unitary_kind("polarization_rotation"),
+      "decoherence": lambda: _handle_advanced_noise("decoherence"),
+      "dephasing": lambda: _handle_advanced_noise("dephasing"),
+      "loss": lambda: _handle_advanced_noise("loss"),
+      "attenuation": lambda: _handle_advanced_noise("attenuation"),
+      "amplitude_damping": lambda: _handle_advanced_noise("amplitude_damping"),
+      "thermal_relaxation": lambda: _handle_advanced_noise("thermal_relaxation"),
+      "bitflip": lambda: _handle_advanced_noise("bitflip"),
+      "phaseflip": lambda: _handle_advanced_noise("phaseflip"),
+      "depolarizing": lambda: _handle_advanced_noise("depolarizing"),
+      "polarization_decoherence": lambda: _handle_advanced_noise("polarization_decoherence"),
+      "timing_jitter": lambda: _handle_advanced_noise("timing_jitter"),
+      "jitter": lambda: _handle_advanced_noise("jitter"),
+      "delay": lambda: _handle_advanced_noise("delay"),
+      "reset": lambda: _handle_advanced_noise("reset"),
+      "hamiltonian": _handle_hamiltonian_lindblad,
+      "lindblad": _handle_hamiltonian_lindblad,
+      "detection": lambda: _handle_event_kind("detection"),
+      "dispersion": lambda: _handle_event_kind("dispersion"),
+      "squeezing": lambda: _handle_event_kind("squeezing"),
+      "fock_loss": lambda: _handle_event_kind("fock_loss"),
+      "photon_number_cutoff": lambda: _handle_event_kind("photon_number_cutoff"),
+      "loss_mode": lambda: _handle_event_kind("loss_mode"),
+      "multiphoton": lambda: _handle_event_kind("multiphoton"),
+      "source_multiphoton": lambda: _handle_event_kind("source_multiphoton"),
+  }
+
+  handler = handlers.get(kind)
+  if handler is None:
+    return _finalize(
+      _build_response(False, message=_categorize_error("unsupported_kind", f"qutip worker advanced operation not supported yet: {kind}"), error_category="unsupported_kind"),
+    )
+
+  response = handler()
+  if not isinstance(response, dict):
+    return _finalize(
+      _build_response(False, message=_categorize_error("unsupported_kind", f"qutip worker unsupported advanced handler state for kind: {kind}"), error_category="unsupported_kind"),
+    )
+
+  if not isinstance(response.get("meta"), dict):
+    response_meta = response.get("meta")
+    if response_meta is None:
+      response["meta"] = _cluster_state_meta(cluster_state, cluster_key)
+
+  return response
 
 def _handle_noop() -> dict:
-  return _build_response(True, qutip_status="simulated", message="qutip worker noop")
+  return _build_response(True, message="qutip worker noop")
 
 
 def _finalize_response(
     response: dict,
     trace: dict,
-    strict: bool,
     kind: str,
     profile_error: Optional[str],
     profile_meta: Optional[dict[str, Any]],
@@ -2218,8 +3113,11 @@ def _finalize_response(
   response = _attach_profile_metadata(response, profile_meta)
   if profile_error is not None and not response.get("error_category"):
     response["error_category"] = profile_error
+  response["operation_model"] = _normalize_operation_model(response.get("operation_model"))
+  if response["operation_model"] == "unsupported":
+    response["operation_model"] = _operation_model_for_kind(kind)
   response.update(trace)
-  return _apply_strict_simulated_mode(response, strict, kind)
+  return response
 
 
 def run_operation(request: dict) -> dict:
@@ -2229,27 +3127,36 @@ def run_operation(request: dict) -> dict:
   _, profile_meta, profile_error = _resolve_profile(request, kind, operation)
   trace = _trace_fields(request, operation)
   backend_config = request.get("backend_config", {})
+
+  if profile_error is not None:
+    error_reason = "qutip worker invalid profile configuration"
+    if isinstance(profile_meta, dict) and isinstance(profile_meta.get("errors"), str):
+      error_reason = f"{error_reason}: {profile_meta['errors']}"
+    response = _build_response(
+      False,
+      error_category=profile_error,
+      message=_categorize_error(profile_error, error_reason),
+    )
+    return _finalize_response(response, trace, kind, profile_error, profile_meta)
+
   profile_dim = _effective_profile_dim(profile_meta, int((profile_meta or {}).get("dim", 2)))
   # Initialize qutip import cache here so first-time heavy import does not
   # accidentally hit operation-level timeout.
   if _coerce_qutip_modules() is None:
-    return _finalize_response(_qutip_unavailable_response(kind), trace, strict=_strict_simulated_enabled(request), kind=kind, profile_error=profile_error, profile_meta=profile_meta)
+    return _finalize_response(_qutip_unavailable_response(kind), trace, kind=kind, profile_error=profile_error, profile_meta=profile_meta)
   timeout_ms_raw = backend_config.get("qutip_worker_timeout_ms", 1000)
   try:
     timeout_ms = int(timeout_ms_raw or 1000)
   except (TypeError, ValueError):
     timeout_ms = 1000
-  strict = _strict_simulated_enabled(request)
-
   limit_error = _validate_backend_limits(request, operation)
   if limit_error is not None:
-    return _finalize_response(limit_error, trace, strict, kind, profile_error, profile_meta)
+    return _finalize_response(limit_error, trace, kind, profile_error, profile_meta)
 
   if kind == "unitary":
     return _finalize_response(
       _run_with_timeout(_handle_unitary, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
-      strict,
       kind,
       profile_error,
       profile_meta,
@@ -2258,7 +3165,6 @@ def run_operation(request: dict) -> dict:
     return _finalize_response(
       _run_with_timeout(_handle_measurement, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
-      strict,
       kind,
       profile_error,
       profile_meta,
@@ -2267,25 +3173,23 @@ def run_operation(request: dict) -> dict:
     return _finalize_response(
       _run_with_timeout(_handle_noise, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
-      strict,
       kind,
       profile_error,
       profile_meta,
     )
   if kind == "noop":
-    return _finalize_response(_handle_noop(), trace, strict, kind, profile_error, profile_meta)
+    return _finalize_response(_handle_noop(), trace, kind, profile_error, profile_meta)
   if _is_advanced_operation_kind(kind):
     return _finalize_response(
       _run_with_timeout(_handle_advanced, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
-      strict,
       kind,
       profile_error,
       profile_meta,
     )
 
-  response = _build_response(False, qutip_status="unsupported", message=_categorize_error("unsupported_kind", f"qutip worker unknown operation kind: {kind}"), error_category="unsupported_kind")
-  return _finalize_response(response, trace, strict, kind, profile_error, profile_meta)
+  response = _build_response(False, message=_categorize_error("unsupported_kind", f"qutip worker unknown operation kind: {kind}"), error_category="unsupported_kind")
+  return _finalize_response(response, trace, kind, profile_error, profile_meta)
 
 
 def main() -> int:
@@ -2300,7 +3204,7 @@ def main() -> int:
   try:
     request = json.loads(request_path.read_text(encoding="utf-8"))
   except Exception as exc:
-    response = _build_response(False, qutip_status="unsupported", message=f"qutip worker request parse error: {exc}", error_category="invalid_payload")
+    response = _build_response(False, message=f"qutip worker request parse error: {exc}", error_category="invalid_payload")
     output_path.write_text(json.dumps(response), encoding="utf-8")
     return 1
 

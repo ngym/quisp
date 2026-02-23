@@ -7,7 +7,7 @@ simple Backend
         @class(BackendContainer);
         @display("p=30,40;");
         string backend_type = default("GraphStateBackend");
-        string physical_backend_type = default("graph_state");
+        string physical_backend_type = default("qutip_density_matrix");
         string qutip_backend_class = default("qutip_density_matrix");
         string qutip_python_executable = default("python3");
         string qutip_worker_script = default("scripts/qutip_worker.py");
@@ -16,7 +16,6 @@ simple Backend
         string qutip_solver = default("mesolve");
         double qutip_truncation = default(5);
         int qutip_worker_timeout_ms = default(1000);
-        bool qutip_strict_simulated = default(false);
         string qutip_node_profile = default("standard_light");
         string qutip_link_profile = default("standard_light");
         string qutip_profile_overrides = default("");

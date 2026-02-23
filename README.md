@@ -206,6 +206,10 @@ the `Backend` module parameters, for example:
 ```ini
 *.backend.physical_backend_type = "qutip"
 ```
+and can be set to `qutip_density_matrix` explicitly (equivalent to default now):
+```ini
+*.backend.physical_backend_type = "qutip_density_matrix"
+```
 
 Optional `qutip` tuning parameters are available on `Backend`:
 
@@ -218,7 +222,6 @@ Optional `qutip` tuning parameters are available on `Backend`:
 *.backend.qutip_solver = "mesolve"
 *.backend.qutip_truncation = 5
 *.backend.qutip_worker_timeout_ms = 1000
-*.backend.qutip_strict_simulated = false
 *.backend.qutip_node_profile = "standard_light"
 *.backend.qutip_link_profile = "standard_light"
 *.backend.qutip_profile_overrides = ""
@@ -249,9 +252,8 @@ Optional `qutip` tuning parameters are available on `Backend`:
 
 - ノード側: `unitary`, `measurement`, `noise`, `reset`, `hamiltonian`, `lindblad`,
   `phase_shift`, `decoherence`, `dephasing`, `kerr`, `cross_kerr` など
-- リンク側: `hom_interference`, `heralded_entanglement`, `dispersion`, `multiphoton`,
-  `squeezing`, `loss`, `attenuation`, `mode_coupling`, `loss_mode`, `fock_loss`,
-  `photon_number_cutoff`, `two_mode_squeezing` など
+- リンク側: `hom_interference`, `dispersion`, `multiphoton`, `squeezing`, `loss`, `attenuation`,
+  `mode_coupling`, `loss_mode`, `fock_loss`, `photon_number_cutoff`, `two_mode_squeezing` など
 
 ### プロファイル別の推奨INI例
 
@@ -281,34 +283,25 @@ B寄り（ノード・リンクを分離）:
 `custom`では、`qutip_profile_overrides` の `truncation` は内部のカットオフ値として参照されます。
 必要に応じて `link_mode_dim` を 4〜6、`node_dim` を 3〜5 の範囲で切り替えるのが実用的です。
 
-The default remains graph-state mode (`physical_backend_type = "graph_state"`) for
-large-scale compatibility.
+The default is now density-matrix qutip mode (`physical_backend_type = "qutip_density_matrix"`), with
+`graph_state` still available for compatibility.
 
-Implemented `qutip` operation kinds on the high-fidelity path are tracked in:
+`qutip` worker now reports a direct operation model per response:
 
-`doc/PhysicalLayerBackendPlan-qutip-kinds.md`
+- `operation_model` ∈ `{"unitary","kraus","sampled_kraus","formula","unsupported"}`
+  - `unitary`: full unitary evolution (or other direct operator update)
+  - `kraus`: Kraus/CP map update (non-sampled)
+  - `sampled_kraus`: sampled outcome branch (e.g., `measurement`, `detection`)
+  - `formula`: approximate/compact parameterized update
+  - `unsupported`: request is rejected with categorized error
 
-The worker now implements a mixed set of operation kinds:
+The complete kind coverage and mapping are tracked in
+`doc/PhysicalLayerBackendPlan-qutip-kinds.md`.
 
-- `registered`: C++ + Python worker dispatch is wired.
-- `supported`: request is accepted and a response is returned.
-- `implemented`: operation uses explicit `qutip` operator/evolution based path (for tested subset).
-- `simulated`: request is handled via approximation/fallback path.
-- `unsupported`: explicitly rejected with categorized message (for example `[category=unsupported_kind]`).
-
-`qutip` worker also emits `qutip_status` for every response so scenario-level mixed-operation
-analysis is possible.
-
-Strict mode is controlled by `qutip_strict_simulated`:
-- `false` (default): `simulated` kinds succeed and still return `qutip_status="simulated"`.
-- `true`: `simulated` kinds are rejected with
-  `error_category="simulated_operation_rejected"` and a message
-  `qutip strict mode rejected simulated kind: <kind>`.
-
-Examples currently marked `implemented` include `kerr`, `cross_kerr`,
+Examples currently available in the `qutip` worker include `kerr`, `cross_kerr`,
 `beam_splitter`, `hamiltonian`, `lindblad`, `amplitude_damping`,
 `thermal_relaxation`, `bitflip`, `phaseflip`, and `depolarizing`.
-Additional `implemented` kinds now include:
+Additional supported kinds include:
 top-level `unitary` gates (`X`,`Y`,`Z`,`H`,`S`,`T`,`I`,`RX`,`RY`,`RZ`,`SQRT_X`,`SQRTX`,`CX`,`CNOT`)
 when the required `qutip` modules are available.
 `phase_shift`, `phase_modulation`, `self_phase_modulation`,

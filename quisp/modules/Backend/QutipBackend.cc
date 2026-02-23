@@ -4,10 +4,12 @@
 #include <cctype>
 #include <map>
 #include <set>
-#include <cstdlib>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <cstdlib>
+#include <unordered_map>
+#include <unordered_set>
 
 #include <nlohmann/json.hpp>
 
@@ -30,6 +32,112 @@ std::string upperString(std::string value) {
 
 nlohmann::json qubitHandleToJson(const QubitHandle& qubit) {
   return nlohmann::json({{"node_id", qubit.node_id}, {"qnic_index", qubit.qnic_index}, {"qnic_type", qubit.qnic_type}, {"qubit_index", qubit.qubit_index}});
+}
+
+std::string qubitHandleKey(const QubitHandle& qubit) {
+  std::ostringstream stream;
+  stream << qubit.node_id << "/" << qubit.qnic_index << "/" << qubit.qnic_type << "/" << qubit.qubit_index;
+  return stream.str();
+}
+
+std::string QutipBackend::qubitKey(const QubitHandle& qubit) const {
+  return qubitHandleKey(qubit);
+}
+
+int64_t QutipBackend::nextClusterId() const {
+  const auto id = next_cluster_id_;
+  ++next_cluster_id_;
+  return id;
+}
+
+int64_t QutipBackend::attachClusterToTargets(const std::vector<QubitHandle>& targets, const std::string& operation_event) const {
+  (void)operation_event;
+  if (targets.empty()) {
+    return -1;
+  }
+
+  std::vector<std::string> keys;
+  keys.reserve(targets.size());
+  for (const auto& target : targets) {
+    const auto key = qubitKey(target);
+    if (std::find(keys.begin(), keys.end(), key) == keys.end()) {
+      keys.push_back(key);
+    }
+  }
+
+  std::vector<ClusterId> seen_clusters;
+  for (const auto& key : keys) {
+    const auto found = qubit_cluster_map_.find(key);
+    if (found == qubit_cluster_map_.end()) {
+      continue;
+    }
+    const auto cluster_id = found->second;
+    if (std::find(seen_clusters.begin(), seen_clusters.end(), cluster_id) == seen_clusters.end()) {
+      seen_clusters.push_back(cluster_id);
+    }
+  }
+
+  if (seen_clusters.empty()) {
+    const auto cluster_id = nextClusterId();
+    auto& members = cluster_members_[cluster_id];
+    for (const auto& key : keys) {
+      members.insert(key);
+      qubit_cluster_map_[key] = cluster_id;
+    }
+    return cluster_id;
+  }
+
+  auto main_cluster_id = seen_clusters.front();
+  auto& main_members = cluster_members_[main_cluster_id];
+  for (const auto key : keys) {
+    const auto known = qubit_cluster_map_.find(key);
+    if (known == qubit_cluster_map_.end()) {
+      main_members.insert(key);
+      qubit_cluster_map_[key] = main_cluster_id;
+      continue;
+    }
+
+    const auto cluster_id = known->second;
+    if (cluster_id == main_cluster_id) {
+      main_members.insert(key);
+      continue;
+    }
+
+    const auto merged_cluster = cluster_members_.find(cluster_id);
+    if (merged_cluster != cluster_members_.end()) {
+      for (const auto& merged_key : merged_cluster->second) {
+        main_members.insert(merged_key);
+        qubit_cluster_map_[merged_key] = main_cluster_id;
+      }
+      cluster_members_.erase(merged_cluster);
+    } else {
+      main_members.insert(key);
+      qubit_cluster_map_[key] = main_cluster_id;
+    }
+  }
+
+  return main_cluster_id;
+}
+
+void QutipBackend::detachTargetFromCluster(const QubitHandle& qubit) const {
+  const auto key = qubitKey(qubit);
+  const auto mapped = qubit_cluster_map_.find(key);
+  if (mapped == qubit_cluster_map_.end()) {
+    return;
+  }
+
+  const auto cluster_id = mapped->second;
+  qubit_cluster_map_.erase(mapped);
+
+  const auto cluster = cluster_members_.find(cluster_id);
+  if (cluster == cluster_members_.end()) {
+    return;
+  }
+  cluster->second.erase(key);
+  if (!cluster->second.empty()) {
+    return;
+  }
+  cluster_members_.erase(cluster);
 }
 
 std::string findWorkerScript(const nlohmann::json& backend_config) {
@@ -84,6 +192,8 @@ nlohmann::json operationToJson(const PhysicalOperation& operation) {
   op["params"] = operation.params;
   op["basis"] = operation.basis;
   op["payload"] = operation.payload;
+  op["cluster_id"] = operation.cluster_id;
+  op["cluster_event"] = operation.cluster_event;
 
   for (const auto& handle : operation.targets) {
     op["targets"].push_back(qubitHandleToJson(handle));
@@ -259,7 +369,6 @@ std::string normalizeAdvancedKind(const std::string& kind) {
       {"jitter", "timing_jitter"},
       {"dark_count", "detection"},
       {"detector", "detection"},
-      {"heraldedentanglement", "heralded_entanglement"},
   };
   const auto found = aliases.find(normalized);
   if (found != aliases.end()) {
@@ -304,7 +413,6 @@ const std::set<std::string> kSupportedAdvancedKinds{
     "delay",
     "hamiltonian",
     "lindblad",
-    "heralded_entanglement",
     "timing_jitter",
     "dispersion",
     "multiphoton",
@@ -340,7 +448,6 @@ nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
       {"qutip_truncation", 5.0},
       {"qutip_worker_timeout_ms", 1000},
       {"qutip_worker_script", "scripts/qutip_worker.py"},
-      {"qutip_strict_simulated", false},
       {"qutip_node_profile", "standard_light"},
       {"qutip_link_profile", "standard_light"},
       {"qutip_profile_overrides", ""},
@@ -379,9 +486,6 @@ nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
       params["qutip_worker_script"] = value;
     }
   }
-  if (module.hasPar("qutip_strict_simulated")) {
-    params["qutip_strict_simulated"] = module.par("qutip_strict_simulated").boolValue();
-  }
   if (module.hasPar("qutip_node_profile")) {
     params["qutip_node_profile"] = module.par("qutip_node_profile").stdstringValue();
   }
@@ -407,7 +511,7 @@ omnetpp::cModule* getBackendModuleFromContext() {
     }
     if (module->hasPar("qutip_backend_class") || module->hasPar("qutip_python_executable") || module->hasPar("qutip_max_register_qubits") ||
         module->hasPar("qutip_max_hilbert_dim") || module->hasPar("qutip_solver") || module->hasPar("qutip_truncation") || module->hasPar("qutip_worker_timeout_ms") ||
-        module->hasPar("qutip_worker_script") || module->hasPar("qutip_strict_simulated") || module->hasPar("qutip_node_profile") ||
+        module->hasPar("qutip_worker_script") || module->hasPar("qutip_node_profile") ||
         module->hasPar("qutip_link_profile") || module->hasPar("qutip_profile_overrides")) {
       return module;
     }
@@ -466,7 +570,6 @@ nlohmann::json QutipBackend::collectBackendParameters() const {
       {"qutip_truncation", 5.0},
       {"qutip_worker_timeout_ms", 1000},
       {"qutip_worker_script", "scripts/qutip_worker.py"},
-      {"qutip_strict_simulated", false},
       {"qutip_node_profile", "standard_light"},
       {"qutip_link_profile", "standard_light"},
       {"qutip_profile_overrides", ""},
@@ -507,6 +610,8 @@ OperationResult QutipBackend::runUnitary(const BackendContext& ctx, const std::s
   PhysicalOperation operation;
   operation.kind = "unitary";
   operation.targets = qubits;
+  operation.cluster_id = attachClusterToTargets(operation.targets, context.empty() ? "unitary" : context);
+  operation.cluster_event = context.empty() ? "unitary" : context;
   operation.payload = {{"kind", "unitary"}, {"gate", normalizedGateName(gate)}, {"context", context}};
   return executeQutipWorker(ctx, operation);
 }
@@ -519,6 +624,8 @@ OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHan
   PhysicalOperation operation;
   operation.kind = "measurement";
   operation.targets = {qubit};
+  operation.cluster_id = attachClusterToTargets(operation.targets, "measurement");
+  operation.cluster_event = "measurement";
   auto basis_label = std::string("Z");
   if (basis == MeasureBasis::X) {
     basis_label = "X";
@@ -529,7 +636,11 @@ OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHan
   }
   operation.basis = basis_label;
   operation.payload = {{"basis", basis_label}, {"noiseless", is_noiseless}};
-  return executeQutipWorker(ctx, operation);
+  auto result = executeQutipWorker(ctx, operation);
+  if (result.success) {
+    detachTargetFromCluster(qubit);
+  }
+  return result;
 }
 
 OperationResult QutipBackend::runNoise(const BackendContext& ctx, QubitHandle qubit, const std::string& noise_kind, const nlohmann::json& noise_payload,
@@ -542,6 +653,8 @@ OperationResult QutipBackend::runNoise(const BackendContext& ctx, QubitHandle qu
   PhysicalOperation operation;
   operation.kind = "noise";
   operation.targets = {qubit};
+  operation.cluster_id = attachClusterToTargets(operation.targets, "noise");
+  operation.cluster_event = "noise";
   operation.payload = {
       {"kind", "noise"},
       {"noise_kind", noise_kind},
@@ -752,7 +865,14 @@ OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const Ph
     if (!hasValidControls(operation.controls)) {
       return unsupported("qutip backend advanced operation invalid control handle(s) [category=invalid_payload]");
     }
-    return executeQutipWorker(ctx, operation);
+
+    PhysicalOperation clustered_operation = operation;
+    std::vector<QubitHandle> involved = clustered_operation.targets;
+    involved.reserve(clustered_operation.targets.size() + clustered_operation.controls.size());
+    involved.insert(involved.end(), clustered_operation.controls.begin(), clustered_operation.controls.end());
+    clustered_operation.cluster_id = attachClusterToTargets(involved, normalized_kind);
+    clustered_operation.cluster_event = normalized_kind;
+    return executeQutipWorker(ctx, clustered_operation);
   }
 
   return unsupported("qutip backend does not support operation.kind=" + operation.kind + " [category=unsupported_kind]");

@@ -1,7 +1,11 @@
 #pragma once
 
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
+
+#include <cstdint>
 
 #include "IPhysicalBackend.h"
 #include "backends/interfaces/IQuantumBackend.h"
@@ -25,10 +29,17 @@ class QutipBackend : public IPhysicalBackend {
   OperationResult applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) override;
 
  private:
+  using ClusterId = int64_t;
+  using QubitKey = std::string;
+
   OperationResult unsupported(const std::string& reason) const;
   nlohmann::json collectBackendParameters() const;
   bool checkQutipRuntimeAvailable() const;
   OperationResult executeQutipWorker(const BackendContext& ctx, const PhysicalOperation& operation) const;
+  std::string qubitKey(const QubitHandle& qubit) const;
+  int64_t nextClusterId() const;
+  int64_t attachClusterToTargets(const std::vector<QubitHandle>& targets, const std::string& operation_event) const;
+  void detachTargetFromCluster(const QubitHandle& qubit) const;
   bool isAdvancedOperation(const std::string& kind) const;
   OperationResult runUnitary(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits, const std::string& context) const;
   OperationResult runMeasurement(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool is_noiseless) const;
@@ -43,6 +54,10 @@ class QutipBackend : public IPhysicalBackend {
   mutable bool qutip_runtime_checked_ = false;
   mutable bool qutip_runtime_available_ = false;
   mutable std::string qutip_runtime_check_error_;
+
+  mutable ClusterId next_cluster_id_ = 1;
+  mutable std::unordered_map<QubitKey, ClusterId> qubit_cluster_map_;
+  mutable std::unordered_map<ClusterId, std::unordered_set<QubitKey>> cluster_members_;
 };
 
 }  // namespace quisp::modules::backend

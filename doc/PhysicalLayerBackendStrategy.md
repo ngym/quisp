@@ -119,7 +119,7 @@ Notes / 補足:
 ### 実行状況（2026-02-15）
 
 - `backend_type` の直文字分岐を切替器に集約し、`physical_backend_type` パラメータを追加（空文字時は既存 `backend_type` を後方互換で参照）。
-- `error_basis` を `GraphStateBackend` と同値として初期化経路に採用。
+- `graph_state` を `GraphStateBackend` と同値として初期化経路に採用。
 - `Backend` テストで `physical_backend_type` の初期化成功/失敗ケースを追加。
 - `qutip` はサブモジュール依存から外し、`requirements.txt` の `qutip` / `qutip-qip` で管理する前提へ切り替え（`qutip.qip` 利用時は `qutip-qip` が必須）。
 - `IPhysicalBackend` / `PhysicalServiceFacade` / `ErrorBasisBackend` を実装し、`StationaryQubit` の `measureX/Y/Z` を `PhysicalServiceFacade` 経由に変更（挙動非変更）。
@@ -133,14 +133,14 @@ Notes / 補足:
   - 現行ロジックへ委譲する `ErrorBasisBackend` アダプタを追加。
 - Route one narrow call path through the facade (e.g., measurement path).
   - まずは限定経路（例: 測定処理）を Facade 経由にする。
-- Add configuration key in `.ini`: `**.physical_backend_type = "error_basis"` (default fallback: empty -> `backend_type`).
-  - `.ini` に設定キー `**.physical_backend_type = "error_basis"`（既定値: 空文字列なら `backend_type` を参照）を追加。
+- Add configuration key in `.ini`: `**.physical_backend_type = "graph_state"` (default fallback: empty -> `backend_type`).
+  - `.ini` に設定キー `**.physical_backend_type = "graph_state"`（既定値: 空文字列なら `backend_type` を参照）を追加。
 
 **Acceptance criteria / 受け入れ条件**
 - Existing scenarios produce equivalent outcomes with default config.
   - 既定設定で既存シナリオの結果が同等であること。
-- No observable behavior change when backend is `error_basis`.
-  - `error_basis` 利用時に観測可能な挙動変更がないこと。
+- No observable behavior change when backend is `graph_state`.
+  - `graph_state` 利用時に観測可能な挙動変更がないこと。
 
 ### PR-2: Expand seam coverage / 境界適用範囲を拡大
 
@@ -228,8 +228,8 @@ Notes / 補足:
 
 ## Definition of Done (for initial migration) / 完了条件（初期移行）
 
-- Default path remains `error_basis` and is behavior-compatible.
-  - 既定経路が `error_basis` のままで、挙動互換であること。
+- Default path remains `graph_state` and is behavior-compatible.
+  - 既定経路が `graph_state` のままで、挙動互換であること。
 - Physical operations are routed via `PhysicalServiceFacade`.
   - 物理操作が `PhysicalServiceFacade` 経由になっていること。
 - Backend selection via config is documented and tested.

@@ -142,12 +142,15 @@ void StationaryQubit::handleMessage(cMessage *msg) {
   setBusy();
   double rand = dblrand();
   if (rand < (1 - emission_success_probability)) {
-    PhotonicQubit *pk = check_and_cast<PhotonicQubit *>(msg);
-    pk->setLost(true);
-    send(pk, "tolens_quantum_port");
-  } else {
-    send(msg, "tolens_quantum_port");
+    auto* photon = check_and_cast<PhotonicQubit *>(msg);
+    auto* qubit_ref = photon->getQubitRefForUpdate();
+    if (qubit_ref != nullptr) {
+      PhysicalServiceFacade service{backend};
+      auto handle = makeHandle(qubit_ref);
+      service.applyErrorChannel({handle}, "loss_channel", {{"legacy_channel_loss_rate", 1.0}});
+    }
   }
+  send(msg, "tolens_quantum_port");
 }
 
 EigenvalueResult StationaryQubit::measureX() {

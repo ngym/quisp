@@ -54,12 +54,15 @@ void EntangledPhotonPairSource::handleMessage(cMessage *msg) {
   if (strcmp(msg->getName(), "RightPhoton")) port = 1;
   double rand = dblrand();
   if (rand < (1 - emission_success_probability)) {
-    PhotonicQubit *pk = check_and_cast<PhotonicQubit *>(msg);
-    pk->setLost(true);
-    send(pk, "quantum_port$o", port);
-  } else {
-    send(msg, "quantum_port$o", port);
+    auto* photon = check_and_cast<PhotonicQubit *>(msg);
+    auto* qubit_ref = photon->getQubitRefForUpdate();
+    if (qubit_ref != nullptr) {
+      PhysicalServiceFacade service{backend};
+      auto handle = makeHandle(qubit_ref);
+      service.applyErrorChannel({handle}, "loss_channel", {{"legacy_channel_loss_rate", 1.0}});
+    }
   }
+  send(msg, "quantum_port$o", port);
 }
 
 void EntangledPhotonPairSource::emitPhotons() {

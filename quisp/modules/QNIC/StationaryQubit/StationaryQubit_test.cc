@@ -255,7 +255,7 @@ TEST_F(StatQubitTest, StationaryQubitConfigurationOverwrite) {
   EXPECT_EQ(config->memory_completely_mixed_rate, qubit->par("memory_completely_mixed_rate").doubleValue());
 }
 
-TEST_F(StatQubitTest, emissionFailedPhotonLost) {
+TEST_F(StatQubitTest, emissionFailedPhotonLostInBackend) {
   sim->setContext(qubit);
   auto *msg = new PhotonicQubit();
   qubit->emission_success_probability = 0;
@@ -268,7 +268,6 @@ TEST_F(StatQubitTest, emissionFailedPhotonLost) {
 
   auto *photon = dynamic_cast<PhotonicQubit *>(new_msg);
   ASSERT_NE(photon, nullptr);
-  EXPECT_TRUE(photon->isLost());
 }
 
 TEST_F(StatQubitTest, emissionSuccess) {
@@ -280,10 +279,10 @@ TEST_F(StatQubitTest, emissionSuccess) {
   EXPECT_EQ(qubit->toLensGate->messages.size(), 1);
   auto *new_msg = qubit->toLensGate->messages.at(0);
   ASSERT_NE(new_msg, nullptr);
+  EXPECT_NE(new_msg, msg);
 
   auto *photon = dynamic_cast<PhotonicQubit *>(new_msg);
   ASSERT_NE(photon, nullptr);
-  EXPECT_FALSE(photon->isLost());
 }
 
 TEST_F(StatQubitTest, finish) {

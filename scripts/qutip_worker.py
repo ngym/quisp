@@ -713,6 +713,7 @@ _KIND_OPERATION_MODEL: dict[str, str] = {
     "propagation": "formula",
     "fiber_propagation": "formula",
     "detection": "sampled_kraus",
+    "error_channel": "sampled_kraus",
     "delay": "formula",
     "hamiltonian": "unitary",
     "lindblad": "kraus",
@@ -961,10 +962,17 @@ def _build_response(
     meta: Optional[dict[str, Any]] = None,
     **fields,
 ) -> dict:
+  discarded = _as_bool(fields.pop("discarded", False), False)
+  photon_lost = _as_bool(fields.pop("photon_lost", False), False)
+  discard_reason = fields.pop("discard_reason", "")
+  if not discard_reason and discarded:
+    discard_reason = "expired"
   response = {
       "success": success,
       "fidelity_estimate": 1.0,
-      "qubit_lost": False,
+      "discarded": discarded,
+      "photon_lost": photon_lost,
+      "discard_reason": discard_reason,
       "relaxed_to_ground": False,
       "excited_to_plus": False,
       "measured_plus": False,
@@ -1142,6 +1150,96 @@ def _effective_probability(value: Any, fallback: float = 0.0) -> float:
   if p > 1.0:
     return 1.0
   return p
+
+
+def _as_int(value: Any, default: int = 0) -> int:
+  if isinstance(value, bool):
+    return 1 if value else 0
+  try:
+    return int(value)
+  except (TypeError, ValueError):
+    pass
+  try:
+    return int(float(value))
+  except (TypeError, ValueError):
+    return default
+
+
+def _resolve_error_profile(value: Any) -> str:
+  raw = str(value).strip().lower().replace("-", "_").replace(" ", "_")
+  while "__" in raw:
+    raw = raw.replace("__", "_")
+  aliases = {
+      "loss": "loss_channel",
+      "losschannel": "loss_channel",
+      "flip_channel": "flip_channel",
+      "flipchannel": "flip_channel",
+      "xerror_channel": "flip_channel",
+      "xerror": "flip_channel",
+      "bitflip": "flip_channel",
+      "phaseflip_channel": "phaseflip_channel",
+      "phasechannel": "phaseflip_channel",
+      "phase_error_channel": "phaseflip_channel",
+      "phase_error": "phaseflip_channel",
+      "phaseflip": "phaseflip_channel",
+      "z_error_channel": "phaseflip_channel",
+      "zerror": "phaseflip_channel",
+      "depolarizingchannel": "depolarizing_channel",
+      "depolarizing_channel": "depolarizing_channel",
+      "depolarize_channel": "depolarizing_channel",
+      "errorchannel": "loss_channel",
+      "error": "loss_channel",
+      "none": "loss_channel",
+      "": "loss_channel",
+  }
+  return aliases.get(raw, raw if raw else "loss_channel")
+
+
+def _extract_probability(payload: dict[str, Any], keys: tuple[str, ...], fallback: float = 0.0) -> float:
+  for key in keys:
+    if key in payload:
+      return _effective_probability(payload.get(key), fallback)
+  return _effective_probability(fallback)
+
+
+def _compute_channel_loss_probability(payload: dict[str, Any]) -> float:
+  channel_loss_rate = _extract_probability(payload, ("legacy_channel_loss_rate", "channel_loss_rate"), 0.0)
+  attenuation_db_per_km = _extract_probability(payload, ("attenuation_db_per_km", "channel_attenuation_rate_db_per_km"), 0.0)
+  length_km = _as_float(
+      payload.get(
+          "length_km",
+          payload.get("channel_length_km", payload.get("distance_km", payload.get("distance", 0.0))),
+      ),
+      0.0,
+  )
+  node_overhead_db = _extract_probability(payload, ("node_io_overhead_db", "channel_node_io_overhead_db"), 0.0)
+  node_count = max(0, _as_int(payload.get("node_count", payload.get("channel_node_count", 0)))
+
+  if length_km < 0.0:
+    length_km = 0.0
+
+  has_distance_model = (
+      attenuation_db_per_km > 0.0 or
+      length_km > 0.0 or
+      node_overhead_db > 0.0 or
+      node_count > 0
+  )
+  if has_distance_model:
+    eta_fiber = (
+        10 ** (-(attenuation_db_per_km * max(0.0, length_km)) / 10.0)
+        if attenuation_db_per_km > 0.0 and length_km > 0.0 else 1.0
+    )
+    eta_node = (
+        10 ** (-(node_overhead_db * float(node_count)) / 10.0)
+        if node_overhead_db > 0.0 and node_count > 0 else 1.0
+    )
+    eta = _effective_probability(eta_fiber * eta_node, 1.0)
+  elif channel_loss_rate > 0.0:
+    eta = _effective_probability(1.0 - channel_loss_rate, 1.0)
+  else:
+    eta = 1.0
+
+  return _effective_probability(1.0 - eta, 0.0)
 
 
 def _simple_fidelity_decay(rate: float, duration: float) -> float:
@@ -2093,7 +2191,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
   if target_positions is None:
     return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker cannot resolve noise target in cluster state"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
 
-  qubit_lost = _rng(seed, operation).random() < _effective_probability(p, 0.0)
+  photon_lost = _rng(seed, operation).random() < _effective_probability(p, 0.0)
   if noise_kind == "loss":
     ops, meta, build_error = _build_cluster_noise_ops(
         qutip=qutip,
@@ -2116,7 +2214,9 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
       fidelity = _effective_probability(1.0 - _effective_probability(p, 0.0), 1.0)
     response = _build_response(
         True,
-        qubit_lost=qubit_lost,
+        discarded=False,
+        photon_lost=photon_lost,
+        discard_reason="photon_loss" if photon_lost else "",
         fidelity_estimate=fidelity,
         message=f"qutip worker applied loss in cluster with p={_effective_probability(p, 0.0)}, mode=cluster",
         meta=meta,
@@ -2166,6 +2266,116 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     return _build_response(False, message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind in cluster mode: {noise_kind}"), error_category="unsupported_noise", meta=_cluster_state_meta(cluster_state, cluster_key))
 
   return _build_response(False, message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind in cluster mode: {noise_kind}"), error_category="unsupported_noise", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+
+def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta: Optional[dict[str, Any]] = None) -> dict:
+  payload = operation.get("payload", {})
+  profile = _resolve_error_profile(payload.get("channel_profile", operation.get("kind", "")))
+  normalized_dim = max(2, int(dim))
+  cluster_key = _cluster_key(operation, profile_meta)
+  if cluster_key is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster id"), error_category="invalid_cluster")
+
+  qutip_modules = _coerce_qutip_modules()
+  if qutip_modules is None:
+    return _qutip_unavailable_response("error_channel")
+  qutip, _ = qutip_modules
+  cluster_state, _, cluster_error = _ensure_cluster_state(operation, normalized_dim, profile_meta, qutip)
+  if cluster_state is None:
+    return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster qubits"), error_category="invalid_cluster")
+  if cluster_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  operation_targets, target_positions, resolution_error = _resolve_cluster_targets(operation, cluster_state, min_targets=1)
+  if resolution_error is not None:
+    return _build_response(False, message=_categorize_error("invalid_payload", resolution_error), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+  if not operation_targets or not target_positions:
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker error_channel requires at least one target"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  if len(operation_targets) != len(target_positions):
+    return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker error_channel target mismatch"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+  def _apply_ops_to_targets(noise_kind: str, operation_probability: float, seed_probability_key: str, discard_reason: str = "") -> dict:
+    temp_payload = dict(payload)
+    temp_payload["p"] = operation_probability
+    temp_operation = {
+        "payload": temp_payload,
+        "params": [operation_probability],
+    }
+    if len(target_positions) == 0:
+      return _build_response(True, message="qutip worker error_channel skipped because no active target", classical_payload={"channel_profile": profile, "probability": operation_probability})
+
+    previous_state = cluster_state.density_matrix
+    loss_events = None
+    if seed_probability_key == "loss":
+      loss_events = []
+      for target_index, target_position in enumerate(target_positions):
+        target_rng = _rng(seed, {"kind": "error_channel_loss", "target": target_position, "index": target_index, "p": operation_probability})
+        loss_events.append(target_rng.random() < _effective_probability(operation_probability, 0.0))
+
+    has_photon_lost = False
+    for target_index, target_position in enumerate(target_positions):
+      if seed_probability_key == "loss":
+        if not loss_events[target_index]:
+          continue
+        has_photon_lost = True
+
+      ops, _, build_error = _build_cluster_noise_ops(
+        qutip=qutip,
+        noise_kind=noise_kind,
+        operation=temp_operation,
+        duration=0.0,
+        dim=normalized_dim,
+        leakage_enabled=False,
+      )
+      if build_error is not None:
+        return _build_response(False, message=build_error, error_category=_extract_error_category(build_error) or "unsupported_noise", meta=_cluster_state_meta(cluster_state, cluster_key))
+      success_apply, evolved_state = _apply_kraus_to_cluster(cluster_state, ops, [target_position], qutip)
+      if not success_apply or evolved_state is None:
+        return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply error_channel noise"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+      cluster_state.density_matrix = evolved_state
+
+    try:
+      fidelity = float(qutip.metrics.fidelity(previous_state, cluster_state.density_matrix))
+    except Exception:
+      fidelity = 1.0
+    return _build_response(
+      True,
+      fidelity_estimate=fidelity,
+      discarded=False,
+      photon_lost=has_photon_lost,
+      discard_reason=discard_reason if has_photon_lost else "",
+      outcome_pattern="none" if has_photon_lost else "pass",
+      detection_click_count=0,
+      detector_histogram=[0, 0, 0, 0],
+      classical_payload={"channel_profile": profile, "probability": operation_probability},
+      message=f"qutip worker applied error_channel {noise_kind} with p={_effective_probability(operation_probability, 0.0)}",
+      meta=_cluster_state_meta(cluster_state, cluster_key),
+    )
+
+  if profile in {"loss_channel", "loss", "losschannel"}:
+    loss_probability = _compute_channel_loss_probability(payload)
+    loss_probability = _effective_probability(loss_probability, 0.0)
+    return _apply_ops_to_targets("loss", loss_probability, "loss", "photon_loss")
+
+  if profile in {"flip_channel", "bitflip", "xerror", "x_error_channel"}:
+    flip_probability = _extract_probability(payload, ("channel_x_error_rate", "legacy_channel_x_error_rate", "x_error_rate", "flip_probability", "p"), 0.0)
+    return _apply_ops_to_targets("bitflip", flip_probability, "bitflip")
+
+  if profile in {"phaseflip_channel", "phaseflip", "z_error_channel", "zerror"}:
+    phase_probability = _extract_probability(payload, ("channel_z_error_rate", "legacy_channel_z_error_rate", "z_error_rate", "phase_probability", "p"), 0.0)
+    return _apply_ops_to_targets("phaseflip", phase_probability, "phaseflip")
+
+  if profile in {"depolarizing_channel", "depolarizing"}:
+    depolarizing_probability = _extract_probability(payload, ("channel_depolarizing_rate", "channel_error_rate", "depolarizing_probability", "p"), 0.0)
+    return _apply_ops_to_targets("depolarizing", depolarizing_probability, "depolarizing")
+
+  return _build_response(
+    False,
+    message=_categorize_error("unsupported_profile", f"qutip worker unsupported error_channel profile: {profile}"),
+    error_category="unsupported_profile",
+    meta=_cluster_state_meta(cluster_state, cluster_key),
+  )
 
 
 def _collect_unique_qubits(operation: dict) -> set[tuple]:
@@ -2297,6 +2507,9 @@ def _canonicalize_kind(kind: str) -> str:
       "polarizationdecoherence": "polarization_decoherence",
       "mode_coupling": "mode_coupling",
       "loss_mode": "loss_mode",
+      "error_channel": "error_channel",
+      "errorchannel": "error_channel",
+      "error": "error_channel",
       "two_mode_squeezing": "two_mode_squeezing",
       "two_modes_squeezing": "two_mode_squeezing",
       "fock_loss": "fock_loss",
@@ -2956,12 +3169,12 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
 
       if n_targets == 1:
         plus_projector_local, minus_projector_local = _onoff_detection_projectors_for_one_target(qutip, normalized_dim)
-        success_event = "click"
-        failure_event = "no_click"
+        success_event = "d0"
+        failure_event = "none"
       else:
         plus_projector_local, minus_projector_local = _bell_detection_projectors_for_two_targets(qutip, normalized_dim)
-        success_event = "success"
-        failure_event = "failure"
+        success_event = "d1,d3"
+        failure_event = "d0,d2"
 
       raw_efficiency = payload.get("efficiency", payload.get("eta", 1.0))
       efficiency = _effective_probability(_as_float(raw_efficiency), 1.0)
@@ -3010,9 +3223,22 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
           "detection_dark_count": dark_count,
         },
       )
+      detection_pattern = selected_event
+      detection_histogram = [0, 0, 0, 0]
+      if detection_pattern == "d0":
+        detection_histogram[0] = 1
+      elif detection_pattern == "d1,d3":
+        detection_histogram[1] = 1
+        detection_histogram[3] = 1
+      elif detection_pattern == "d0,d2":
+        detection_histogram[0] = 1
+        detection_histogram[2] = 1
       return _finalize(
         _build_response(
           True,
+          outcome_pattern=detection_pattern,
+          detection_click_count=1 if n_targets == 1 and detection_pattern != "none" else (2 if n_targets == 2 else 0),
+          detector_histogram=detection_histogram,
           outcome=selected_event,
           branch_probability=branch_probability,
           measured_plus=measured_plus,
@@ -3164,6 +3390,14 @@ def run_operation(request: dict) -> dict:
   if kind == "measurement":
     return _finalize_response(
       _run_with_timeout(_handle_measurement, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
+      trace,
+      kind,
+      profile_error,
+      profile_meta,
+    )
+  if kind == "error_channel":
+    return _finalize_response(
+      _run_with_timeout(_handle_error_channel, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
       kind,
       profile_error,

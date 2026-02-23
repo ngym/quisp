@@ -23,7 +23,7 @@ std::string toLower(std::string value) {
 std::string normalizeBackendType(const std::string& value) {
   const auto normalized = toLower(value);
   if (normalized.empty() || normalized == "graphstatebackend" || normalized == "graph_state" || normalized == "graphstate") {
-    return "graph_state";
+    return "qutip_density_matrix";
   }
   if (normalized == "qutip") {
     return "qutip";
@@ -90,7 +90,7 @@ BackendContext PhysicalServiceFacade::makeContext() const {
 std::string PhysicalServiceFacade::resolveBackendTypeFromContext() const {
   auto* sim = omnetpp::cSimulation::getActiveSimulation();
   if (sim == nullptr) {
-    return "graph_state";
+    return "qutip_density_matrix";
   }
 
   for (auto* module = sim->getContextModule(); module != nullptr; module = module->getParentModule()) {
@@ -117,12 +117,45 @@ std::string PhysicalServiceFacade::resolveBackendTypeFromContext() const {
     }
   }
 
-  return "graph_state";
+  return "qutip_density_matrix";
 }
 
 OperationResult PhysicalServiceFacade::applyNoise(QubitHandle qubit) {
   if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
   return backend_->applyNoise(makeContext(), qubit);
+}
+
+OperationResult PhysicalServiceFacade::applyErrorChannel(const std::vector<QubitHandle>& qubit_ids, const std::string& channel_profile_name,
+                                                      const nlohmann::json& params) {
+  if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
+  PhysicalOperation operation;
+  operation.kind = "error_channel";
+  operation.targets = qubit_ids;
+  operation.payload = params;
+  operation.payload["channel_profile"] = channel_profile_name;
+  return backend_->applyOperation(makeContext(), operation);
+}
+
+OperationResult PhysicalServiceFacade::applyHomInterference(const std::vector<QubitHandle>& qubit_ids, const nlohmann::json& params) {
+  if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
+  PhysicalOperation operation;
+  operation.kind = "hom_interference";
+  operation.targets = qubit_ids;
+  if (!params.empty()) {
+    operation.payload = params;
+  }
+  return backend_->applyOperation(makeContext(), operation);
+}
+
+OperationResult PhysicalServiceFacade::applyDetection(const std::vector<QubitHandle>& qubit_ids, const nlohmann::json& params) {
+  if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
+  PhysicalOperation operation;
+  operation.kind = "detection";
+  operation.targets = qubit_ids;
+  if (!params.empty()) {
+    operation.payload = params;
+  }
+  return backend_->applyOperation(makeContext(), operation);
 }
 
 OperationResult PhysicalServiceFacade::applyGate(const std::string& gate, const std::vector<QubitHandle>& qubits) {

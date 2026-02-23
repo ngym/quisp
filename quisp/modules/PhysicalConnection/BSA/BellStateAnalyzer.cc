@@ -4,8 +4,10 @@
  */
 #include "BellStateAnalyzer.h"
 
+#include <cctype>
 #include <omnetpp/cexception.h>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 #include "modules/Backend/PhysicalServiceFacade.h"
@@ -15,7 +17,6 @@ using namespace omnetpp;
 using namespace quisp::messages;
 using namespace quisp::physical::types;
 using quisp::modules::backend::PhysicalServiceFacade;
-using quisp::modules::backend::MeasureBasis;
 using quisp::modules::backend::QubitHandle;
 
 namespace quisp::modules {
@@ -134,46 +135,65 @@ PhotonRecord BellStateAnalyzer::getPhotonRecordFromMessage(PhotonicQubit *photon
   PhotonRecord photon{.qubit_ref = photon_msg->getQubitRefForUpdate(),
                       .arrival_time = photon_msg->getArrivalTime(),
                       .from_port = (photon_msg->arrivedOn("quantum_port$i", 0)) ? PortNumber::First : PortNumber::Second,
-                      .is_lost = photon_msg->isLost(),
                       .is_first = photon_msg->isFirst(),
-                      .is_last = photon_msg->isLast(),
-                      .has_x_error = photon_msg->hasXError(),
-                      .has_z_error = photon_msg->hasZError()};
+                      .is_last = photon_msg->isLast()};
 
   return photon;
 }
 
 BSAClickResult BellStateAnalyzer::processIndistinguishPhotons(PhotonRecord &p, PhotonRecord &q) {
-  // although the photons get out of the fiber, we still need to roll the rng whether it will get collected by the detectors
-  if (dblrand() > collection_efficiency) p.is_lost = true;
-  if (dblrand() > collection_efficiency) q.is_lost = true;
+  ++pair_count;
+  ++indistinguishable_pair_count;
 
-  bool left_darkcount_click = dblrand() < darkcount_probability;
-  bool right_darkcount_click = dblrand() < darkcount_probability;
-  // false positive case
-  if ((p.is_lost && left_darkcount_click && q.is_lost && right_darkcount_click) || (!p.is_lost && q.is_lost && right_darkcount_click) ||
-      (p.is_lost && left_darkcount_click && !q.is_lost)) {
+  auto p_handle = makeHandle(p.qubit_ref);
+  auto q_handle = makeHandle(q.qubit_ref);
+  PhysicalServiceFacade service{backend};
+
+  const auto hom_result = service.applyHomInterference({p_handle, q_handle},
+                                                      {{"collection_efficiency", collection_efficiency},
+                                                       {"detection_efficiency", detection_efficiency},
+                                                       {"darkcount_probability", darkcount_probability}});
+  if (!hom_result.success) {
     discardPhoton(p);
     discardPhoton(q);
-    // correction operation doesn't really matter but we still make it 50:50
-    return {.success = true, .correction_operation = (dblrand() < 0.5) ? PauliOperator::X : PauliOperator::Y};
+    return {false, PauliOperator::I};
   }
 
-  // we assume that only Psi+/- can de distinguished while we can't for Phi+/-
-  bool isPsi = dblrand() < 0.5;
-  bool left_click = dblrand() < detection_efficiency;
-  bool right_click = dblrand() < detection_efficiency;
-  if (!p.is_lost && !q.is_lost && isPsi && left_click && right_click) {
-    bool isPsiPlus = dblrand() < 0.5;
-    measureSuccessfully(p, q, isPsiPlus);
-    discardPhoton(p);
-    discardPhoton(q);
-    return {.success = true, .correction_operation = isPsiPlus ? PauliOperator::X : PauliOperator::Y};
+  const auto detection_result = service.applyDetection(
+      {p_handle, q_handle},
+      {{"efficiency", detection_efficiency * collection_efficiency}, {"dark_count", darkcount_probability}, {"visibility", detection_efficiency}});
+  auto pattern = normalizeOutcomePattern(detection_result.outcome_pattern);
+  if (pattern.empty()) {
+    pattern = detection_result.measured_plus ? "d1,d3" : "none";
   }
+  pattern_count[pattern]++;
 
+  const auto click_result = determineClickResult(pattern);
   discardPhoton(p);
   discardPhoton(q);
-  return {.success = false, .correction_operation = PauliOperator::I};
+  return click_result;
+}
+
+std::string BellStateAnalyzer::normalizeOutcomePattern(const std::string& pattern) const {
+  std::string normalized;
+  normalized.reserve(pattern.size());
+  for (char ch : pattern) {
+    if (std::isspace(static_cast<unsigned char>(ch))) {
+      continue;
+    }
+    normalized.push_back(std::tolower(static_cast<unsigned char>(ch)));
+  }
+  return normalized;
+}
+
+BSAClickResult BellStateAnalyzer::determineClickResult(const std::string& pattern) {
+  if (pattern == "d1,d3" || pattern == "d3,d1" || pattern == "success" || pattern == "click") {
+    return {true, PauliOperator::X};
+  }
+  if (pattern == "d0" || pattern == "d2") {
+    return {true, PauliOperator::Z};
+  }
+  return {false, PauliOperator::I};
 }
 
 void BellStateAnalyzer::resetState() {
@@ -197,56 +217,14 @@ void BellStateAnalyzer::validateProperties() {
     throw std::runtime_error("BellStateAnalyzer::parameter validation fail; collection_efficiency does not in the [0, 1] range");
 }
 
-void BellStateAnalyzer::measureSuccessfully(PhotonRecord &p, PhotonRecord &q, bool is_psi_plus) {
-  auto p_ref = p.qubit_ref;
-  auto q_ref = q.qubit_ref;
-
-  if (p.has_x_error && p.has_z_error)
-    y_error_count++;
-  else if (p.has_x_error)
-    x_error_count++;
-  else if (p.has_z_error)
-    z_error_count++;
-  else
-    no_error_count++;
-
-  if (q.has_x_error && q.has_z_error)
-    y_error_count++;
-  else if (q.has_x_error)
-    x_error_count++;
-  else if (q.has_z_error)
-    z_error_count++;
-  else
-    no_error_count++;
-
-  auto p_handle = makeHandle(p_ref);
-  auto q_handle = makeHandle(q_ref);
-  PhysicalServiceFacade service{backend};
-
-  auto x_gate = service.applyNoiselessGate("X", {p_handle});
-  if (!x_gate.success) {
-    throw std::runtime_error("BellStateAnalyzer::measureSuccessfully: noiseless X failed");
-  }
-  if (!is_psi_plus) {
-    auto z_gate = service.applyNoiselessGate("Z", {p_handle});
-    if (!z_gate.success) {
-      throw std::runtime_error("BellStateAnalyzer::measureSuccessfully: noiseless Z failed");
-    }
-  }
-  auto entangled = service.applyNoiselessGate("CNOT", {p_handle, q_handle});
-  if (!entangled.success) {
-    throw std::runtime_error("BellStateAnalyzer::measureSuccessfully: noiseless CNOT failed");
-  }
-  auto x_measure = service.measureNoiseless(p_handle, MeasureBasis::X, true);
-  auto z_measure = service.measureNoiseless(q_handle, MeasureBasis::Z, true);
-  if (!x_measure.success || !z_measure.success) {
-    throw std::runtime_error("BellStateAnalyzer::measureSuccessfully: noiseless Bell measurement failed");
-  }
-}
-
 void BellStateAnalyzer::finish() {
-  std::cout << "BSA Statistics (raw):\n";
-  std::cout << "    " << no_error_count << ' ' << x_error_count << ' ' << y_error_count << ' ' << z_error_count << '\n';
+  std::cout << "BSA Statistics (pattern):\n";
+  std::cout << "  pairs=" << pair_count << "\n";
+  std::cout << "  indistinguishable_pairs=" << indistinguishable_pair_count << "\n";
+  std::cout << "  pattern_counts:\n";
+  for (const auto& pattern_pair : pattern_count) {
+    std::cout << "    " << pattern_pair.first << ": " << pattern_pair.second << "\n";
+  }
 }
 
 void BellStateAnalyzer::discardPhoton(PhotonRecord &photon) { photon.qubit_ref->relaseBackToPool(); };

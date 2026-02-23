@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <map>
 #include <set>
 #include <fstream>
+#include <limits>
 #include <sstream>
 #include <stdexcept>
 #include <cstdlib>
@@ -38,6 +40,112 @@ std::string qubitHandleKey(const QubitHandle& qubit) {
   std::ostringstream stream;
   stream << qubit.node_id << "/" << qubit.qnic_index << "/" << qubit.qnic_type << "/" << qubit.qubit_index;
   return stream.str();
+}
+
+double clampProbability(double value, double fallback = 0.0) {
+  if (!std::isfinite(value)) {
+    return fallback;
+  }
+  if (value < 0.0) return 0.0;
+  if (value > 1.0) return 1.0;
+  return value;
+}
+
+double asDouble(const nlohmann::json& payload, const std::string& key, double fallback = 0.0) {
+  const auto it = payload.find(key);
+  if (it == payload.end()) {
+    return fallback;
+  }
+  if (it->is_number_float()) return it->get<double>();
+  if (it->is_number_integer()) return it->get<int>();
+  if (it->is_boolean()) return static_cast<double>(it->get<bool>() ? 1.0 : 0.0);
+  if (it->is_string()) {
+    try {
+      return std::stod(it->get<std::string>());
+    } catch (...) {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+int asInt(const nlohmann::json& payload, const std::string& key, int fallback = 0) {
+  const auto it = payload.find(key);
+  if (it == payload.end()) {
+    return fallback;
+  }
+  if (it->is_number_integer()) return it->get<int>();
+  if (it->is_number_float()) {
+    const auto value = it->get<double>();
+    if (value >= static_cast<double>(std::numeric_limits<int>::min()) && value <= static_cast<double>(std::numeric_limits<int>::max())) {
+      return static_cast<int>(std::llround(value));
+    }
+    return fallback;
+  }
+  if (it->is_boolean()) return it->get<bool>() ? 1 : 0;
+  if (it->is_string()) {
+    try {
+      return std::stoi(it->get<std::string>());
+    } catch (...) {
+      return fallback;
+    }
+  }
+  return fallback;
+}
+
+double computeLossProbability(const nlohmann::json& payload) {
+  const auto legacy = clampProbability(asDouble(payload, "legacy_channel_loss_rate", asDouble(payload, "channel_loss_rate", 0.0)));
+  const double attenuation = clampProbability(asDouble(payload, "attenuation_db_per_km", 0.0));
+  const double node_overhead = clampProbability(asDouble(payload, "node_io_overhead_db", 0.0), 0.0);
+  const int node_count = std::max(0, asInt(payload, "node_count", asInt(payload, "channel_node_count", 0)));
+
+  double length_km = asDouble(payload, "channel_length_km", -1.0);
+  if (length_km < 0.0) {
+    length_km = asDouble(payload, "length_km", asDouble(payload, "distance_km", asDouble(payload, "distance", 0.0)));
+  }
+  length_km = std::max(0.0, length_km);
+
+  double transmission = 1.0;
+  if (attenuation > 0.0 || length_km > 0.0 || node_count > 0 || node_overhead > 0.0) {
+    const double eta_fiber = (attenuation <= 0.0 || length_km <= 0.0) ? 1.0 : std::pow(10.0, -(attenuation * length_km) / 10.0);
+    const double eta_node = (node_overhead <= 0.0 || node_count <= 0) ? 1.0 : std::pow(10.0, -(node_overhead * node_count) / 10.0);
+    transmission = clampProbability(eta_fiber * eta_node, 1.0);
+  } else if (legacy > 0.0) {
+    transmission = clampProbability(1.0 - legacy, 1.0);
+  }
+  return clampProbability(1.0 - transmission, 0.0);
+}
+
+std::string normalizeErrorChannelProfile(const std::string& profile) {
+  auto normalized = lowerString(profile);
+  if (normalized.empty()) {
+    return "loss_channel";
+  }
+  if (normalized == "error_channel") {
+    return "loss_channel";
+  }
+  if (normalized == "loss" || normalized == "loss_channel" || normalized == "attenuation" || normalized == "attenuation_channel") {
+    return "loss_channel";
+  }
+  if (normalized == "flip" || normalized == "flip_channel" || normalized == "x_error" || normalized == "xerror" || normalized == "bit_flip" ||
+      normalized == "bitflip") {
+    return "flip_channel";
+  }
+  if (normalized == "phaseflip" || normalized == "phase_flip" || normalized == "phase_error" || normalized == "z_error" || normalized == "zerror") {
+    return "phaseflip_channel";
+  }
+  if (normalized == "depolarizing" || normalized == "depolarizing_channel") {
+    return "depolarizing_channel";
+  }
+  return normalized;
+}
+
+double extractErrorRate(const nlohmann::json& payload, const std::vector<std::string>& keys) {
+  for (const auto& key : keys) {
+    const double value = asDouble(payload, key, -1.0);
+    if (value >= 0.0) return clampProbability(value, 0.0);
+  }
+  return 0.0;
 }
 
 std::string QutipBackend::qubitKey(const QubitHandle& qubit) const {
@@ -314,6 +422,7 @@ std::string normalizeAdvancedKind(const std::string& kind) {
   const std::map<std::string, std::string> aliases = {
       {"no_op", "noop"},
       {"hominterference", "hom_interference"},
+      {"errorchannel", "error_channel"},
       {"measure", "measurement"},
       {"kerreffect", "kerr"},
       {"kerr_effect", "kerr"},
@@ -663,6 +772,25 @@ OperationResult QutipBackend::runNoise(const BackendContext& ctx, QubitHandle qu
   return executeQutipWorker(ctx, operation);
 }
 
+OperationResult QutipBackend::applyErrorChannel(const BackendContext& ctx, const std::vector<QubitHandle>& qubits, const nlohmann::json& payload) const {
+  if (qubits.empty()) {
+    return unsupported("qutip backend error_channel operation missing target(s)");
+  }
+  for (const auto& qubit : qubits) {
+    if (!validateQubitHandle(qubit)) {
+      return unsupported("qutip backend error_channel operation received invalid qubit handle");
+    }
+  }
+
+  PhysicalOperation operation;
+  operation.kind = "error_channel";
+  operation.targets = qubits;
+  operation.cluster_id = attachClusterToTargets(operation.targets, "error_channel");
+  operation.cluster_event = "error_channel";
+  operation.payload = payload;
+  return executeQutipWorker(ctx, operation);
+}
+
 OperationResult QutipBackend::runEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) const {
   if (!validateQubitHandle(source_qubit) || !validateQubitHandle(target_qubit)) {
     return unsupported("qutip backend entanglement request received invalid qubit handle");
@@ -750,11 +878,30 @@ OperationResult QutipBackend::executeQutipWorker(const BackendContext& ctx, cons
   OperationResult result;
   result.success = response.value("success", false);
   result.fidelity_estimate = response.value("fidelity_estimate", 1.0);
-  result.qubit_lost = response.value("qubit_lost", false);
+  result.discarded = response.value("discarded", false);
   result.relaxed_to_ground = response.value("relaxed_to_ground", false);
   result.excited_to_plus = response.value("excited_to_plus", false);
   result.measured_plus = response.value("measured_plus", false);
+  result.outcome_pattern = response.value("outcome_pattern", std::string());
+  result.detection_click_count = response.value("detection_click_count", 0);
+  result.photon_lost = response.value("photon_lost", false);
+  const auto& histogram = response.find("detector_histogram");
+  if (histogram != response.end() && histogram->is_array()) {
+    result.detector_histogram.clear();
+    for (const auto& element : *histogram) {
+      if (element.is_number_integer()) {
+        result.detector_histogram.push_back(element.get<int>());
+      } else if (element.is_number_float()) {
+        result.detector_histogram.push_back(static_cast<int>(std::round(element.get<double>())));
+      }
+    }
+  }
+  const auto& classical_payload = response.find("classical_payload");
+  if (classical_payload != response.end()) {
+    result.classical_payload = *classical_payload;
+  }
   result.message = response.value("message", "");
+  result.discard_reason = response.value("discard_reason", result.discarded ? std::string("expired") : std::string());
   return result;
 }
 
@@ -853,6 +1000,10 @@ OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const Ph
     }
     auto noise_kind = parseNoiseFromPayload(operation);
     return runNoise(ctx, operation.targets.front(), noise_kind, operation.payload, operation.params);
+  }
+
+  if (normalized_kind == "error_channel") {
+    return applyErrorChannel(ctx, operation.targets, operation.payload);
   }
 
   if (isAdvancedOperation(normalized_kind)) {

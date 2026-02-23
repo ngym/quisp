@@ -1,5 +1,6 @@
 #pragma once
 
+#include <unordered_map>
 #include <omnetpp.h>
 
 #include "PhotonicQubit_m.h"
@@ -16,11 +17,8 @@ struct PhotonRecord {
   quisp::backends::abstract::IQubit *qubit_ref;
   omnetpp::simtime_t arrival_time;
   PortNumber from_port;
-  bool is_lost;
   bool is_first;
   bool is_last;
-  bool has_x_error;
-  bool has_z_error;
 };
 
 namespace quisp::modules {
@@ -39,7 +37,8 @@ class BellStateAnalyzer : public omnetpp::cSimpleModule {
   PhotonRecord getPhotonRecordFromMessage(messages::PhotonicQubit *);
   void processPhotonRecords();
   physical::types::BSAClickResult processIndistinguishPhotons(PhotonRecord &left_photon, PhotonRecord &right_photon);
-  void measureSuccessfully(PhotonRecord &left_photon, PhotonRecord &right_photon, bool is_psi_plus);
+  physical::types::BSAClickResult determineClickResult(const std::string& outcome_pattern);
+  std::string normalizeOutcomePattern(const std::string& pattern) const;
   void validateProperties();
 
   // device parameters
@@ -56,9 +55,8 @@ class BellStateAnalyzer : public omnetpp::cSimpleModule {
   backends::IQuantumBackend *backend;
 
   // for testing and debugging
-  long long no_error_count = 0;
-  long long x_error_count = 0;
-  long long y_error_count = 0;
-  long long z_error_count = 0;
+  long long pair_count = 0;
+  long long indistinguishable_pair_count = 0;
+  std::unordered_map<std::string, long long> pattern_count;
 };
 }  // namespace quisp::modules

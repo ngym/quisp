@@ -45,7 +45,7 @@ std::string BackendContainer::getSelectedBackendType() const {
     return normalizeBackendType(std::string(par("backend_type").stringValue()));
   }
 
-  return "GraphStateBackend";
+  return "qutip_density_matrix";
 }
 
 std::unique_ptr<IQuantumBackend> BackendContainer::createBackend(const std::string& backend_type) {

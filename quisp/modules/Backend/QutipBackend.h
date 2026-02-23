@@ -46,6 +46,7 @@ class QutipBackend : public IPhysicalBackend {
   OperationResult runNoise(const BackendContext& ctx, QubitHandle qubit, const std::string& noise_kind,
                           const nlohmann::json& noise_payload = nlohmann::json::object(),
                           const std::vector<double>& params = {}) const;
+  OperationResult applyErrorChannel(const BackendContext& ctx, const std::vector<QubitHandle>& qubits, const nlohmann::json& payload) const;
   OperationResult runEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) const;
 
   IQuantumBackend* backend_ = nullptr;

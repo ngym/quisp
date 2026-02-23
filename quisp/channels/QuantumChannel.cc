@@ -3,36 +3,97 @@
  *  \brief QuantumChannel
  */
 #include <omnetpp.h>
+
+#include <cstdint>
+#include <memory>
 #include <stdexcept>
-#include <unsupported/Eigen/MatrixFunctions>
+#include <string>
+
 #include "PhotonicQubit_m.h"
+#include "backends/interfaces/IQubit.h"
+#include "modules/Backend/Backend.h"
+#include "modules/Backend/PhysicalServiceFacade.h"
+#include "modules/QNIC/StationaryQubit/QubitId.h"
 #include "omnetpp/cexception.h"
 
-using namespace Eigen;
 using namespace omnetpp;
 using namespace quisp::messages;
+using namespace quisp::backends::abstract;
+using namespace quisp::modules::backend;
+using namespace quisp::modules::qubit_id;
+using quisp::backends::IQuantumBackend;
 
 namespace quisp::channels {
 
-/* The sum of Z, X and Y error rate equates to error_rate. Value could potentially between 0 ~ 1. */
-struct channel_error_model {
-  double error_rate;  // total error rate
-  double z_error_rate;
-  double x_error_rate;
-  double y_error_rate;
-  double loss_rate;
-};
+namespace {
 
-/** \class QuantumChannel QuantumChannel.cc
- *
- *  \brief QuantumChannel
- */
+QubitHandle makeHandle(const IQubit* qubit) {
+  if (qubit == nullptr) {
+    throw cRuntimeError("QuantumChannel::makeHandle: qubit is null");
+  }
+  const auto* id = qubit->getId();
+  if (id == nullptr) {
+    throw cRuntimeError("QuantumChannel::makeHandle: qubit has no id");
+  }
+  const auto* qid = dynamic_cast<const QubitId*>(id);
+  if (qid == nullptr) {
+    throw cRuntimeError("QuantumChannel::makeHandle: unsupported qubit id type");
+  }
+  return {qid->node_addr, qid->qnic_index, qid->qnic_type, qid->qubit_addr};
+}
+
+omnetpp::cModule* findBackendModule() {
+  auto* sim = omnetpp::cSimulation::getActiveSimulation();
+  if (sim == nullptr) return nullptr;
+  for (auto* module = sim->getContextModule(); module != nullptr; module = module->getParentModule()) {
+    if (auto* backend_module = module->findModuleByPath("backend")) {
+      return backend_module;
+    }
+  }
+  if (sim->getSystemModule() != nullptr && sim->getSystemModule()->hasSubmodule("backend")) {
+    return sim->getSystemModule()->getSubmodule("backend");
+  }
+  return nullptr;
+}
+
+IQuantumBackend* resolveQuantumBackend() {
+  auto* backend_module = findBackendModule();
+  if (backend_module == nullptr) return nullptr;
+  auto* backend_container = dynamic_cast<BackendContainer*>(backend_module);
+  if (backend_container == nullptr) return nullptr;
+  return backend_container->getQuantumBackend();
+}
+
+double clampDouble(double value, double min_value, double max_value) {
+  if (value < min_value) return min_value;
+  if (value > max_value) return max_value;
+  return value;
+}
+
+nlohmann::json buildChannelErrorParams(const PhotonicQubit* photon) {
+  nlohmann::json params = {
+      {"channel_loss_rate", photon->par("channel_loss_rate").doubleValue()},
+      {"channel_x_error_rate", photon->par("channel_x_error_rate").doubleValue()},
+      {"channel_y_error_rate", photon->par("channel_y_error_rate").doubleValue()},
+      {"channel_z_error_rate", photon->par("channel_z_error_rate").doubleValue()},
+      {"attenuation_db_per_km", photon->par("channel_attenuation_rate_db_per_km").doubleValue()},
+      {"length_km", photon->par("channel_length_km").doubleValue()},
+      {"node_io_overhead_db", photon->par("channel_node_io_overhead_db").doubleValue()},
+      {"node_count", photon->par("channel_node_count").intValue()},
+      {"distance_km", photon->par("distance").doubleValue()},
+  };
+  auto* channel_profile_par = photon->findPar("channel_profile");
+  if (channel_profile_par != nullptr) {
+    params["channel_profile"] = photon->par("channel_profile").stdstringValue();
+  }
+  return params;
+}
+
+}  // namespace
+
 class QuantumChannel : public cDatarateChannel {
  public:
   QuantumChannel();
-  // member variables
-  channel_error_model err;
-  double distance = 0;  // in km
 
  protected:
   virtual void initialize() override;
@@ -40,98 +101,77 @@ class QuantumChannel : public cDatarateChannel {
 
  private:
   void validateParameters();
-  MatrixXd transition_to_the_distance;
 };
 
 Define_Channel(QuantumChannel);
 
-QuantumChannel::QuantumChannel() : transition_to_the_distance(5, 5) {}
+QuantumChannel::QuantumChannel() {}
 
 void QuantumChannel::initialize() {
   cDatarateChannel::initialize();
-  distance = par("distance");  // in km
-  err.loss_rate = par("channel_loss_rate");
-  err.x_error_rate = par("channel_x_error_rate");
-  err.y_error_rate = par("channel_y_error_rate");
-  err.z_error_rate = par("channel_z_error_rate");
-  err.error_rate = err.x_error_rate + err.y_error_rate + err.z_error_rate + err.loss_rate;
   validateParameters();
-
-  MatrixXd transition_matrix(5, 5);
-  // clang-format off
-  transition_matrix << 1 - err.error_rate,  err.x_error_rate,   err.z_error_rate,   err.y_error_rate,   err.loss_rate,
-                       err.x_error_rate,    1 - err.error_rate, err.y_error_rate,   err.z_error_rate,   err.loss_rate,
-                       err.z_error_rate,    err.y_error_rate,   1 - err.error_rate, err.x_error_rate,   err.loss_rate,
-                       err.y_error_rate,    err.z_error_rate,   err.x_error_rate,   1 - err.error_rate, err.loss_rate,
-                       0,                   0,                  0,                  0,                  1;
-  // clang-format on
-
-  MatrixPower<MatrixXd> transition_matrix_to_the_power(transition_matrix);
-  transition_to_the_distance = transition_matrix_to_the_power(distance);
 }
 
 cChannel::Result QuantumChannel::processMessage(cMessage *msg, const SendOptions &options, simtime_t t) {
-  PhotonicQubit *q = dynamic_cast<PhotonicQubit *>(msg);
-  if (q == nullptr) {
+  auto* photon = dynamic_cast<PhotonicQubit *>(msg);
+  if (photon == nullptr) {
     throw new cRuntimeError("something other than photonic qubit is sent through quantum channel");
   }
 
-  MatrixXd probability_vector(1, 5);  // I, X, Z, Y, Photon Lost
-  if (q->isLost()) {
-    probability_vector << 0, 0, 0, 0, 1;  // Photon already lost due to the coupling lost.
-  } else {
-    probability_vector << 1, 0, 0, 0, 0;  // No error
+  IQuantumBackend* backend = resolveQuantumBackend();
+  if (backend == nullptr) {
+    throw cRuntimeError("QuantumChannel: quantum backend not found");
   }
-  MatrixXd output_probability_vector(1, 5);
-  output_probability_vector = probability_vector * transition_to_the_distance;
+  PhysicalServiceFacade service(backend);
 
-  // |-- no error --|-- x_error --|-- z_error --|-- y_error --|-- lost --|
-  double no_error_ceil = output_probability_vector(0, 0);
-  double x_error_ceil = no_error_ceil + output_probability_vector(0, 1);
-  double z_error_ceil = x_error_ceil + output_probability_vector(0, 2);
-  double y_error_ceil = z_error_ceil + output_probability_vector(0, 3);
-  double lost_ceil = y_error_ceil + output_probability_vector(0, 4);
-
-  double rand = dblrand();
-  if (rand < no_error_ceil) {
-    // Qubit will end up with no error
-  } else if (rand < x_error_ceil) {
-    // X error
-    q->getQubitRefForUpdate()->noiselessX();
-    q->setXError(true);
-  } else if (rand < z_error_ceil) {
-    // Z error
-    q->getQubitRefForUpdate()->noiselessZ();
-    q->setZError(true);
-  } else if (rand < y_error_ceil) {
-    // Y error
-    q->getQubitRefForUpdate()->noiselessX();
-    q->getQubitRefForUpdate()->noiselessZ();
-    q->setXError(true);
-    q->setZError(true);
-  } else {
-    // photon is lost
-    q->setLost(true);
+  const auto* qubit_ref = photon->getQubitRefForUpdate();
+  if (qubit_ref != nullptr) {
+    const auto handle = makeHandle(qubit_ref);
+    const auto profile = photon->par("channel_profile").stdstringValue();
+    auto params = buildChannelErrorParams(photon);
+    params["legacy_channel_loss_rate"] = params["channel_loss_rate"];
+    params["legacy_channel_x_error_rate"] = params["channel_x_error_rate"];
+    params["legacy_channel_z_error_rate"] = params["channel_z_error_rate"];
+    params["legacy_channel_y_error_rate"] = params["channel_y_error_rate"];
+    service.applyErrorChannel({handle}, profile.empty() ? "loss_channel" : profile, params);
   }
 
   return {false, getDelay(), 0};
 }
 
 void QuantumChannel::validateParameters() {
-  if (err.error_rate < 0 || 1 < err.error_rate) {
-    throw cRuntimeError("quantum channel has invalid total error rate");
+  const auto length_km = par("distance").doubleValue();
+  const auto channel_attenuation = par("channel_attenuation_rate_db_per_km").doubleValue();
+  const auto node_io_overhead_db = par("channel_node_io_overhead_db").doubleValue();
+  const auto node_count = par("channel_node_count").intValue();
+  const auto channel_loss_rate = par("channel_loss_rate").doubleValue();
+  const auto x_error_rate = par("channel_x_error_rate").doubleValue();
+  const auto y_error_rate = par("channel_y_error_rate").doubleValue();
+  const auto z_error_rate = par("channel_z_error_rate").doubleValue();
+
+  if (length_km < 0) {
+    throw cRuntimeError("quantum channel has invalid length (distance in km)");
   }
-  if (err.x_error_rate < 0 || 1 < err.x_error_rate) {
-    throw cRuntimeError("quantum channel has invalid x error rate");
+  if (channel_attenuation < 0) {
+    throw cRuntimeError("quantum channel has invalid attenuation rate (must be >= 0)");
   }
-  if (err.y_error_rate < 0 || 1 < err.y_error_rate) {
-    throw cRuntimeError("quantum channel has invalid y error rate");
+  if (node_io_overhead_db < 0) {
+    throw cRuntimeError("quantum channel has invalid node IO overhead (must be >= 0)");
   }
-  if (err.z_error_rate < 0 || 1 < err.z_error_rate) {
-    throw cRuntimeError("quantum channel has invalid z error rate");
+  if (node_count < 0) {
+    throw cRuntimeError("quantum channel has invalid node count (must be >= 0)");
   }
-  if (err.loss_rate < 0 || 1 < err.loss_rate) {
-    throw cRuntimeError("quantum channel has invalid loss rate");
+  if (clampDouble(channel_loss_rate, 0.0, 1.0) != channel_loss_rate) {
+    throw cRuntimeError("quantum channel has invalid loss rate (must be in [0,1])");
+  }
+  if (clampDouble(x_error_rate, 0.0, 1.0) != x_error_rate) {
+    throw cRuntimeError("quantum channel has invalid x error rate (must be in [0,1])");
+  }
+  if (clampDouble(y_error_rate, 0.0, 1.0) != y_error_rate) {
+    throw cRuntimeError("quantum channel has invalid y error rate (must be in [0,1])");
+  }
+  if (clampDouble(z_error_rate, 0.0, 1.0) != z_error_rate) {
+    throw cRuntimeError("quantum channel has invalid z error rate (must be in [0,1])");
   }
 }
 

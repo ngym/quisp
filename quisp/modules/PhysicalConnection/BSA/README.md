@@ -30,9 +30,9 @@ record_left = []
 record_right = []
 state = 'idle' | 'accepting_left' | 'accepting_right' | 'accepting'
 indistinguish_time_period = 'positive number in (ns)'
-dark_count_threshold = 'number in range [0, 1]'
-efficiency_threshold = 'number in range [0, 1]'
-# photon has {from_left, from_right, arrive_time, is_lost, first, last}
+# backend.detect(p_handle, q_handle) returns
+#   {outcome_pattern: 'd1,d3'|'d0,d2'|'none'|... , detection_click_count: int, ...}
+# where 'd1,d3' and 'd0,d2' are Bell-success patterns
 ```
 
 State management part
@@ -76,25 +76,15 @@ def processRecords():
 If both the photons should arrive within the indistinguishability time window
 ```python
 def process_indistinguish_photons(p, q):
-    if not p.is_lost and not q.is_lost:
-        # perform bell measurement (need 2 rolls because of 2 detectors)
-        if (rand() < efficiency_threshold and rand() < efficiency_threshold):
-            if (rand() > 0.5): # we get Phi+/- states cannot distinguish
-                return 'fail'
-            return 'success', 'Psi+' | 'Psi-' # select randomly 50:50
-    elif (not p.is_lost and q.is_lost) or (p.is_lost and not q.is_lost):
-        # WLOG p arrive but q lost
-        if p.is_lost: p, q = q, p
-        if (rand() < dark_count_threshold):
-            if (rand() > 0.5): # we thought we get Phi+/- so we declare fail
-                return 'fail'
-            return 'success', 'Psi+' | 'Psi-' # select randomly 50:50
-    else:
-        if (rand() < dark_count_threshold and rand() < dark_count_threshold):
-            if (rand() > 0.5): # we thought we get Phi+/- so we declare fail
-                return 'fail'
-            return 'success', 'Psi+' | 'Psi-' # select randomly 50:50
-    # measure both in Z basis to simulate loss event
+    # Bell-state and detection are fully executed by the backend.
+    # OMNeT logic only consumes the classical outcome pattern.
+    detection = backend_detection(p, q)
+
+    if detection.outcome_pattern in {'d1,d3', 'd3,d1'}:
+        # Pauli-X correction
+        return 'success', 'Psi+' | 'Psi-'
+    if detection.outcome_pattern in {'d0', 'd2', 'd2,d0'}:
+        # Pauli-Z correction
+        return 'success', 'Psi+' | 'Psi-'
     return 'fail'
 ```
-

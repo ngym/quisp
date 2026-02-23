@@ -70,21 +70,22 @@ double clampDouble(double value, double min_value, double max_value) {
   return value;
 }
 
-nlohmann::json buildChannelErrorParams(const PhotonicQubit* photon) {
+ nlohmann::json buildChannelErrorParams(const cDatarateChannel& channel) {
   nlohmann::json params = {
-      {"channel_loss_rate", photon->par("channel_loss_rate").doubleValue()},
-      {"channel_x_error_rate", photon->par("channel_x_error_rate").doubleValue()},
-      {"channel_y_error_rate", photon->par("channel_y_error_rate").doubleValue()},
-      {"channel_z_error_rate", photon->par("channel_z_error_rate").doubleValue()},
-      {"attenuation_db_per_km", photon->par("channel_attenuation_rate_db_per_km").doubleValue()},
-      {"length_km", photon->par("channel_length_km").doubleValue()},
-      {"node_io_overhead_db", photon->par("channel_node_io_overhead_db").doubleValue()},
-      {"node_count", photon->par("channel_node_count").intValue()},
-      {"distance_km", photon->par("distance").doubleValue()},
+      {"channel_loss_rate", channel.par("channel_loss_rate").doubleValue()},
+      {"channel_x_error_rate", channel.par("channel_x_error_rate").doubleValue()},
+      {"channel_y_error_rate", channel.par("channel_y_error_rate").doubleValue()},
+      {"channel_z_error_rate", channel.par("channel_z_error_rate").doubleValue()},
+      {"attenuation_db_per_km", channel.par("channel_attenuation_rate_db_per_km").doubleValue()},
+      {"length_km", channel.par("channel_length_km").doubleValue()},
+      {"channel_length_km", channel.par("channel_length_km").doubleValue()},
+      {"node_io_overhead_db", channel.par("channel_node_io_overhead_db").doubleValue()},
+      {"node_count", channel.par("channel_node_count").intValue()},
+      {"distance_km", channel.par("distance").doubleValue()},
+      {"distance", channel.par("distance").doubleValue()},
   };
-  auto* channel_profile_par = photon->findPar("channel_profile");
-  if (channel_profile_par != nullptr) {
-    params["channel_profile"] = photon->par("channel_profile").stdstringValue();
+  if (channel.hasPar("channel_profile")) {
+    params["channel_profile"] = channel.par("channel_profile").stringValue();
   }
   return params;
 }
@@ -127,8 +128,8 @@ cChannel::Result QuantumChannel::processMessage(cMessage *msg, const SendOptions
   const auto* qubit_ref = photon->getQubitRefForUpdate();
   if (qubit_ref != nullptr) {
     const auto handle = makeHandle(qubit_ref);
-    const auto profile = photon->par("channel_profile").stdstringValue();
-    auto params = buildChannelErrorParams(photon);
+    const auto profile = hasPar("channel_profile") ? std::string(par("channel_profile").stringValue()) : std::string("loss_channel");
+    auto params = buildChannelErrorParams(*this);
     params["legacy_channel_loss_rate"] = params["channel_loss_rate"];
     params["legacy_channel_x_error_rate"] = params["channel_x_error_rate"];
     params["legacy_channel_z_error_rate"] = params["channel_z_error_rate"];

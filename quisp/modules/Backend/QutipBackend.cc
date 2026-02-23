@@ -148,6 +148,8 @@ double extractErrorRate(const nlohmann::json& payload, const std::vector<std::st
   return 0.0;
 }
 
+}  // namespace
+
 std::string QutipBackend::qubitKey(const QubitHandle& qubit) const {
   return qubitHandleKey(qubit);
 }
@@ -631,8 +633,6 @@ omnetpp::cModule* getBackendModuleFromContext() {
   }
   return nullptr;
 }
-
-}  // namespace
 
 QutipBackend::QutipBackend(IQuantumBackend* backend, std::string backend_type)
     : backend_(backend), backend_type_(std::move(backend_type)) {}

@@ -7,7 +7,7 @@ simple Backend
         @class(BackendContainer);
         @display("p=30,40;");
         string backend_type = default("GraphStateBackend");
-        string physical_backend_type = default("error_basis");
+        string physical_backend_type = default("graph_state");
         string qutip_backend_class = default("qutip_density_matrix");
         string qutip_python_executable = default("python3");
         string qutip_worker_script = default("scripts/qutip_worker.py");

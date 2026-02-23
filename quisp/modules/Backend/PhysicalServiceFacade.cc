@@ -22,8 +22,8 @@ std::string toLower(std::string value) {
 
 std::string normalizeBackendType(const std::string& value) {
   const auto normalized = toLower(value);
-  if (normalized.empty() || normalized == "graphstatebackend" || normalized == "errorbasis" || normalized == "error_basis") {
-    return "error_basis";
+  if (normalized.empty() || normalized == "graphstatebackend" || normalized == "graph_state" || normalized == "graphstate") {
+    return "graph_state";
   }
   if (normalized == "qutip") {
     return "qutip";
@@ -41,7 +41,7 @@ std::unique_ptr<IPhysicalBackend> createBackendByType(const std::string& backend
   if (backend_name == "qutip" || backend_name == "qutip_density_matrix" || backend_name == "qutip_state_vector") {
     return std::make_unique<QutipBackend>(backend, backend_name);
   }
-  if (backend_name.empty() || backend_name == "error_basis") {
+  if (backend_name.empty() || backend_name == "graph_state") {
     return std::make_unique<ErrorBasisBackend>(backend);
   }
   throw std::runtime_error("PhysicalServiceFacade: unsupported physical backend type: " + backend_name);
@@ -90,7 +90,7 @@ BackendContext PhysicalServiceFacade::makeContext() const {
 std::string PhysicalServiceFacade::resolveBackendTypeFromContext() const {
   auto* sim = omnetpp::cSimulation::getActiveSimulation();
   if (sim == nullptr) {
-    return "error_basis";
+    return "graph_state";
   }
 
   for (auto* module = sim->getContextModule(); module != nullptr; module = module->getParentModule()) {
@@ -117,7 +117,7 @@ std::string PhysicalServiceFacade::resolveBackendTypeFromContext() const {
     }
   }
 
-  return "error_basis";
+  return "graph_state";
 }
 
 OperationResult PhysicalServiceFacade::applyNoise(QubitHandle qubit) {

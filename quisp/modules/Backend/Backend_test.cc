@@ -71,8 +71,8 @@ TEST_F(BackendContainerTest, callGsBackendInitialize) {
   EXPECT_NE(backend->backend, nullptr);
 }
 
-TEST_F(BackendContainerTest, callBackendInitializeWithPhysicalBackendAlias) {
-  setParStr(backend, "physical_backend_type", "error_basis");
+TEST_F(BackendContainerTest, callBackendInitializeWithPhysicalBackendGraphState) {
+  setParStr(backend, "physical_backend_type", "graph_state");
   EXPECT_EQ(backend->backend, nullptr);
   backend->callInitialize();
   EXPECT_NE(backend->backend, nullptr);

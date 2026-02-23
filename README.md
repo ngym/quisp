@@ -230,7 +230,7 @@ Optional `qutip` tuning parameters are available on `Backend`:
 - `standard_qutrit`: ノード3準位、リンク4準位
 - `high_fidelity`: 高精度運用向け（ノード5準位、リンク6準位）
 - `custom`: `qutip_profile_overrides` で `node_dim`, `link_mode_dim`, `leakage_enabled`, `truncation` をJSONで指定
-- `custom` では `node_dim` / `link_mode_dim` / `truncation` の最小値は `2` です。未対応値は `2` へフォールバックし、`error_category="invalid_profile"` を返します。
+- `custom` では `node_dim` / `link_mode_dim` / `truncation` の最小値は `2` です。いずれかが未対応値なら `error_category="invalid_profile"` を返して処理は失敗扱い（`success=false`）です。
 - `leakage_enabled` は `true`/`false` の他、`1`/`0`, `"on"`/`"off"`, `"yes"`/`"no"` も受理します。
 
 例:
@@ -241,9 +241,9 @@ Optional `qutip` tuning parameters are available on `Backend`:
 *.backend.qutip_profile_overrides = "{\"node_dim\":4,\"link_mode_dim\":6,\"leakage_enabled\":true}"
 ```
 
-`standard_light` は既定互換 (`2`準位) を保持し、`custom` では
-`qutip_profile_overrides` のJSONが不正な場合のみ `error_category="invalid_profile"` を返して
-既定値にフォールバックします。
+`standard_light` は既定互換 (`2`準位) を保持します。`qutip_node_profile` / `qutip_link_profile` に
+不明な名前や `qutip_profile_overrides` の不正 JSON / 型違反が含まれた場合は `error_category="invalid_profile"` を返して
+`success=false` となります。
 
 分類の目安:
 
@@ -281,7 +281,7 @@ B寄り（ノード・リンクを分離）:
 `custom`では、`qutip_profile_overrides` の `truncation` は内部のカットオフ値として参照されます。
 必要に応じて `link_mode_dim` を 4〜6、`node_dim` を 3〜5 の範囲で切り替えるのが実用的です。
 
-The default remains error-basis mode (`physical_backend_type = "error_basis"`) for
+The default remains graph-state mode (`physical_backend_type = "graph_state"`) for
 large-scale compatibility.
 
 Implemented `qutip` operation kinds on the high-fidelity path are tracked in:

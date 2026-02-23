@@ -14,7 +14,7 @@ std::string toLower(std::string value) {
 
 std::string normalizeBackendType(std::string value) {
   const auto lowered = toLower(value);
-  if (value.empty() || lowered == "graphstatebackend" || lowered == "error_basis" || lowered == "errorbasis") {
+  if (value.empty() || lowered == "graphstatebackend" || lowered == "graph_state" || lowered == "graphstate") {
     return "GraphStateBackend";
   }
   if (lowered == "qutip" || lowered == "qutip_density_matrix") {
@@ -50,13 +50,13 @@ std::string BackendContainer::getSelectedBackendType() const {
 
 std::unique_ptr<IQuantumBackend> BackendContainer::createBackend(const std::string& backend_type) {
   const auto normalized = normalizeBackendType(backend_type);
-  if (normalized == "GraphStateBackend" || normalized == "error_basis" || normalized == "qutip" || normalized == "qutip_density_matrix" || normalized == "qutip_state_vector" ||
+  if (normalized == "GraphStateBackend" || normalized == "qutip" || normalized == "qutip_density_matrix" || normalized == "qutip_state_vector" ||
       normalized == "qutip_sv") {
     auto config = getDefaultQubitErrorModelConfiguration();
     return std::make_unique<GraphStateBackend>(std::make_unique<RNG>(this), std::move(config), static_cast<GraphStateBackend::ICallback*>(this));
   }
   throw omnetpp::cRuntimeError(
-      "Unknown backend type: %s. Supported types are: GraphStateBackend, error_basis, qutip, qutip_density_matrix, qutip_state_vector, qutip_sv",
+      "Unknown backend type: %s. Supported types are: GraphStateBackend, graph_state, qutip, qutip_density_matrix, qutip_state_vector, qutip_sv",
       backend_type.c_str());
 }
 

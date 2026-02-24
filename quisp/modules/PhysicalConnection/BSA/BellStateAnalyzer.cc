@@ -163,9 +163,7 @@ BSAClickResult BellStateAnalyzer::processIndistinguishPhotons(PhotonRecord &p, P
       {p_handle, q_handle},
       {{"efficiency", detection_efficiency * collection_efficiency}, {"dark_count", darkcount_probability}, {"visibility", detection_efficiency}});
   auto pattern = normalizeOutcomePattern(detection_result.outcome_pattern);
-  if (pattern.empty()) {
-    pattern = detection_result.measured_plus ? "d1,d3" : "none";
-  }
+  if (pattern.empty()) pattern = "none";
   pattern_count[pattern]++;
 
   const auto click_result = determineClickResult(pattern);
@@ -187,10 +185,10 @@ std::string BellStateAnalyzer::normalizeOutcomePattern(const std::string& patter
 }
 
 BSAClickResult BellStateAnalyzer::determineClickResult(const std::string& pattern) {
-  if (pattern == "d1,d3" || pattern == "d3,d1" || pattern == "success" || pattern == "click") {
+  if (pattern == "d1,d3" || pattern == "d3,d1") {
     return {true, PauliOperator::X};
   }
-  if (pattern == "d0" || pattern == "d2") {
+  if (pattern == "d0" || pattern == "d2" || pattern == "d2,d4") {
     return {true, PauliOperator::Z};
   }
   return {false, PauliOperator::I};

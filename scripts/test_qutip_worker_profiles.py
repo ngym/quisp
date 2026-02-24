@@ -781,6 +781,84 @@ def test_profile_invalid_error_paths(operation: Dict[str, Any], expected_error_c
     _assert_meta(response, "profile", "custom")
 
 
+def test_error_channel_loss_profile_uses_distance_and_node_overhead() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}
+    attenuation_db_per_km = 0.2
+    length_km = 15
+    node_io_overhead_db = 0.8
+    node_count = 3
+    eta_fiber = 10 ** (-(attenuation_db_per_km * length_km) / 10.0)
+    eta_node = 10 ** (-(node_io_overhead_db * node_count) / 10.0)
+    expected_loss = pytest.approx(1.0 - (eta_fiber * eta_node), rel=1e-12)
+
+    response = _call_worker(
+        {
+            "kind": "error_channel",
+            "targets": [target],
+            "payload": {
+                "channel_profile": "loss_channel",
+                "channel_loss_rate": 0.0,
+                "channel_x_error_rate": 1.0,
+                "attenuation_db_per_km": attenuation_db_per_km,
+                "length_km": length_km,
+                "node_io_overhead_db": node_io_overhead_db,
+                "node_count": node_count,
+            },
+        },
+        seed=101,
+    )
+    _assert_response(response, success=True)
+    classical_payload = response.get("classical_payload", {})
+    assert float(classical_payload.get("probability", -1.0)) == expected_loss
+    assert response.get("outcome_pattern") in {"none", "pass"}
+
+
+def test_error_channel_loss_uses_legacy_loss_rate_fallback() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}
+    legacy_loss_rate = 0.35
+
+    response = _call_worker(
+        {
+            "kind": "error_channel",
+            "targets": [target],
+            "payload": {
+                "channel_profile": "loss_channel",
+                "legacy_channel_loss_rate": legacy_loss_rate,
+            },
+        },
+        seed=102,
+    )
+    _assert_response(response, success=True)
+    classical_payload = response.get("classical_payload", {})
+    assert float(classical_payload.get("probability", -1.0)) == pytest.approx(legacy_loss_rate, rel=1e-12)
+
+
+def test_error_channel_profile_is_explicit_only_for_qutip_flip_probability() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 2}
+
+    response = _call_worker(
+        {
+            "kind": "error_channel",
+            "targets": [target],
+            "payload": {
+                "channel_profile": "flip_channel",
+                "channel_x_error_rate": 1.0,
+            },
+        },
+        seed=303,
+    )
+    _assert_response(response, success=True)
+    classical_payload = response.get("classical_payload", {})
+    assert float(classical_payload.get("probability", -1.0)) == pytest.approx(0.0, abs=1e-12)
+    assert response.get("outcome_pattern") == "pass"
+
+
 _ADVANCED_SUCCESS_CASES: list[tuple[str, Dict[str, Any]]] = [
     ("kerr", {"kind": "kerr", "params": [0.3], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "payload": {"strength": 0.3}}),
     ("cross_kerr", {"kind": "cross_kerr", "params": [0.2], "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 2}] }),

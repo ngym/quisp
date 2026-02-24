@@ -2361,11 +2361,11 @@ def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta
     return _apply_ops_to_targets("loss", loss_probability, "loss", "photon_loss")
 
   if profile in {"flip_channel", "bitflip", "xerror", "x_error_channel"}:
-    flip_probability = _extract_probability(payload, ("channel_x_error_rate", "legacy_channel_x_error_rate", "x_error_rate", "flip_probability", "p"), 0.0)
+    flip_probability = _extract_probability(payload, ("flip_probability", "p"), 0.0)
     return _apply_ops_to_targets("bitflip", flip_probability, "bitflip")
 
   if profile in {"phaseflip_channel", "phaseflip", "z_error_channel", "zerror"}:
-    phase_probability = _extract_probability(payload, ("channel_z_error_rate", "legacy_channel_z_error_rate", "z_error_rate", "phase_probability", "p"), 0.0)
+    phase_probability = _extract_probability(payload, ("phase_probability", "p"), 0.0)
     return _apply_ops_to_targets("phaseflip", phase_probability, "phaseflip")
 
   if profile in {"depolarizing_channel", "depolarizing"}:

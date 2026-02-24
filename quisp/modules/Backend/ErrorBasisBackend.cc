@@ -16,6 +16,13 @@ namespace {
 constexpr const char* kCutoffReason = "expired";
 constexpr const char* kPhotonLossReason = "photon_loss";
 
+OperationResult failureResult(const std::string& reason) {
+  OperationResult result;
+  result.success = false;
+  result.message = reason;
+  return result;
+}
+
 std::string keyFromHandle(const QubitHandle& qubit) {
   std::ostringstream stream;
   stream << qubit.node_id << "/" << qubit.qnic_index << "/" << qubit.qnic_type << "/" << qubit.qubit_index;
@@ -203,11 +210,11 @@ OperationResult ErrorBasisBackend::applyOperation(const BackendContext& ctx, con
     if (!operation.targets.empty() && gate_entry != operation.payload.end() && gate_entry->is_string()) {
       return applyGate(ctx, gate_entry->get<std::string>(), operation.targets);
     }
-    return {false, 1.0, false, false, false, false, "missing gate payload or targets"};
+    return failureResult("missing gate payload or targets");
   }
   if (operation.kind == "measurement") {
     if (operation.targets.empty()) {
-      return {false, 1.0, false, false, false, false, "measurement target missing"};
+      return failureResult("measurement target missing");
     }
     MeasureBasis basis = MeasureBasis::Z;
     auto basis_label = operation.basis;
@@ -223,13 +230,13 @@ OperationResult ErrorBasisBackend::applyOperation(const BackendContext& ctx, con
   }
   if (operation.kind == "noise") {
     if (operation.targets.empty()) {
-      return {false, 1.0, false, false, false, false, "noise target missing"};
+      return failureResult("noise target missing");
     }
     return applyNoise(ctx, operation.targets.at(0));
   }
   if (operation.kind == "error_channel") {
     if (operation.targets.empty()) {
-      return {false, 1.0, false, false, false, false, "error_channel target missing"};
+      return failureResult("error_channel target missing");
     }
     return applyErrorChannel(ctx, operation);
   }
@@ -239,10 +246,20 @@ OperationResult ErrorBasisBackend::applyOperation(const BackendContext& ctx, con
   if (operation.kind == "detection") {
     return applyDetection(ctx, operation);
   }
-  return {false, 1.0, false, false, false, false, "unsupported operation kind: " + operation.kind};
+  return failureResult("unsupported operation kind: " + operation.kind);
 }
 
 backends::IQubit* ErrorBasisBackend::resolveQubit(QubitHandle qubit) {
+  if (qubit.node_id == -1 && qubit.qnic_index == -1 && qubit.qnic_type == -1) {
+    if (backend_ == nullptr) {
+      return nullptr;
+    }
+    try {
+      return backend_->getShortLiveQubit();
+    } catch (...) {
+      return nullptr;
+    }
+  }
   auto id = std::make_unique<qubit_id::QubitId>(qubit.node_id, qubit.qnic_index, qubit.qnic_type, qubit.qubit_index);
   try {
     return backend_->getQubit(id.get());
@@ -268,7 +285,7 @@ ErrorBasisBackend::GraphErrorState* ErrorBasisBackend::metadataPtr(const QubitHa
 
 OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, const PhysicalOperation& operation) {
   if (operation.targets.empty()) {
-    return {false, 1.0, false, false, false, false, "error_channel target missing"};
+    return failureResult("error_channel target missing");
   }
   (void)ctx;
   auto profile = normalizeErrorProfile(operation.payload.value("channel_profile", std::string("loss_channel")));
@@ -310,6 +327,7 @@ OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, 
         has_management_discard ? std::string(kCutoffReason) : (has_photon_loss ? std::string(kPhotonLossReason) : std::string()),
         has_event ? std::string("loss_channel") : std::string(),
     };
+    result.message = has_event ? "loss_channel" : std::string();
     result.photon_lost = has_photon_loss;
     return result;
   }
@@ -322,7 +340,11 @@ OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, 
         state.x_error = !state.x_error;
       }
     }
-    return {true, 1.0, false, false, false, false, "flip applied", 0, {0, 0, 0, 0}, {}};
+    OperationResult result;
+    result.success = true;
+    result.message = "flip applied";
+    result.detector_histogram = {0, 0, 0, 0};
+    return result;
   }
 
   if (profile == "phaseflipchannel" || profile == "zerror" || profile == "phaseflip" || profile == "phaseerror") {
@@ -333,14 +355,21 @@ OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, 
         state.z_error = !state.z_error;
       }
     }
-    return {true, 1.0, false, false, false, false, "phaseflip applied", 0, {0, 0, 0, 0}, {}};
+    OperationResult result;
+    result.success = true;
+    result.message = "phaseflip applied";
+    result.detector_histogram = {0, 0, 0, 0};
+    return result;
   }
 
   if (profile == "depolarizingchannel" || profile == "depolarizing") {
     const auto depolarizing_probability = extractProfileProbability(
         operation.payload, {"channel_depolarizing_rate", "channel_error_rate", "depolarizing_probability", "depolarizing_error_rate", "p"}, 0.0);
     if (depolarizing_probability <= 0.0) {
-      return {true, 1.0, false, false, false, false, "depolarizing skipped"};
+      OperationResult result;
+      result.success = true;
+      result.message = "depolarizing skipped";
+      return result;
     }
     for (const auto& target : operation.targets) {
       auto& state = metadataFor(target);
@@ -364,15 +393,19 @@ OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, 
         state.z_error = !state.z_error;
       }
     }
-    return {true, 1.0, false, false, false, false, "depolarizing applied", 0, {0, 0, 0, 0}, {}};
+    OperationResult result;
+    result.success = true;
+    result.message = "depolarizing applied";
+    result.detector_histogram = {0, 0, 0, 0};
+    return result;
   }
 
-  return {false, 1.0, false, false, false, false, "unsupported error_channel profile: " + profile};
+  return failureResult("unsupported error_channel profile: " + profile);
 }
 
 OperationResult ErrorBasisBackend::applyHomInterference(const PhysicalOperation& operation) {
   if (operation.targets.size() < 2) {
-    return {false, 1.0, false, false, false, false, "hom_interference requires at least two targets"};
+    return failureResult("hom_interference requires at least two targets");
   }
   bool has_discarded = false;
   bool has_photon_lost = false;
@@ -412,13 +445,14 @@ OperationResult ErrorBasisBackend::applyHomInterference(const PhysicalOperation&
       has_discarded ? discard_reason : (has_photon_lost ? discard_reason : std::string()),
       has_event ? "hom_interference skipped due to unavailable qubit" : "hom_interference success",
   };
+  result.message = has_event ? "hom_interference skipped due to unavailable qubit" : "hom_interference success";
   result.photon_lost = has_photon_lost;
   return result;
 }
 
 OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, const PhysicalOperation& operation) {
   if (operation.targets.empty()) {
-    return {false, 1.0, false, false, false, false, "detection requires target(s)"};
+    return failureResult("detection requires target(s)");
   }
 
   const auto efficiency = clampProbability(extractProfileProbability(operation.payload, {"efficiency", "eta", "detection_efficiency"}, 1.0));
@@ -454,10 +488,11 @@ OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, con
       clicked ? 1 : 0,
       histogram,
       {{"profile", "detection"},
-       {"visibility", visibility}},
+      {"visibility", visibility}},
       is_discarded ? (discard_reason.empty() ? kCutoffReason : discard_reason) : (is_photon_lost ? discard_reason : std::string()),
       is_unavailable ? "detection skipped due to unavailable qubit" : std::string("detection success"),
     };
+    result.message = is_unavailable ? "detection skipped due to unavailable qubit" : std::string("detection success");
     result.photon_lost = is_photon_lost;
     return result;
   }
@@ -522,6 +557,7 @@ OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, con
       has_discarded ? discard_reason : (has_photon_lost ? discard_reason : std::string()),
       has_event ? "detection skipped due to unavailable qubit" : std::string("detection success"),
   };
+  result.message = has_event ? "detection skipped due to unavailable qubit" : std::string("detection success");
   result.photon_lost = has_photon_lost;
   return result;
 }

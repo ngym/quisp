@@ -643,7 +643,9 @@ uint32_t QutipBackend::capabilities() const {
 }
 
 OperationResult QutipBackend::unsupported(const std::string& reason) const {
-  return {false, 1.0, false, false, false, false, reason};
+  OperationResult result;
+  result.message = reason;
+  return result;
 }
 
 bool QutipBackend::checkQutipRuntimeAvailable() const {

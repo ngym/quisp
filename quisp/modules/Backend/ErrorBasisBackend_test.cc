@@ -170,7 +170,7 @@ TEST(ErrorBasisBackendContractTest, ApplyGateRoutesToBackendQubits) {
   auto* qubit = static_cast<FakeQubit*>(backend.createQubit(new QubitId(1, 0, 0, 7)));
   ASSERT_NE(qubit, nullptr);
 
-  PhysicalServiceFacade facade{&backend};
+  PhysicalServiceFacade facade{&backend, "graph_state"};
   EXPECT_TRUE(facade.applyGate("X", {handleFrom(1, 0, 0, 7)}).success);
   EXPECT_EQ(qubit->x_count, 1);
   EXPECT_TRUE(facade.applyGate("H", {handleFrom(1, 0, 0, 7)}).success);
@@ -186,7 +186,7 @@ TEST(ErrorBasisBackendContractTest, ApplyGateSupportsCnot) {
   ASSERT_NE(source, nullptr);
   ASSERT_NE(target, nullptr);
 
-  PhysicalServiceFacade facade{&backend};
+  PhysicalServiceFacade facade{&backend, "graph_state"};
   EXPECT_TRUE(facade.applyGate("CNOT", {handleFrom(2, 0, 0, 1), handleFrom(2, 0, 0, 2)}).success);
   EXPECT_EQ(source->cnot_count, 1);
   ASSERT_EQ(source->cnot_targets.size(), 1);
@@ -200,7 +200,7 @@ TEST(ErrorBasisBackendContractTest, ApplyNoiselessGateRoutesToNoiselessBackendOp
   ASSERT_NE(source, nullptr);
   ASSERT_NE(target, nullptr);
 
-  PhysicalServiceFacade facade{&backend};
+  PhysicalServiceFacade facade{&backend, "graph_state"};
   EXPECT_TRUE(facade.applyNoiselessGate("X", {handleFrom(9, 0, 0, 1)}).success);
   EXPECT_EQ(source->noiseless_x_count, 1);
   EXPECT_TRUE(facade.applyNoiselessGate("Z", {handleFrom(9, 0, 0, 1)}).success);
@@ -221,7 +221,7 @@ TEST(ErrorBasisBackendContractTest, MeasureReturnsObservedOutcome) {
   qubit->measure_y_plus = false;
   qubit->measure_z_plus = true;
 
-  PhysicalServiceFacade facade{&backend};
+  PhysicalServiceFacade facade{&backend, "graph_state"};
   auto x = facade.measure(handleFrom(3, 0, 0, 9), MeasureBasis::X);
   auto y = facade.measure(handleFrom(3, 0, 0, 9), MeasureBasis::Y);
   auto z = facade.measure(handleFrom(3, 0, 0, 9), MeasureBasis::Z);
@@ -243,7 +243,7 @@ TEST(ErrorBasisBackendContractTest, MeasureNoiselessForcesPlusAndSupportsMeasure
   ASSERT_NE(qubit, nullptr);
   qubit->noiseless_measure_plus = false;
 
-  PhysicalServiceFacade facade{&backend};
+  PhysicalServiceFacade facade{&backend, "graph_state"};
   auto forced = facade.measureNoiseless(handleFrom(10, 0, 0, 3), MeasureBasis::X, true);
   auto regular = facade.measureNoiseless(handleFrom(10, 0, 0, 3), MeasureBasis::Z, false);
 
@@ -260,7 +260,7 @@ TEST(ErrorBasisBackendContractTest, GenerateEntanglementCallsNoiselessOps) {
   ASSERT_NE(source, nullptr);
   ASSERT_NE(target, nullptr);
 
-  PhysicalServiceFacade facade{&backend};
+  PhysicalServiceFacade facade{&backend, "graph_state"};
   auto result = facade.generateEntanglement(handleFrom(5, 0, 0, 1), handleFrom(-1, -1, -1, 1));
   EXPECT_TRUE(result.success);
   EXPECT_EQ(source->noiseless_h_count, 1);
@@ -272,7 +272,7 @@ TEST(ErrorBasisBackendContractTest, UnknownGateReturnsFailure) {
   FakeBackend backend;
   backend.createQubit(new QubitId(6, 0, 0, 2));
 
-  PhysicalServiceFacade facade{&backend};
+  PhysicalServiceFacade facade{&backend, "graph_state"};
   EXPECT_FALSE(facade.applyGate("INVALID", {handleFrom(6, 0, 0, 2)}).success);
   EXPECT_FALSE(facade.applyNoiselessGate("INVALID", {handleFrom(6, 0, 0, 2)}).success);
   EXPECT_FALSE(facade.measureNoiseless(handleFrom(6, 0, 0, 2), MeasureBasis::Y, true).success);

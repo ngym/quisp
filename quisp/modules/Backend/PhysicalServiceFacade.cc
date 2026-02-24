@@ -22,8 +22,11 @@ std::string toLower(std::string value) {
 
 std::string normalizeBackendType(const std::string& value) {
   const auto normalized = toLower(value);
-  if (normalized.empty() || normalized == "graphstatebackend" || normalized == "graph_state" || normalized == "graphstate") {
+  if (normalized.empty()) {
     return "qutip_density_matrix";
+  }
+  if (normalized == "graphstatebackend" || normalized == "graph_state" || normalized == "graphstate") {
+    return "graph_state";
   }
   if (normalized == "qutip") {
     return "qutip";

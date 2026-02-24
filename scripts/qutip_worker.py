@@ -477,6 +477,8 @@ def _build_cluster_noise_ops(
   sigma_p = _logical_pauli_in_dim(qutip, dim, "sxp")
   identity = qutip.qeye(normalized_dim)
   survival_amp = math.sqrt(max(0.0, 1.0 - max(0.0, min(1.0, p))))
+  if p <= 0.0:
+    return [identity], metadata, None
 
   if noise_kind in {"loss", "amplitude_damping", "thermal_relaxation"}:
     if sigma_m is None or sigma_p is None:
@@ -1213,7 +1215,7 @@ def _compute_channel_loss_probability(payload: dict[str, Any]) -> float:
       0.0,
   )
   node_overhead_db = _extract_probability(payload, ("node_io_overhead_db", "channel_node_io_overhead_db"), 0.0)
-  node_count = max(0, _as_int(payload.get("node_count", payload.get("channel_node_count", 0)))
+  node_count = max(0, _as_int(payload.get("node_count", payload.get("channel_node_count", 0))))
 
   if length_km < 0.0:
     length_km = 0.0
@@ -2798,7 +2800,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
   def _handle_unitary_kind(kind_for_handler: str) -> Optional[dict]:
     min_targets = 1
     if kind_for_handler in {
-        "cross_kerr",
         "beam_splitter",
         "hom_interference",
         "cross_phase_modulation",
@@ -2832,6 +2833,15 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with chi={params_value} for duration={duration}")
 
     if kind_for_handler == "cross_kerr":
+      if n_targets == 1:
+        params_value = _as_float(params_f[0] if params_f else payload.get("chi", payload.get("theta", 0.0)))
+        sigma_z = _logical_pauli_in_dim(qutip, normalized_dim, "sz")
+        if sigma_z is None:
+          return _invalid_payload(f"qutip worker cannot build kerr operator for dim={normalized_dim}")
+        n_op = (_identity_in_dim(qutip, normalized_dim) - sigma_z) * 0.5
+        local_h = n_op * n_op * params_value
+        unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _identity_in_dim(qutip, normalized_dim ** n_targets)
+        return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied cross_kerr(singleton fallback) with chi={params_value} for duration={duration}")
       if n_targets < 2:
         return _invalid_payload("qutip worker cross_kerr requires at least two targets")
       params_value = _as_float(params_f[0] if params_f else payload.get("chi", payload.get("theta", 0.0)))

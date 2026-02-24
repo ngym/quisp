@@ -97,7 +97,9 @@ class IPhysicalBackend {
   virtual OperationResult applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
     (void)ctx;
     (void)operation;
-    return {false, 1.0, false, false, false, false, "operation not supported"};
+    OperationResult result;
+    result.message = "operation not supported";
+    return result;
   }
 };
 

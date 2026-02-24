@@ -975,6 +975,95 @@ def test_detection_success_probability_depends_on_cluster_state() -> None:
     assert response_success.get("measured_plus") is True
 
 
+def test_detection_two_photon_pattern_for_psi_plus() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 10}
+    target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 11}
+    cluster_id = 9101
+
+    _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "targets": [target0],
+            "payload": {"gate": "H"},
+        },
+        cluster_id=cluster_id,
+        seed=111,
+    )
+    _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "targets": [target0, target1],
+            "payload": {"gate": "CNOT"},
+        },
+        cluster_id=cluster_id,
+        seed=112,
+    )
+
+    response = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target0, target1],
+            "payload": {"efficiency": 1.0, "visibility": 1.0},
+        },
+        cluster_id=cluster_id,
+        seed=113,
+    )
+    _assert_response(response, success=True)
+    assert response.get("outcome_pattern") in {"d0,d1", "d2,d3"}
+    assert response.get("detection_click_count") == 2
+
+
+def test_detection_two_photon_pattern_for_psi_minus() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 12}
+    target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 13}
+    cluster_id = 9102
+
+    _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "targets": [target0],
+            "payload": {"gate": "H"},
+        },
+        cluster_id=cluster_id,
+        seed=121,
+    )
+    _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "targets": [target0, target1],
+            "payload": {"gate": "CNOT"},
+        },
+        cluster_id=cluster_id,
+        seed=122,
+    )
+    _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "targets": [target1],
+            "payload": {"gate": "Z"},
+        },
+        cluster_id=cluster_id,
+        seed=123,
+    )
+
+    response = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target0, target1],
+            "payload": {"efficiency": 1.0, "visibility": 1.0},
+        },
+        cluster_id=cluster_id,
+        seed=124,
+    )
+    _assert_response(response, success=True)
+    assert response.get("outcome_pattern") in {"d0,d3", "d1,d2"}
+    assert response.get("detection_click_count") == 2
+
+
 def test_photon_pipeline_representation_transitions() -> None:
     _qutip_available()
     _clear_qutip_cluster_state()

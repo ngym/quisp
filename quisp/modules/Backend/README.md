@@ -17,7 +17,7 @@
 - `photon_lost`: 物理現象としての損失（channel attenuation / loss）  
   - **バックエンド側が決定する物理的消失フラグ**
 - `discard_reason`: `"expired"`, `"cutoff"`, `"photon_loss"` など
-- `outcome_pattern`: BSA 等の検出結果パターン（例: `d1,d3` / `d0` / `none`）
+- `outcome_pattern`: BSA 等の検出結果パターン（例: `d0,d1` / `d2,d3` / `d0,d3` / `d1,d2` / `none`）
 - `detection_click_count` / `detector_histogram` / `classical_payload`: BSA 解析に使う補助情報
 
 ### 用語の明文化

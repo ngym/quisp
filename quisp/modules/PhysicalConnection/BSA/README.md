@@ -31,8 +31,8 @@ record_right = []
 state = 'idle' | 'accepting_left' | 'accepting_right' | 'accepting'
 indistinguish_time_period = 'positive number in (ns)'
 # backend.detect(p_handle, q_handle) returns
-#   {outcome_pattern: 'd1,d3'|'d0,d2'|'none'|... , detection_click_count: int, ...}
-# where 'd1,d3' and 'd0,d2' are Bell-success patterns
+#   {outcome_pattern: 'd0,d1'|'d2,d3'|'d0,d3'|'d1,d2'|'none'|..., detection_click_count: int, ...}
+# where these four two-click patterns are the Bell-success patterns
 ```
 
 State management part
@@ -80,10 +80,10 @@ def process_indistinguish_photons(p, q):
     # OMNeT logic only consumes the classical outcome pattern.
     detection = backend_detection(p, q)
 
-    if detection.outcome_pattern in {'d1,d3', 'd3,d1'}:
+    if detection.outcome_pattern in {'d0,d3', 'd3,d0', 'd1,d2', 'd2,d1'}:
         # Pauli-X correction
         return 'success', 'Psi+' | 'Psi-'
-    if detection.outcome_pattern in {'d0', 'd2', 'd2,d0'}:
+    if detection.outcome_pattern in {'d0,d1', 'd1,d0', 'd2,d3', 'd3,d2'}:
         # Pauli-Z correction
         return 'success', 'Psi+' | 'Psi-'
     return 'fail'

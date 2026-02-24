@@ -185,10 +185,10 @@ std::string BellStateAnalyzer::normalizeOutcomePattern(const std::string& patter
 }
 
 BSAClickResult BellStateAnalyzer::determineClickResult(const std::string& pattern) {
-  if (pattern == "d1,d3" || pattern == "d3,d1") {
+  if (pattern == "d0,d3" || pattern == "d3,d0" || pattern == "d1,d2" || pattern == "d2,d1") {
     return {true, PauliOperator::X};
   }
-  if (pattern == "d0" || pattern == "d2" || pattern == "d2,d4") {
+  if (pattern == "d0,d1" || pattern == "d1,d0" || pattern == "d2,d3" || pattern == "d3,d2" || pattern == "d0" || pattern == "d2" || pattern == "d2,d4") {
     return {true, PauliOperator::Z};
   }
   return {false, PauliOperator::I};

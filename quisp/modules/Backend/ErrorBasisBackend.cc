@@ -527,19 +527,35 @@ OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, con
   std::string pattern = "none";
   bool measured_plus = false;
   if (!has_event) {
+    const auto rng_seed = keyFor(operation.targets.at(0));
     if (eventOccurs(ctx.seed, "detection_dark", dark_count)) {
       pattern = "none";
     } else if (eventOccurs(ctx.seed, "detection_vis", visibility)) {
+      const auto is_psi_plus = eventOccurs(ctx.seed, rng_seed + "/detection_plus", 0.5);
       click_count = 2;
-      measured_plus = true;
-      pattern = "d1,d3";
-      histogram[1] = 1;
-      histogram[3] = 1;
-    } else if (eventOccurs(ctx.seed, "detection_alt", 1.0)) {
-      click_count = 2;
-      pattern = "d0,d2";
-      histogram[0] = 1;
-      histogram[2] = 1;
+      if (is_psi_plus) {
+        measured_plus = true;
+        if (eventOccurs(ctx.seed, rng_seed + "/detection_plus_pattern", 0.5)) {
+          pattern = "d0,d1";
+          histogram[0] = 1;
+          histogram[1] = 1;
+        } else {
+          pattern = "d2,d3";
+          histogram[2] = 1;
+          histogram[3] = 1;
+        }
+      } else {
+        measured_plus = false;
+        if (eventOccurs(ctx.seed, rng_seed + "/detection_minus_pattern", 0.5)) {
+          pattern = "d0,d3";
+          histogram[0] = 1;
+          histogram[3] = 1;
+        } else {
+          pattern = "d1,d2";
+          histogram[1] = 1;
+          histogram[2] = 1;
+        }
+      }
     }
   }
 

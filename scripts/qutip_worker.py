@@ -1050,10 +1050,7 @@ def _bell_detection_projectors_for_two_targets(qutip: Any, dim: int) -> tuple[An
   basis1 = qutip.basis(normalized_dim, 1)
   psi_plus = (qutip.tensor(basis0, basis1) + qutip.tensor(basis1, basis0)) / math.sqrt(2)
   psi_minus = (qutip.tensor(basis0, basis1) - qutip.tensor(basis1, basis0)) / math.sqrt(2)
-  success = (psi_plus * psi_plus.dag()) + (psi_minus * psi_minus.dag())
-  identity = qutip.tensor(qutip.qeye(normalized_dim), qutip.qeye(normalized_dim))
-  failure = identity - success
-  return success, failure
+  return psi_plus * psi_plus.dag(), psi_minus * psi_minus.dag()
 
 
 def _onoff_detection_projectors_for_one_target(qutip: Any, dim: int) -> tuple[Any, Any]:
@@ -3183,41 +3180,116 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         failure_event = "none"
       else:
         plus_projector_local, minus_projector_local = _bell_detection_projectors_for_two_targets(qutip, normalized_dim)
-        success_event = "d1,d3"
-        failure_event = "d0,d2"
+        identity_local = qutip.tensor(qutip.qeye(normalized_dim), qutip.qeye(normalized_dim))
+        failure_projector_local = identity_local - plus_projector_local - minus_projector_local
 
       raw_efficiency = payload.get("efficiency", payload.get("eta", 1.0))
       efficiency = _effective_probability(_as_float(raw_efficiency), 1.0)
       raw_dark_count = payload.get("dark_count", payload.get("detector", params_like))
       dark_count = _effective_probability(_as_float(raw_dark_count), 0.0)
-      sqrt_efficiency = math.sqrt(max(0.0, efficiency))
-      sqrt_dark = math.sqrt(max(0.0, dark_count))
-      sqrt_no_dark = math.sqrt(max(0.0, 1.0 - dark_count))
-      sqrt_miss = math.sqrt(max(0.0, 1.0 - efficiency))
 
-      success_operator_local = sqrt_efficiency * plus_projector_local + sqrt_dark * minus_projector_local
-      failure_operator_local = sqrt_miss * plus_projector_local + sqrt_no_dark * minus_projector_local
+      if n_targets == 1:
+        sqrt_efficiency = math.sqrt(max(0.0, efficiency))
+        sqrt_dark = math.sqrt(max(0.0, dark_count))
+        sqrt_no_dark = math.sqrt(max(0.0, 1.0 - dark_count))
+        sqrt_miss = math.sqrt(max(0.0, 1.0 - efficiency))
 
-      success_ok, success_operator = _apply_local_operator_to_cluster(cluster_state, success_operator_local, target_positions, qutip)
-      failure_ok, failure_operator = _apply_local_operator_to_cluster(cluster_state, failure_operator_local, target_positions, qutip)
-      if not success_ok or not failure_ok or success_operator is None or failure_operator is None:
-        return _invalid_payload("qutip worker failed to build detection operator")
+        success_operator_local = sqrt_efficiency * plus_projector_local + sqrt_dark * minus_projector_local
+        failure_operator_local = sqrt_miss * plus_projector_local + sqrt_no_dark * minus_projector_local
+
+        success_ok, success_operator = _apply_local_operator_to_cluster(cluster_state, success_operator_local, target_positions, qutip)
+        failure_ok, failure_operator = _apply_local_operator_to_cluster(cluster_state, failure_operator_local, target_positions, qutip)
+        if not success_ok or not failure_ok or success_operator is None or failure_operator is None:
+          return _invalid_payload("qutip worker failed to build detection operator")
+
+        rho = cluster_state.density_matrix
+        probability_success = float((success_operator * rho * success_operator.dag()).tr())
+        probability_failure = float((failure_operator * rho * failure_operator.dag()).tr())
+        total_probability = probability_success + probability_failure
+        if total_probability <= 0.0:
+          return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker detection has zero branch norm"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+        probability_success = max(0.0, min(1.0, probability_success / total_probability))
+        probability_failure = max(0.0, 1.0 - probability_success)
+        rng = _rng(seed, {"kind": "detection_rng", "targets": n_targets, "success_probability": probability_success, "efficiency": efficiency, "dark_count": dark_count})
+        measured_plus = rng.random() < probability_success
+        selected_operator = success_operator if measured_plus else failure_operator
+        selected_event = success_event if measured_plus else failure_event
+        branch_probability = probability_success if measured_plus else probability_failure
+      else:
+        two_target_scale = max(0.0, efficiency * visibility)
+        click_scale = math.sqrt(max(0.0, two_target_scale * 0.5))
+        none_scale = math.sqrt(max(0.0, 1.0 - two_target_scale))
+
+        plus_click_a_local = click_scale * plus_projector_local
+        plus_click_b_local = click_scale * plus_projector_local
+        minus_click_a_local = click_scale * minus_projector_local
+        minus_click_b_local = click_scale * minus_projector_local
+        none_operator_local = none_scale * (plus_projector_local + minus_projector_local) + failure_projector_local
+
+        plus_click_a_ok, plus_click_a = _apply_local_operator_to_cluster(cluster_state, plus_click_a_local, target_positions, qutip)
+        plus_click_b_ok, plus_click_b = _apply_local_operator_to_cluster(cluster_state, plus_click_b_local, target_positions, qutip)
+        minus_click_a_ok, minus_click_a = _apply_local_operator_to_cluster(cluster_state, minus_click_a_local, target_positions, qutip)
+        minus_click_b_ok, minus_click_b = _apply_local_operator_to_cluster(cluster_state, minus_click_b_local, target_positions, qutip)
+        none_ok, none_operator = _apply_local_operator_to_cluster(cluster_state, none_operator_local, target_positions, qutip)
+        if (
+            not plus_click_a_ok
+            or not plus_click_b_ok
+            or not minus_click_a_ok
+            or not minus_click_b_ok
+            or not none_ok
+            or plus_click_a is None
+            or plus_click_b is None
+            or minus_click_a is None
+            or minus_click_b is None
+            or none_operator is None
+        ):
+          return _invalid_payload("qutip worker failed to build two-photon detection operator")
+
+        if eventOccurs(seed, "detection_dark", dark_count):
+          selected_event = "none"
+          selected_operator = none_operator
+          measured_plus = False
+          branch_probability = float((none_operator * cluster_state.density_matrix * none_operator.dag()).tr())
+          probability_success = 0.0
+          probability_failure = 1.0
+        else:
+          rho = cluster_state.density_matrix
+          branches = [
+            (plus_click_a, "d0,d1"),
+            (plus_click_b, "d2,d3"),
+            (minus_click_a, "d0,d3"),
+            (minus_click_b, "d1,d2"),
+            (none_operator, "none"),
+          ]
+          branch_probabilities = []
+          for operator, pattern in branches:
+            branch_probability_current = float((operator * rho * operator.dag()).tr())
+            if branch_probability_current < 0.0:
+              branch_probability_current = 0.0
+            branch_probabilities.append((branch_probability_current, operator, pattern))
+          total_probability = sum(probability for probability, _, _ in branch_probabilities)
+          if total_probability <= 0.0:
+            return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker detection has zero branch norm"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
+
+          rng = _rng(seed, {"kind": "detection_rng", "targets": n_targets, "visibility": visibility, "efficiency": efficiency, "dark_count": dark_count})
+          selected_threshold = rng.random() * total_probability
+          accumulated = 0.0
+          selected_event = "none"
+          selected_operator = none_operator
+          branch_probability = total_probability
+          for probability, operator, pattern in branch_probabilities:
+            accumulated += probability
+            if selected_threshold <= accumulated:
+              selected_event = pattern
+              selected_operator = operator
+              branch_probability = probability / total_probability
+              break
+          measured_plus = selected_event == "d0,d1" or selected_event == "d2,d3"
+          probability_success = sum(probability for probability, _, pattern in branch_probabilities if pattern != "none") / total_probability
+          probability_failure = 1.0 - probability_success
 
       rho = cluster_state.density_matrix
-      probability_success = float((success_operator * rho * success_operator.dag()).tr())
-      probability_failure = float((failure_operator * rho * failure_operator.dag()).tr())
-      total_probability = probability_success + probability_failure
-      if total_probability <= 0.0:
-        return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker detection has zero branch norm"), error_category="invalid_payload", meta=_cluster_state_meta(cluster_state, cluster_key))
-
-      probability_success = max(0.0, min(1.0, probability_success / total_probability))
-      probability_failure = max(0.0, 1.0 - probability_success)
-      rng = _rng(seed, {"kind": "detection_rng", "targets": n_targets, "success_probability": probability_success, "efficiency": efficiency, "dark_count": dark_count})
-      measured_plus = rng.random() < probability_success
-      selected_operator = success_operator if measured_plus else failure_operator
-      selected_event = success_event if measured_plus else failure_event
-      branch_probability = probability_success if measured_plus else probability_failure
-
       collapsed = selected_operator * rho * selected_operator.dag()
       collapsed_norm = float((collapsed * collapsed.dag()).tr())
       if collapsed_norm <= 0.0:
@@ -3237,11 +3309,17 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       detection_histogram = [0, 0, 0, 0]
       if detection_pattern == "d0":
         detection_histogram[0] = 1
-      elif detection_pattern == "d1,d3":
-        detection_histogram[1] = 1
-        detection_histogram[3] = 1
-      elif detection_pattern == "d0,d2":
+      elif detection_pattern == "d0,d1":
         detection_histogram[0] = 1
+        detection_histogram[1] = 1
+      elif detection_pattern == "d2,d3":
+        detection_histogram[2] = 1
+        detection_histogram[3] = 1
+      elif detection_pattern == "d0,d3":
+        detection_histogram[0] = 1
+        detection_histogram[3] = 1
+      elif detection_pattern == "d1,d2":
+        detection_histogram[1] = 1
         detection_histogram[2] = 1
       return _finalize(
         _build_response(

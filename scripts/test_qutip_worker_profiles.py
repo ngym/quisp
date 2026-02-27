@@ -8,6 +8,7 @@ including custom overrides and invalid fallback behavior.
 from __future__ import annotations
 
 import os
+import math
 import sys
 import tempfile
 from typing import Any, Dict, Iterable
@@ -983,13 +984,18 @@ def test_detection_two_photon_pattern_for_psi_plus() -> None:
     cluster_id = 9101
 
     _call_cluster_worker(
+        {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
+        cluster_id=cluster_id,
+        seed=111,
+    )
+    _call_cluster_worker(
         {
             "kind": "unitary",
             "targets": [target0],
             "payload": {"gate": "H"},
         },
         cluster_id=cluster_id,
-        seed=111,
+        seed=112,
     )
     _call_cluster_worker(
         {
@@ -998,7 +1004,15 @@ def test_detection_two_photon_pattern_for_psi_plus() -> None:
             "payload": {"gate": "CNOT"},
         },
         cluster_id=cluster_id,
-        seed=112,
+        seed=113,
+    )
+    _call_cluster_worker(
+        {
+            "kind": "hom_interference",
+            "targets": [target0, target1],
+        },
+        cluster_id=cluster_id,
+        seed=114,
     )
 
     response = _call_cluster_worker(
@@ -1008,7 +1022,7 @@ def test_detection_two_photon_pattern_for_psi_plus() -> None:
             "payload": {"efficiency": 1.0, "visibility": 1.0},
         },
         cluster_id=cluster_id,
-        seed=113,
+        seed=115,
     )
     _assert_response(response, success=True)
     assert response.get("outcome_pattern") in {"d0,d1", "d2,d3"}
@@ -1023,13 +1037,14 @@ def test_detection_two_photon_pattern_for_psi_minus() -> None:
     cluster_id = 9102
 
     _call_cluster_worker(
-        {
-            "kind": "unitary",
-            "targets": [target0],
-            "payload": {"gate": "H"},
-        },
+        {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
         cluster_id=cluster_id,
         seed=121,
+    )
+    _call_cluster_worker(
+        {"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}},
+        cluster_id=cluster_id,
+        seed=122,
     )
     _call_cluster_worker(
         {
@@ -1038,7 +1053,7 @@ def test_detection_two_photon_pattern_for_psi_minus() -> None:
             "payload": {"gate": "CNOT"},
         },
         cluster_id=cluster_id,
-        seed=122,
+        seed=123,
     )
     _call_cluster_worker(
         {
@@ -1047,7 +1062,15 @@ def test_detection_two_photon_pattern_for_psi_minus() -> None:
             "payload": {"gate": "Z"},
         },
         cluster_id=cluster_id,
-        seed=123,
+        seed=124,
+    )
+    _call_cluster_worker(
+        {
+            "kind": "hom_interference",
+            "targets": [target0, target1],
+        },
+        cluster_id=cluster_id,
+        seed=125,
     )
 
     response = _call_cluster_worker(
@@ -1057,11 +1080,176 @@ def test_detection_two_photon_pattern_for_psi_minus() -> None:
             "payload": {"efficiency": 1.0, "visibility": 1.0},
         },
         cluster_id=cluster_id,
-        seed=124,
+        seed=126,
     )
     _assert_response(response, success=True)
     assert response.get("outcome_pattern") in {"d0,d3", "d1,d2"}
     assert response.get("detection_click_count") == 2
+
+
+def test_hom_interference_defaults_to_50_50_angle_when_omitted() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 20}
+    target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 21}
+    target2 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 22}
+    target3 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 23}
+    cluster_default = 9301
+    cluster_explicit = 9302
+
+    response_default = _call_cluster_worker(
+        {"kind": "hom_interference", "targets": [target0, target1]},
+        cluster_id=cluster_default,
+        seed=930,
+    )
+    _assert_response(response_default, success=True)
+    assert float(response_default.get("meta", {}).get("hom_interference_angle")) == pytest.approx(math.pi / 4)
+    assert float(response_default.get("meta", {}).get("hom_interference_duration")) == pytest.approx(1.0)
+
+    response_explicit = _call_cluster_worker(
+        {
+            "kind": "hom_interference",
+            "targets": [target2, target3],
+            "payload": {"theta": math.pi / 4},
+        },
+        cluster_id=cluster_explicit,
+        seed=930,
+    )
+    _assert_response(response_explicit, success=True)
+    assert float(response_explicit.get("meta", {}).get("hom_interference_angle")) == pytest.approx(math.pi / 4)
+    assert response_default.get("meta", {}).get("hom_interference_angle") == response_explicit.get("meta", {}).get("hom_interference_angle")
+
+    detection_default = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target0, target1],
+            "payload": {"efficiency": 1.0, "visibility": 1.0},
+        },
+        cluster_id=cluster_default,
+        seed=931,
+    )
+    detection_explicit = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target2, target3],
+            "payload": {"efficiency": 1.0, "visibility": 1.0},
+        },
+        cluster_id=cluster_explicit,
+        seed=931,
+    )
+    _assert_response(detection_default, success=True)
+    _assert_response(detection_explicit, success=True)
+    assert detection_default.get("outcome_pattern") == detection_explicit.get("outcome_pattern")
+
+
+def test_detection_two_photon_visibility_extremes() -> None:
+    _qutip_available()
+    _clear_qutip_cluster_state()
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 30}
+    target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 31}
+    target2 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 32}
+    target3 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 33}
+    cluster_plus = 9303
+    cluster_minus = 9304
+
+    _call_cluster_worker(
+        {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
+        cluster_id=cluster_plus,
+        seed=9311,
+    )
+    _call_cluster_worker(
+        {"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}},
+        cluster_id=cluster_plus,
+        seed=9312,
+    )
+    _call_cluster_worker(
+        {
+            "kind": "unitary",
+            "targets": [target0, target1],
+            "payload": {"gate": "CNOT"},
+        },
+        cluster_id=cluster_plus,
+        seed=9313,
+    )
+    _call_cluster_worker(
+        {"kind": "hom_interference", "targets": [target0, target1]},
+        cluster_id=cluster_plus,
+        seed=9314,
+    )
+
+    response_plus_vis0 = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target0, target1],
+            "payload": {"efficiency": 1.0, "visibility": 0.0},
+        },
+        cluster_id=cluster_plus,
+        seed=9315,
+    )
+    _assert_response(response_plus_vis0, success=True)
+    assert response_plus_vis0.get("outcome_pattern") == "none"
+
+    response_plus_vis1 = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target0, target1],
+            "payload": {"efficiency": 1.0, "visibility": 1.0},
+        },
+        cluster_id=cluster_plus,
+        seed=9316,
+    )
+    _assert_response(response_plus_vis1, success=True)
+    assert response_plus_vis1.get("outcome_pattern") in {"d0,d1", "d2,d3"}
+
+    _call_cluster_worker(
+        {"kind": "unitary", "targets": [target3], "payload": {"gate": "X"}},
+        cluster_id=cluster_minus,
+        seed=9321,
+    )
+    _call_cluster_worker(
+        {"kind": "unitary", "targets": [target2], "payload": {"gate": "H"}},
+        cluster_id=cluster_minus,
+        seed=9322,
+    )
+    _call_cluster_worker(
+        {"kind": "unitary", "targets": [target2, target3], "payload": {"gate": "CNOT"}},
+        cluster_id=cluster_minus,
+        seed=9323,
+    )
+    _call_cluster_worker(
+        {"kind": "unitary", "targets": [target3], "payload": {"gate": "Z"}},
+        cluster_id=cluster_minus,
+        seed=9324,
+    )
+    _call_cluster_worker(
+        {"kind": "hom_interference", "targets": [target2, target3]},
+        cluster_id=cluster_minus,
+        seed=9325,
+    )
+
+    response_minus_vis0 = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target2, target3],
+            "payload": {"efficiency": 1.0, "visibility": 0.0},
+        },
+        cluster_id=cluster_minus,
+        seed=9326,
+    )
+    _assert_response(response_minus_vis0, success=True)
+    assert response_minus_vis0.get("outcome_pattern") == "none"
+
+    response_minus_vis1 = _call_cluster_worker(
+        {
+            "kind": "detection",
+            "targets": [target2, target3],
+            "payload": {"efficiency": 1.0, "visibility": 1.0},
+        },
+        cluster_id=cluster_minus,
+        seed=9327,
+    )
+    _assert_response(response_minus_vis1, success=True)
+    assert response_minus_vis1.get("outcome_pattern") in {"d0,d3", "d1,d2"}
 
 
 def test_photon_pipeline_representation_transitions() -> None:
@@ -1310,6 +1498,42 @@ def test_default_profile_preserves_baseline_compatibility() -> None:
     _assert_meta(response, "dim", 2)
     assert response.get("operation_model") == "unitary"
     assert 0.0 <= response.get("fidelity_estimate", 1.0) <= 1.0
+
+
+def test_normalize_detector_pattern_orders_and_lowercases_tokens() -> None:
+    worker = _qutip_worker_module()
+
+    assert worker._normalize_detector_pattern("d1,d0") == "d0,d1"
+    assert worker._normalize_detector_pattern(" D2 , d3 ") == "d2,d3"
+    assert worker._normalize_detector_pattern("D0,d3") == "d0,d3"
+    assert worker._normalize_detector_pattern("") == ""
+
+
+def test_compute_channel_loss_probability_with_distance_and_overhead_model() -> None:
+    worker = _qutip_worker_module()
+
+    payload = {
+        "attenuation_db_per_km": 0.2,
+        "channel_length_km": 10.0,
+        "node_io_overhead_db": 0.1,
+        "node_count": 2,
+    }
+    loss_probability = float(worker._compute_channel_loss_probability(payload))
+    expected_eta_fiber = 10 ** (-(0.2 * 10.0) / 10.0)
+    expected_eta_node = 10 ** (-(0.1 * 2) / 10.0)
+    expected_loss = 1.0 - (expected_eta_fiber * expected_eta_node)
+    assert loss_probability == pytest.approx(expected_loss, rel=1e-8)
+
+
+def test_compute_channel_loss_probability_falls_back_to_legacy_loss_rate() -> None:
+    worker = _qutip_worker_module()
+
+    payload = {
+        "legacy_channel_loss_rate": 0.2,
+        "channel_loss_rate": 0.3,
+    }
+    loss_probability = float(worker._compute_channel_loss_probability(payload))
+    assert loss_probability == pytest.approx(0.2, rel=1e-8)
 
 
 if __name__ == "__main__":

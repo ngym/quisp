@@ -270,15 +270,24 @@ def _ensure_cluster_state(
 
   if state is None:
     fallback_state = None
+    best_overlap = -1
     for candidate_key in _cluster_keys_for_cluster_id(cluster_id):
       if candidate_key == key:
         continue
-      if candidate_key[1] != mode:
-        continue
       fallback_state = _QUTIP_CLUSTER_STATES.get(candidate_key)
       if fallback_state is not None:
-        del _QUTIP_CLUSTER_STATES[candidate_key]
-        break
+        candidate_overlap = sum(1 for qubit in fallback_state.qubits if qubit in required_qubits)
+        if candidate_overlap > best_overlap:
+          best_overlap = candidate_overlap
+          chosen_fallback_key = candidate_key
+          chosen_fallback_state = fallback_state
+
+    if best_overlap > 0:
+      fallback_state = chosen_fallback_state
+      fallback_key = chosen_fallback_key
+      del _QUTIP_CLUSTER_STATES[fallback_key]
+    else:
+      fallback_state = None
 
     if fallback_state is not None:
       convert_error = _convert_cluster_state_representation(
@@ -381,22 +390,19 @@ def _apply_local_operator_to_cluster(state: _ClusterState, local_operator: Any, 
   if len(set(target_positions)) != len(target_positions):
     return False, None
 
-  if cluster_size == len(set(target_positions)):
-    full_operator = local_operator
-  else:
-    ordered_indices = [int(position) for position in target_positions]
-    other_indices = [index for index in range(cluster_size) if index not in ordered_indices]
-    permutation = ordered_indices + other_indices
-    inverse_permutation = [0] * cluster_size
-    for new_index, old_index in enumerate(permutation):
-      inverse_permutation[old_index] = new_index
+  ordered_indices = [int(position) for position in target_positions]
+  other_indices = [index for index in range(cluster_size) if index not in ordered_indices]
+  permutation = ordered_indices + other_indices
+  inverse_permutation = [0] * cluster_size
+  for new_index, old_index in enumerate(permutation):
+    inverse_permutation[old_index] = new_index
 
-    other_dim_count = max(0, cluster_size - len(target_positions))
-    if other_dim_count > 0:
-      lifted_operator = qutip.tensor(local_operator, *([qutip.qeye(state.dim)] * other_dim_count))
-    else:
-      lifted_operator = local_operator
-    full_operator = lifted_operator.permute(inverse_permutation)
+  other_dim_count = max(0, cluster_size - len(target_positions))
+  if other_dim_count > 0:
+    lifted_operator = qutip.tensor(local_operator, *([qutip.qeye(state.dim)] * other_dim_count))
+  else:
+    lifted_operator = local_operator
+  full_operator = lifted_operator.permute(inverse_permutation)
   
   return True, full_operator
 
@@ -995,6 +1001,30 @@ def _build_response(
   return response
 
 
+def _normalize_detector_pattern(pattern: Any) -> str:
+  if not isinstance(pattern, str):
+    return ""
+  raw_tokens = [token.strip().lower() for token in pattern.split(",") if token.strip()]
+  if not raw_tokens:
+    return ""
+  if len(raw_tokens) == 1:
+    return raw_tokens[0]
+  if len(raw_tokens) != 2:
+    return ",".join(raw_tokens)
+
+  normalized: list[tuple[int, str]] = []
+  for token in raw_tokens:
+    if not token.startswith("d"):
+      return ",".join(sorted(raw_tokens))
+    try:
+      index = int(token[1:])
+    except ValueError:
+      return ",".join(sorted(raw_tokens))
+    normalized.append((index, token))
+  normalized.sort(key=lambda item: item[0])
+  return ",".join(token for _, token in normalized)
+
+
 def _attach_profile_metadata(response: dict, profile_meta: Optional[dict[str, Any]]) -> dict:
   if profile_meta is None:
     return response
@@ -1048,9 +1078,12 @@ def _bell_detection_projectors_for_two_targets(qutip: Any, dim: int) -> tuple[An
   normalized_dim = max(2, int(dim))
   basis0 = qutip.basis(normalized_dim, 0)
   basis1 = qutip.basis(normalized_dim, 1)
-  psi_plus = (qutip.tensor(basis0, basis1) + qutip.tensor(basis1, basis0)) / math.sqrt(2)
-  psi_minus = (qutip.tensor(basis0, basis1) - qutip.tensor(basis1, basis0)) / math.sqrt(2)
-  return psi_plus * psi_plus.dag(), psi_minus * psi_minus.dag()
+  # ψ+ / ψ− Bell-like two-photon sectors used for HOM+PBS click mapping:
+  #   ψ+  -> d0,d1 or d2,d3
+  #   ψ−  -> d0,d3 or d1,d2
+  psi_plus_like = (qutip.tensor(basis0, basis1) + qutip.tensor(basis1, basis0)) / math.sqrt(2)
+  psi_minus_like = (qutip.tensor(basis0, basis1) - qutip.tensor(basis1, basis0)) / math.sqrt(2)
+  return psi_plus_like * psi_plus_like.dag(), psi_minus_like * psi_minus_like.dag()
 
 
 def _onoff_detection_projectors_for_one_target(qutip: Any, dim: int) -> tuple[Any, Any]:
@@ -2733,7 +2766,11 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       min_targets=min_targets,
     )
 
-  def _apply_cluster_unitary(operation_targets: list[tuple[int, int, int, int]], unitary: Any, message: str) -> dict:
+  def _apply_cluster_unitary(
+      operation_targets: list[tuple[int, int, int, int]],
+      unitary: Any,
+      message: str,
+  ) -> dict:
     previous_state = cluster_state.density_matrix
     success, evolved = _apply_unitary_to_cluster(cluster_state, unitary, operation_targets, qutip)
     if not success or evolved is None:
@@ -2750,7 +2787,8 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       fidelity = float(qutip.metrics.fidelity(previous_state, evolved))
     except Exception:
       fidelity = 1.0
-    return _finalize(_build_response(True, fidelity_estimate=fidelity, message=message))
+    response = _build_response(True, fidelity_estimate=fidelity, message=message)
+    return _finalize(response)
 
   def _apply_cluster_kraus(
     noise_kind_for_ops: str,
@@ -2799,6 +2837,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
     if kind_for_handler in {
         "beam_splitter",
         "hom_interference",
+        "cross_kerr",
         "cross_phase_modulation",
         "mode_coupling",
         "two_mode_squeezing",
@@ -2814,6 +2853,27 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       return _invalid_payload(error)
 
     n_targets = len(operation_targets)
+
+    if kind_for_handler == "polarization_rotation":
+      axis = str(payload.get("axis", payload.get("basis", "z"))).lower()
+      sigma_map = {"x": "sx", "y": "sy", "z": "sz"}
+      local_op = _logical_pauli_in_dim(qutip, normalized_dim, sigma_map.get(axis, "sz"))
+      if local_op is None:
+        return _invalid_payload(f"qutip worker cannot build polarization rotation operator axis={axis}")
+      params_value = _as_float(params_f[0] if params_f else payload.get("theta", payload.get("phi", payload.get("angle", 0.0))))
+      local_h = params_value * local_op
+      identity_identity = (
+          _identity_in_dim(qutip, normalized_dim)
+          if n_targets <= 1
+          else qutip.tensor(*([_identity_in_dim(qutip, normalized_dim)] * n_targets))
+      )
+      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else identity_identity
+      return _apply_cluster_unitary(
+        operation_targets,
+        unitary,
+        f"qutip worker applied polarization_rotation axis={axis} for duration={duration}",
+      )
+
     def _cluster_identity_for_targets() -> Any:
       if n_targets <= 1:
         return _identity_in_dim(qutip, normalized_dim)
@@ -2830,15 +2890,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with chi={params_value} for duration={duration}")
 
     if kind_for_handler == "cross_kerr":
-      if n_targets == 1:
-        params_value = _as_float(params_f[0] if params_f else payload.get("chi", payload.get("theta", 0.0)))
-        sigma_z = _logical_pauli_in_dim(qutip, normalized_dim, "sz")
-        if sigma_z is None:
-          return _invalid_payload(f"qutip worker cannot build kerr operator for dim={normalized_dim}")
-        n_op = (_identity_in_dim(qutip, normalized_dim) - sigma_z) * 0.5
-        local_h = n_op * n_op * params_value
-        unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _identity_in_dim(qutip, normalized_dim ** n_targets)
-        return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied cross_kerr(singleton fallback) with chi={params_value} for duration={duration}")
       if n_targets < 2:
         return _invalid_payload("qutip worker cross_kerr requires at least two targets")
       params_value = _as_float(params_f[0] if params_f else payload.get("chi", payload.get("theta", 0.0)))
@@ -2852,42 +2903,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       local_h = params_value * n_op_left * n_op_right
       unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
       return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied cross_kerr with chi={params_value} for duration={duration}")
-
-    if kind_for_handler in {"beam_splitter", "hom_interference", "mode_coupling", "two_mode_squeezing"}:
-      coupling_raw = payload.get("theta", payload.get("coupling", payload.get("strength", 0.0)))
-      coupling_or_angle = _as_float(params_f[0] if params_f else coupling_raw)
-      if kind_for_handler in {"hom_interference", "mode_coupling"} and kind_for_handler != "beam_splitter":
-        if kind_for_handler == "hom_interference":
-          visibility = _as_float(payload.get("visibility", coupling_or_angle), coupling_or_angle)
-          visibility = max(0.0, min(1.0, visibility))
-          coupling_or_angle = math.acos(visibility)
-
-      sx = _logical_pauli_in_dim(qutip, normalized_dim, "sx")
-      sy = _logical_pauli_in_dim(qutip, normalized_dim, "sy")
-      if sx is None or sy is None:
-        return _invalid_payload(f"qutip worker cannot build {kind_for_handler} operator")
-
-      if kind_for_handler == "two_mode_squeezing":
-        if n_targets < 2:
-          return _invalid_payload("qutip worker two_mode_squeezing requires at least two targets")
-        sx_l = _embed_qubit_operator(qutip, sx, n_targets, 0, dim=normalized_dim)
-        sx_r = _embed_qubit_operator(qutip, sx, n_targets, 1, dim=normalized_dim)
-        local_h = coupling_or_angle * (sx_l * sx_r)
-      else:
-        sx_l = _embed_qubit_operator(qutip, sx, n_targets, 0, dim=normalized_dim)
-        sy_l = _embed_qubit_operator(qutip, sy, n_targets, 0, dim=normalized_dim)
-        sx_r = _embed_qubit_operator(qutip, sx, n_targets, 1, dim=normalized_dim) if n_targets > 1 else None
-        sy_r = _embed_qubit_operator(qutip, sy, n_targets, 1, dim=normalized_dim) if n_targets > 1 else None
-        if sx_l is None or sy_l is None or sx_r is None or sy_r is None:
-          return _invalid_payload(f"qutip worker cannot build {kind_for_handler} operator")
-
-        if kind_for_handler in {"hom_interference", "beam_splitter", "mode_coupling"}:
-          local_h = 0.5 * coupling_or_angle * (sx_l * sx_r + sy_l * sy_r)
-        else:
-          return _invalid_payload(f"qutip worker unsupported configuration for {kind_for_handler}")
-
-      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
-      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with angle={coupling_or_angle}")
 
     if kind_for_handler in {"phase_shift", "phase_modulation", "self_phase_modulation", "cross_phase_modulation", "nonlinear"}:
       phase_raw = payload.get("angle", payload.get("phi", payload.get("theta", 0.0)))
@@ -2910,18 +2925,76 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
       return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with coeff={params_value}")
 
-    if kind_for_handler == "polarization_rotation":
-      axis = str(payload.get("axis", payload.get("basis", "z"))).lower()
-      sigma_map = {"x": "sx", "y": "sy", "z": "sz"}
-      local_op = _logical_pauli_in_dim(qutip, normalized_dim, sigma_map.get(axis, "sz"))
-      if local_op is None:
-        return _invalid_payload(f"qutip worker cannot build polarization rotation operator axis={axis}")
-      local_h = local_op
-      embedded = _embed_qubit_operator(qutip, local_h, n_targets, 0, dim=normalized_dim)
-      if embedded is None:
-        return _invalid_payload("qutip worker cannot build polarization rotation operator")
-      unitary = (-1j * embedded * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
-      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied polarization_rotation axis={axis} for duration={duration}")
+    if kind_for_handler in {"beam_splitter", "hom_interference", "mode_coupling", "two_mode_squeezing"}:
+      # "beam_splitter"/"hom_interference": use Hamiltonian coupling form for two-mode mixing.
+      # For hom_interference, a 50:50 setting is represented by angle θ=π/4 when not provided.
+      has_explicit_hom_angle = False
+      unitary_duration = duration
+      if params_f:
+        coupling_or_angle = _as_float(params_f[0])
+        has_explicit_hom_angle = True
+      else:
+        coupling_key = None
+        if "theta" in payload:
+          coupling_key = payload.get("theta")
+          has_explicit_hom_angle = True
+        elif "coupling" in payload:
+          coupling_key = payload.get("coupling")
+          has_explicit_hom_angle = True
+        elif "strength" in payload:
+          coupling_key = payload.get("strength")
+          has_explicit_hom_angle = True
+        coupling_or_angle = _as_float(coupling_key if coupling_key is not None else 0.0)
+      if kind_for_handler == "hom_interference":
+        unitary_duration = duration if duration > 0.0 else 1.0
+        if not has_explicit_hom_angle:
+          coupling_or_angle = math.pi / 4
+        # Keep local duration in this branch only to avoid clobbering outer scope.
+      # For mode_coupling and hom_interference, keep visibility on the detection path.
+
+      sx = _logical_pauli_in_dim(qutip, normalized_dim, "sx")
+      sy = _logical_pauli_in_dim(qutip, normalized_dim, "sy")
+      if sx is None or sy is None:
+        return _invalid_payload(f"qutip worker cannot build {kind_for_handler} operator")
+
+      if kind_for_handler == "two_mode_squeezing":
+        if n_targets < 2:
+          return _invalid_payload("qutip worker two_mode_squeezing requires at least two targets")
+        sx_l = _embed_qubit_operator(qutip, sx, n_targets, 0, dim=normalized_dim)
+        sx_r = _embed_qubit_operator(qutip, sx, n_targets, 1, dim=normalized_dim)
+        local_h = coupling_or_angle * (sx_l * sx_r)
+      else:
+        sx_l = _embed_qubit_operator(qutip, sx, n_targets, 0, dim=normalized_dim)
+        sy_l = _embed_qubit_operator(qutip, sy, n_targets, 0, dim=normalized_dim)
+        sx_r = _embed_qubit_operator(qutip, sx, n_targets, 1, dim=normalized_dim) if n_targets > 1 else None
+        sy_r = _embed_qubit_operator(qutip, sy, n_targets, 1, dim=normalized_dim) if n_targets > 1 else None
+        if sx_l is None or sy_l is None or sx_r is None or sy_r is None:
+          return _invalid_payload(f"qutip worker cannot build {kind_for_handler} operator")
+
+    if kind_for_handler in {"hom_interference", "beam_splitter", "mode_coupling"}:
+      local_h = 0.5 * coupling_or_angle * (sx_l * sx_r + sy_l * sy_r)
+    elif kind_for_handler == "two_mode_squeezing":
+      # Keep two-mode-squeezing convention as a direct XX coupling.
+      local_h = coupling_or_angle * (sx_l * sx_r)
+    else:
+      return _invalid_payload(f"qutip worker unsupported configuration for {kind_for_handler}")
+
+    unitary = (
+      (-1j * local_h * unitary_duration).expm()
+      if unitary_duration > 0.0
+      else _cluster_identity_for_targets()
+    )
+    response = _apply_cluster_unitary(
+      operation_targets,
+      unitary,
+      f"qutip worker applied {kind_for_handler} with angle={coupling_or_angle}",
+    )
+    if kind_for_handler == "hom_interference":
+      response_meta_final = response.get("meta")
+      if isinstance(response_meta_final, dict):
+        response_meta_final["hom_interference_angle"] = coupling_or_angle
+        response_meta_final["hom_interference_duration"] = unitary_duration
+    return response
 
     return None
 
@@ -3178,15 +3251,24 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         plus_projector_local, minus_projector_local = _onoff_detection_projectors_for_one_target(qutip, normalized_dim)
         success_event = "d0"
         failure_event = "none"
+        success_outcome = "click"
+        failure_outcome = "no_click"
       else:
-        plus_projector_local, minus_projector_local = _bell_detection_projectors_for_two_targets(qutip, normalized_dim)
+        # In the HOM+BSA convention:
+        #  ψ+ (psi_plus_like) -> d0,d1 or d2,d3
+        #  ψ− (psi_minus_like) -> d0,d3 or d1,d2
+        psi_plus_like_projector, psi_minus_like_projector = _bell_detection_projectors_for_two_targets(qutip, normalized_dim)
         identity_local = qutip.tensor(qutip.qeye(normalized_dim), qutip.qeye(normalized_dim))
-        failure_projector_local = identity_local - plus_projector_local - minus_projector_local
+        failure_projector_local = identity_local - psi_plus_like_projector - psi_minus_like_projector
+        success_outcome = ""
+        failure_outcome = "none"
 
       raw_efficiency = payload.get("efficiency", payload.get("eta", 1.0))
       efficiency = _effective_probability(_as_float(raw_efficiency), 1.0)
-      raw_dark_count = payload.get("dark_count", payload.get("detector", params_like))
+      raw_dark_count = payload.get("dark_count", payload.get("detector", 0.0))
       dark_count = _effective_probability(_as_float(raw_dark_count), 0.0)
+      visibility = _as_float(payload.get("visibility", 1.0), 1.0)
+      visibility = max(0.0, min(1.0, visibility))
 
       if n_targets == 1:
         sqrt_efficiency = math.sqrt(max(0.0, efficiency))
@@ -3215,17 +3297,18 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         measured_plus = rng.random() < probability_success
         selected_operator = success_operator if measured_plus else failure_operator
         selected_event = success_event if measured_plus else failure_event
+        selected_outcome = success_outcome if measured_plus else failure_outcome
         branch_probability = probability_success if measured_plus else probability_failure
       else:
         two_target_scale = max(0.0, efficiency * visibility)
         click_scale = math.sqrt(max(0.0, two_target_scale * 0.5))
         none_scale = math.sqrt(max(0.0, 1.0 - two_target_scale))
 
-        plus_click_a_local = click_scale * plus_projector_local
-        plus_click_b_local = click_scale * plus_projector_local
-        minus_click_a_local = click_scale * minus_projector_local
-        minus_click_b_local = click_scale * minus_projector_local
-        none_operator_local = none_scale * (plus_projector_local + minus_projector_local) + failure_projector_local
+        plus_click_a_local = click_scale * psi_plus_like_projector
+        plus_click_b_local = click_scale * psi_plus_like_projector
+        minus_click_a_local = click_scale * psi_minus_like_projector
+        minus_click_b_local = click_scale * psi_minus_like_projector
+        none_operator_local = none_scale * (psi_plus_like_projector + psi_minus_like_projector) + failure_projector_local
 
         plus_click_a_ok, plus_click_a = _apply_local_operator_to_cluster(cluster_state, plus_click_a_local, target_positions, qutip)
         plus_click_b_ok, plus_click_b = _apply_local_operator_to_cluster(cluster_state, plus_click_b_local, target_positions, qutip)
@@ -3246,8 +3329,13 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         ):
           return _invalid_payload("qutip worker failed to build two-photon detection operator")
 
-        if eventOccurs(seed, "detection_dark", dark_count):
+        rng = _rng(
+          seed,
+          {"kind": "detection_dark", "targets": n_targets, "visibility": visibility, "efficiency": efficiency, "dark_count": dark_count},
+        )
+        if rng.random() < dark_count:
           selected_event = "none"
+          selected_outcome = "none"
           selected_operator = none_operator
           measured_plus = False
           branch_probability = float((none_operator * cluster_state.density_matrix * none_operator.dag()).tr())
@@ -3285,6 +3373,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
               selected_operator = operator
               branch_probability = probability / total_probability
               break
+          selected_outcome = selected_event
           measured_plus = selected_event == "d0,d1" or selected_event == "d2,d3"
           probability_success = sum(probability for probability, _, pattern in branch_probabilities if pattern != "none") / total_probability
           probability_failure = 1.0 - probability_success
@@ -3305,7 +3394,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
           "detection_dark_count": dark_count,
         },
       )
-      detection_pattern = selected_event
+      detection_pattern = _normalize_detector_pattern(selected_event)
       detection_histogram = [0, 0, 0, 0]
       if detection_pattern == "d0":
         detection_histogram[0] = 1
@@ -3327,7 +3416,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
           outcome_pattern=detection_pattern,
           detection_click_count=1 if n_targets == 1 and detection_pattern != "none" else (2 if n_targets == 2 else 0),
           detector_histogram=detection_histogram,
-          outcome=selected_event,
+          outcome=selected_outcome,
           branch_probability=branch_probability,
           measured_plus=measured_plus,
           fidelity_estimate=branch_probability,

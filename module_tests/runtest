@@ -29,10 +29,21 @@ OPT="--debugger-attach-on-error=true"
 
 opp_test gen -w $WORK_DIR -v --args $OPT -- $TESTFILES || exit 1
 echo
-(cd $WORK_DIR; opp_makemake -f -o work --deep --no-deep-includes -i $MAKEFRAG --deep $EXTRA_INCLUDES $EXTRA_LIBS; $MAKE -C $WORK_DIR) || exit 1
+(cd $WORK_DIR; \
+    if opp_makemake -h | grep -q -- "--no-deep-includes"; then \
+        DEPTH_ARGS="--deep --no-deep-includes"; \
+    else \
+        DEPTH_ARGS="--deep"; \
+fi; \
+    opp_makemake -f -o work $DEPTH_ARGS -i $MAKEFRAG -K 'O=$(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)' $EXTRA_INCLUDES $EXTRA_LIBS; \
+    for cc in clang gcc; do \
+        for mode in debug release; do \
+            mkdir -p "out/$cc-$mode"; \
+            : > "out/$cc-$mode/.last-copts"; \
+        done; \
+    done; \
+    $MAKE -C $WORK_DIR) || exit 1
 echo
 opp_test run -w $WORK_DIR -p work_dbg -vv --args $OPT -- $TESTFILES || exit 1
 echo
 echo Results can be found in ./work
-
-

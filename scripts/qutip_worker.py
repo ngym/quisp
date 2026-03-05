@@ -1962,7 +1962,7 @@ def _handle_unitary(operation: dict, seed: int, dim: int = 2, profile_meta: Opti
     return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", key_error or "missing entanglement_set_id"), error_category="invalid_entanglement_set_id")
   entanglement_set_state, _, cluster_error = _ensure_cluster_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
   if entanglement_set_state is None:
-    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing cluster qubits"), error_category="invalid_entanglement_set_id")
+    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
   if cluster_error:
     return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
@@ -2001,7 +2001,7 @@ def _handle_measurement(operation: dict, seed: int, dim: int = 2, profile_meta: 
 
   entanglement_set_state, _, cluster_error = _ensure_cluster_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
   if entanglement_set_state is None:
-    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing cluster qubits"), error_category="invalid_entanglement_set_id")
+    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
   if cluster_error:
     return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
@@ -2051,7 +2051,7 @@ def _handle_measurement(operation: dict, seed: int, dim: int = 2, profile_meta: 
       branch_probability=branch_probability,
       fidelity_estimate=branch_probability,
       meta=meta,
-      message=f"qutip worker measured {basis} in cluster {entanglement_set_id}",
+      message=f"qutip worker measured {basis} in entanglement-set {entanglement_set_id}",
   )
 
 
@@ -2076,7 +2076,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
   qutip, _ = mods
   entanglement_set_state, _, cluster_error = _ensure_cluster_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
   if entanglement_set_state is None:
-    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing cluster qubits"), error_category="invalid_entanglement_set_id")
+    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
   if cluster_error:
     return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
@@ -2106,7 +2106,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
       return _build_response(False, message=build_error, error_category=_extract_error_category(build_error) or "unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
     success_apply, evolved_state = _apply_kraus_to_cluster(entanglement_set_state, ops, target_positions, qutip)
     if not success_apply or evolved_state is None:
-      return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply loss in cluster"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+      return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply loss in entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
     previous_state = entanglement_set_state.density_matrix
     entanglement_set_state.density_matrix = evolved_state
     try:
@@ -2119,7 +2119,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
         photon_lost=photon_lost,
         discard_reason="photon_loss" if photon_lost else "",
         fidelity_estimate=fidelity,
-        message=f"qutip worker applied loss in cluster with p={_effective_probability(p, 0.0)}, mode=cluster",
+        message=f"qutip worker applied loss in entanglement-set with p={_effective_probability(p, 0.0)}",
         meta=meta,
     )
     response = _attach_profile_metadata(response, profile_meta)
@@ -2144,7 +2144,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
       return _build_response(False, message=build_error, error_category=_extract_error_category(build_error) or "unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
     success_apply, evolved_state = _apply_kraus_to_cluster(entanglement_set_state, ops, target_positions, qutip)
     if not success_apply or evolved_state is None:
-      return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply noise in cluster"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+      return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply noise in entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
     previous_state = entanglement_set_state.density_matrix
     entanglement_set_state.density_matrix = evolved_state
     try:
@@ -2154,7 +2154,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     response = _build_response(
       True,
       fidelity_estimate=fidelity,
-      message=f"qutip worker applied {canonical_noise_kind} in cluster mode",
+      message=f"qutip worker applied {canonical_noise_kind} in entanglement-set",
     )
     response = _attach_profile_metadata(response, profile_meta)
     response_meta = response.get("meta")
@@ -2164,9 +2164,9 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     return response
 
   if noise_kind in {"timing_jitter", "jitter", "delay"}:
-    return _build_response(False, message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind in cluster mode: {noise_kind}"), error_category="unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+    return _build_response(False, message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind in entanglement-set: {noise_kind}"), error_category="unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
-  return _build_response(False, message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind in cluster mode: {noise_kind}"), error_category="unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+  return _build_response(False, message=_categorize_error("unsupported_noise", f"qutip worker unsupported noise kind in entanglement-set: {noise_kind}"), error_category="unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
 
 def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta: Optional[dict[str, Any]] = None) -> dict:
@@ -2183,7 +2183,7 @@ def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta
   qutip, _ = qutip_modules
   entanglement_set_state, _, cluster_error = _ensure_cluster_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
   if entanglement_set_state is None:
-    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing cluster qubits"), error_category="invalid_entanglement_set_id")
+    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
   if cluster_error:
     return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
@@ -2514,9 +2514,6 @@ _SUPPORTED_ADVANCED_KINDS = {
     "reset",
 }
 
-SUPPORTED_ADVANCED_CLUSTER_HANDLERS = {kind: "cluster" for kind in sorted(_SUPPORTED_ADVANCED_KINDS)}
-
-
 def _is_advanced_operation_kind(kind: str) -> bool:
   return _canonicalize_kind(kind) in _SUPPORTED_ADVANCED_KINDS
 
@@ -2595,7 +2592,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       target_representation=requested_representation,
   )
   if entanglement_set_state is None:
-    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing cluster qubits"), error_category="invalid_entanglement_set_id")
+    return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
   if cluster_error:
     return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
   leakage_enabled = _resolve_profile_bool(profile_meta, "leakage_enabled", False)
@@ -2638,7 +2635,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       return _finalize(
         _build_response(
           False,
-          message=_categorize_error("invalid_payload", "qutip worker failed to apply advanced operation on cluster"),
+          message=_categorize_error("invalid_payload", "qutip worker failed to apply advanced operation on entanglement-set"),
           error_category="invalid_payload",
           meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id),
         ),
@@ -2679,14 +2676,14 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
     previous_state = entanglement_set_state.density_matrix
     success_apply, evolved_state = _apply_kraus_to_cluster(entanglement_set_state, ops, target_positions, qutip)
     if not success_apply or evolved_state is None:
-      return _invalid_payload("qutip worker failed to apply advanced operation on cluster")
+      return _invalid_payload("qutip worker failed to apply advanced operation on entanglement-set")
     entanglement_set_state.density_matrix = evolved_state
     try:
       fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state))
     except Exception:
       fidelity = 1.0
 
-    response = _build_response(True, fidelity_estimate=fidelity, message=message or f"qutip worker applied {kind} in cluster mode")
+    response = _build_response(True, fidelity_estimate=fidelity, message=message or f"qutip worker applied {kind} in entanglement-set")
     if isinstance(meta, dict):
       response_meta = dict(response.get("meta") or {})
       response_meta.update(meta)
@@ -3015,7 +3012,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       noise_kind = "decoherence"
     if kind_for_handler in {"attenuation", "loss"}:
       noise_kind = "loss"
-    return _apply_cluster_kraus(noise_kind, operation, operation_targets, target_positions, f"qutip worker applied {kind_for_handler} in cluster mode")
+    return _apply_cluster_kraus(noise_kind, operation, operation_targets, target_positions, f"qutip worker applied {kind_for_handler} in entanglement-set")
 
   def _handle_hamiltonian_lindblad() -> dict:
     operation_targets, _, error = _resolve_targets(min_targets=1)
@@ -3072,10 +3069,10 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       rho_t = term if rho_t is None else rho_t + term
 
     if rho_t is None:
-      return _invalid_payload("qutip worker failed to apply advanced operation on cluster")
+      return _invalid_payload("qutip worker failed to apply advanced operation on entanglement-set")
     norm = float(rho_t.tr())
     if norm <= 0.0:
-      return _invalid_payload("qutip worker failed to apply advanced operation on cluster")
+      return _invalid_payload("qutip worker failed to apply advanced operation on entanglement-set")
     if abs(norm - 1.0) > 1e-12:
       rho_t = rho_t / norm
 
@@ -3298,7 +3295,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         ),
       )
 
-    return _invalid_payload(f"qutip worker unsupported cluster event kind {kind_for_handler}")
+    return _invalid_payload(f"qutip worker unsupported entanglement-set event kind {kind_for_handler}")
 
   handlers: dict[str, Any] = {
       "kerr": lambda: _handle_unitary_kind("kerr"),

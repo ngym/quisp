@@ -712,6 +712,60 @@ def test_detection_two_photon_pattern_for_psi_minus() -> None:
     assert response.get("detection_click_count") == 2
 
 
+@pytest.mark.parametrize(
+    "bell_label,expected_patterns,expected_measured_plus",
+    [
+        ("psi_plus", {"d0,d1", "d2,d3"}, True),
+        ("psi_minus", {"d0,d3", "d1,d2"}, False),
+    ],
+)
+def test_detection_two_photon_measured_plus_flag_matches_psi_branch(
+    bell_label: str,
+    expected_patterns: set[str],
+    expected_measured_plus: bool,
+) -> None:
+    _qutip_available()
+    _clear_qutip_entanglement_set_state()
+    entanglement_set_id = 9201
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 14}
+    target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 15}
+
+    if bell_label == "psi_minus":
+        init_ops = [
+            {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
+            {"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}},
+            {"kind": "unitary", "targets": [target0, target1], "payload": {"gate": "CNOT"}},
+            {"kind": "unitary", "targets": [target1], "payload": {"gate": "Z"}},
+        ]
+    else:
+        init_ops = [
+            {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
+            {"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}},
+            {"kind": "unitary", "targets": [target0, target1], "payload": {"gate": "CNOT"}},
+        ]
+
+    for idx, init_op in enumerate(init_ops, start=1):
+        _call_entanglement_set_worker(init_op, entanglement_set_id=entanglement_set_id, seed=9200 + idx)
+
+    _call_entanglement_set_worker(
+        {"kind": "hom_interference", "targets": [target0, target1]},
+        entanglement_set_id=entanglement_set_id,
+        seed=9204,
+    )
+
+    response = _call_entanglement_set_worker(
+        {"kind": "detection", "targets": [target0, target1], "payload": {"efficiency": 1.0, "visibility": 1.0}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9205,
+    )
+    _assert_response(response, success=True)
+
+    pattern = response.get("outcome_pattern")
+    measured_plus = response.get("measured_plus")
+    assert pattern in expected_patterns
+    assert measured_plus is expected_measured_plus
+
+
 def test_hom_interference_defaults_to_50_50_angle_when_omitted() -> None:
     _qutip_available()
     _clear_qutip_entanglement_set_state()

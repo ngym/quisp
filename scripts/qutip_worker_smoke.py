@@ -42,6 +42,7 @@ def _call_worker(operation: Dict[str, Any], seed: int = 12345) -> Dict[str, Any]
   import scripts.qutip_worker as qutip_worker
 
   operation = dict(operation)
+  operation.setdefault("cluster_id", int(seed) + 100000)
   backend_config = dict(
       operation.pop("backend_config", {
           "python_executable": "python3",
@@ -164,7 +165,7 @@ def main() -> int:
       ("unitary:X", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "X"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "params": []}, True, ["model:auto"]),
       ("unitary:x lower", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "x"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "params": []}, True, ["model:auto"]),
       ("unitary:CNOT", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "CNOT"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}, {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}]}, True, ["model:auto"]),
-      ("unitary:qutrit H", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "H"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "backend_config": {"qutip_node_profile": "standard_qutrit", "qutip_worker_timeout_ms": 5000, "qutip_backend_class": "qutip_density_matrix"}}, True, ["model:auto"]),
+      ("unitary:qutrit H", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "H"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}], "backend_config": {"qutip_profile": "standard_qutrit", "qutip_worker_timeout_ms": 5000, "qutip_backend_class": "qutip_density_matrix"}}, True, ["model:auto"]),
       ("unitary:missing gate", {"kind": "unitary", "payload": {"kind": "unitary"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["message:qutip worker unsupported unitary", "category:unsupported_gate"]),
       ("unitary:bad gate", {"kind": "unitary", "payload": {"kind": "unitary", "gate": "ZZ"}, "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, False, ["message:qutip worker unsupported unitary", "category:unsupported_gate"]),
       ("measurement:Z", {"kind": "measurement", "basis": "Z", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}]}, True, ["model:auto", "measured_plus", "branch_probability"]),
@@ -311,16 +312,14 @@ def main() -> int:
   profile_default_response = _call_worker(profile_default_operation, seed=args.seed)
   _assert_response(True, "profile:default", profile_default_response)
   _assert_meta_field(profile_default_response, "profile", "standard_light", "profile:default")
-  _assert_meta_field(profile_default_response, "mode", "node", "profile:default")
   _assert_meta_field(profile_default_response, "dim", 2, "profile:default")
-  _assert_meta_field(profile_default_response, "node_dim", 2, "profile:default")
 
   profile_qutrit_measurement_operation = {
     "kind": "measurement",
     "basis": "Z",
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
-      "qutip_node_profile": "standard_qutrit",
+      "qutip_profile": "standard_qutrit",
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
@@ -328,11 +327,11 @@ def main() -> int:
   profile_qutrit_measurement_response = _call_worker(profile_qutrit_measurement_operation, seed=args.seed)
   _assert_response(True, "profile:qutrit measurement", profile_qutrit_measurement_response)
   _assert_meta_field(profile_qutrit_measurement_response, "profile", "standard_qutrit", "profile:qutrit measurement")
-  _assert_meta_field(profile_qutrit_measurement_response, "dim", 3, "profile:qutrit measurement")
+  _assert_meta_field(profile_qutrit_measurement_response, "dim", 4, "profile:qutrit measurement")
   _assert_meta_numeric_field(profile_qutrit_measurement_response, "measurement_plus_probability", 0.0, 1.0, "profile:qutrit measurement")
   _assert_bool_field(profile_qutrit_measurement_response, "measured_plus", "profile:qutrit measurement")
 
-  profile_link_operation = {
+  profile_hom_qutrit_operation = {
     "kind": "hom_interference",
     "duration": 0.3,
     "targets": [
@@ -340,227 +339,56 @@ def main() -> int:
       {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
     ],
     "backend_config": {
-      "qutip_link_profile": "standard_qutrit",
-      "qutip_node_profile": "standard_light",
+      "qutip_profile": "standard_qutrit",
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
   }
-  profile_link_response = _call_worker(profile_link_operation, seed=args.seed)
-  _assert_response(True, "profile:link qutrit", profile_link_response)
-  _assert_meta_field(profile_link_response, "profile", "standard_qutrit", "profile:link qutrit")
-  _assert_meta_field(profile_link_response, "mode", "link", "profile:link qutrit")
-  _assert_meta_field(profile_link_response, "dim", 4, "profile:link qutrit")
+  profile_hom_qutrit_response = _call_worker(profile_hom_qutrit_operation, seed=args.seed)
+  _assert_response(True, "profile:hom qutrit", profile_hom_qutrit_response)
+  _assert_meta_field(profile_hom_qutrit_response, "profile", "standard_qutrit", "profile:hom qutrit")
+  _assert_meta_field(profile_hom_qutrit_response, "dim", 4, "profile:hom qutrit")
 
-  profile_link_mode_coupling_operation = {
-    "kind": "mode_coupling",
-    "params": [0.2],
-    "targets": [
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
-    ],
-    "duration": 0.1,
-    "backend_config": {
-      "qutip_node_profile": "standard_light",
-      "qutip_link_profile": "standard_qutrit",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_link_mode_coupling_response = _call_worker(profile_link_mode_coupling_operation, seed=args.seed)
-  _assert_response(True, "profile:mode_coupling link qutrit", profile_link_mode_coupling_response)
-  _assert_meta_field(profile_link_mode_coupling_response, "profile", "standard_qutrit", "profile:mode_coupling link qutrit")
-  _assert_meta_field(profile_link_mode_coupling_response, "mode", "link", "profile:mode_coupling link qutrit")
-  _assert_meta_field(profile_link_mode_coupling_response, "dim", 4, "profile:mode_coupling link qutrit")
-
-  profile_link_alias_operation = {
-    "kind": "hom",
-    "duration": 0.2,
-    "targets": [
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
-    ],
-    "backend_config": {
-      "qutip_node_profile": "standard_light",
-      "qutip_link_profile": "standard_qutrit",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_link_alias_response = _call_worker(profile_link_alias_operation, seed=args.seed)
-  _assert_response(True, "profile:link alias", profile_link_alias_response)
-  _assert_meta_field(profile_link_alias_response, "profile", "standard_qutrit", "profile:link alias")
-  _assert_meta_field(profile_link_alias_response, "mode", "link", "profile:link alias")
-  _assert_meta_field(profile_link_alias_response, "dim", 4, "profile:link alias")
-
-  profile_link_loss_operation = {
-    "kind": "loss",
-    "params": [0.05],
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "duration": 0.2,
-    "backend_config": {
-      "qutip_node_profile": "standard_light",
-      "qutip_link_profile": "standard_qutrit",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_link_loss_response = _call_worker(profile_link_loss_operation, seed=args.seed)
-  _assert_response(True, "profile:loss link qutrit", profile_link_loss_response)
-  _assert_meta_field(profile_link_loss_response, "profile", "standard_qutrit", "profile:loss link qutrit")
-  _assert_meta_field(profile_link_loss_response, "mode", "link", "profile:loss link qutrit")
-  _assert_meta_field(profile_link_loss_response, "dim", 4, "profile:loss link qutrit")
-
-  profile_custom_operation = {
+  profile_custom_string_overrides_operation = {
     "kind": "unitary",
     "payload": {"kind": "unitary", "gate": "H"},
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": '{"node_dim":4, "link_mode_dim":5, "truncation": 7}',
+      "qutip_profile": "custom",
+      "qutip_profile_overrides": '{"dim":5, "truncation": 7}',
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
   }
-  profile_custom_response = _call_worker(profile_custom_operation, seed=args.seed)
-  _assert_response(True, "profile:custom", profile_custom_response)
-  _assert_meta_field(profile_custom_response, "profile", "custom", "profile:custom")
-  _assert_meta_field(profile_custom_response, "dim", 4, "profile:custom")
+  profile_custom_string_overrides_response = _call_worker(profile_custom_string_overrides_operation, seed=args.seed)
+  _assert_response(True, "profile:custom string overrides", profile_custom_string_overrides_response)
+  _assert_meta_field(profile_custom_string_overrides_response, "profile", "custom", "profile:custom string overrides")
+  _assert_meta_field(profile_custom_string_overrides_response, "dim", 5, "profile:custom string overrides")
+  _assert_meta_field(profile_custom_string_overrides_response, "truncation", 7, "profile:custom string overrides")
 
-  profile_node_reset_operation = {
+  profile_custom_dict_overrides_operation = {
     "kind": "noise",
-    "payload": {"kind": "noise", "noise_kind": "reset"},
+    "payload": {"kind": "noise", "noise_kind": "dephasing", "p": 0.05},
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
-      "qutip_node_profile": "standard_qutrit",
-      "qutip_link_profile": "standard_light",
+      "qutip_profile": "custom",
+      "qutip_profile_overrides": {"dim": "7", "leakage_enabled": "true"},
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
   }
-  profile_node_reset_response = _call_worker(profile_node_reset_operation, seed=args.seed)
-  _assert_response(True, "profile:node qutrit reset", profile_node_reset_response)
-  _assert_meta_field(profile_node_reset_response, "profile", "standard_qutrit", "profile:node qutrit reset")
-  _assert_meta_field(profile_node_reset_response, "mode", "node", "profile:node qutrit reset")
-  _assert_meta_field(profile_node_reset_response, "dim", 3, "profile:node qutrit reset")
-
-  profile_normalized_name_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "X"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "Standard Qutrit",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_normalized_name_response = _call_worker(profile_normalized_name_operation, seed=args.seed)
-  _assert_response(True, "profile:normalized preset name", profile_normalized_name_response)
-  _assert_meta_field(profile_normalized_name_response, "profile", "standard_qutrit", "profile:normalized preset name")
-  _assert_meta_field(profile_normalized_name_response, "requested_profile", "standard_qutrit", "profile:normalized preset name")
-  _assert_meta_field(profile_normalized_name_response, "dim", 3, "profile:normalized preset name")
-
-  profile_empty_node_name_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "X"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_empty_node_name_response = _call_worker(profile_empty_node_name_operation, seed=args.seed)
-  _assert_response(False, "profile:node profile is empty", profile_empty_node_name_response)
-  _assert_error_category(profile_empty_node_name_response, "invalid_profile", "profile:node profile is empty")
-  _assert_meta_field(profile_empty_node_name_response, "profile", "", "profile:node profile is empty")
-  _assert_meta_field(profile_empty_node_name_response, "requested_profile", "", "profile:node profile is empty")
-  _assert_meta_field(profile_empty_node_name_response, "mode", "node", "profile:node profile is empty")
-  _assert_meta_field(profile_empty_node_name_response, "dim", 2, "profile:node profile is empty")
-
-  profile_none_node_name_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "X"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": None,
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_none_node_name_response = _call_worker(profile_none_node_name_operation, seed=args.seed)
-  _assert_response(False, "profile:node profile is null", profile_none_node_name_response)
-  _assert_error_category(profile_none_node_name_response, "invalid_profile", "profile:node profile is null")
-  _assert_meta_field(profile_none_node_name_response, "profile", "none", "profile:node profile is null")
-  _assert_meta_field(profile_none_node_name_response, "requested_profile", "none", "profile:node profile is null")
-  _assert_meta_field(profile_none_node_name_response, "mode", "node", "profile:node profile is null")
-  _assert_meta_field(profile_none_node_name_response, "dim", 2, "profile:node profile is null")
-
-  profile_empty_link_name_operation = {
-    "kind": "hom_interference",
-    "duration": 0.2,
-    "targets": [
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
-    ],
-    "backend_config": {
-      "qutip_link_profile": "",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_empty_link_name_response = _call_worker(profile_empty_link_name_operation, seed=args.seed)
-  _assert_response(False, "profile:link profile is empty", profile_empty_link_name_response)
-  _assert_error_category(profile_empty_link_name_response, "invalid_profile", "profile:link profile is empty")
-  _assert_meta_field(profile_empty_link_name_response, "profile", "", "profile:link profile is empty")
-  _assert_meta_field(profile_empty_link_name_response, "requested_profile", "", "profile:link profile is empty")
-  _assert_meta_field(profile_empty_link_name_response, "mode", "link", "profile:link profile is empty")
-  _assert_meta_field(profile_empty_link_name_response, "dim", 2, "profile:link profile is empty")
-
-  profile_node_link_split_case = {
-    "kind": "hom_interference",
-    "duration": 0.2,
-    "targets": [
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
-    ],
-    "backend_config": {
-      "qutip_node_profile": "standard_qutrit",
-      "qutip_link_profile": "standard_light",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_node_link_split_response = _call_worker(profile_node_link_split_case, seed=args.seed)
-  _assert_response(True, "profile:link respects link profile", profile_node_link_split_response)
-  _assert_meta_field(profile_node_link_split_response, "profile", "standard_light", "profile:link respects link profile")
-  _assert_meta_field(profile_node_link_split_response, "requested_profile", "standard_light", "profile:link respects link profile")
-  _assert_meta_field(profile_node_link_split_response, "mode", "link", "profile:link respects link profile")
-  _assert_meta_field(profile_node_link_split_response, "dim", 2, "profile:link respects link profile")
-
-  profile_custom_dict_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "X"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": {"node_dim": 4, "link_mode_dim": 5, "truncation": 7},
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_dict_response = _call_worker(profile_custom_dict_operation, seed=args.seed)
-  _assert_response(True, "profile:custom dict overrides", profile_custom_dict_response)
-  _assert_meta_field(profile_custom_dict_response, "profile", "custom", "profile:custom dict overrides")
-  _assert_meta_field(profile_custom_dict_response, "node_dim", 4, "profile:custom dict overrides")
-  _assert_meta_field(profile_custom_dict_response, "dim", 4, "profile:custom dict overrides")
+  profile_custom_dict_overrides_response = _call_worker(profile_custom_dict_overrides_operation, seed=args.seed)
+  _assert_response(True, "profile:custom dict overrides", profile_custom_dict_overrides_response)
+  _assert_meta_field(profile_custom_dict_overrides_response, "profile", "custom", "profile:custom dict overrides")
+  _assert_meta_field(profile_custom_dict_overrides_response, "dim", 7, "profile:custom dict overrides")
+  _assert_meta_field(profile_custom_dict_overrides_response, "leakage_enabled", True, "profile:custom dict overrides")
 
   profile_custom_invalid_type_operation = {
     "kind": "measurement",
     "basis": "Z",
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
-      "qutip_node_profile": "custom",
+      "qutip_profile": "custom",
       "qutip_profile_overrides": 123,
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
@@ -570,16 +398,14 @@ def main() -> int:
   _assert_response(False, "profile:custom invalid override type", profile_custom_invalid_type_response)
   _assert_error_category(profile_custom_invalid_type_response, "invalid_profile", "profile:custom invalid override type")
   _assert_meta_field(profile_custom_invalid_type_response, "profile", "custom", "profile:custom invalid override type")
-  _assert_meta_field(profile_custom_invalid_type_response, "dim", 2, "profile:custom invalid override type")
-  _assert_meta_contains(profile_custom_invalid_type_response, "errors", "qutip_profile_overrides must be a JSON string/object", "profile:custom invalid override type")
 
   profile_custom_below_min_operation = {
     "kind": "unitary",
     "payload": {"kind": "unitary", "gate": "Y"},
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": {"node_dim": 1, "link_mode_dim": 0, "truncation": 1},
+      "qutip_profile": "custom",
+      "qutip_profile_overrides": {"dim": 1, "truncation": 1},
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
@@ -587,193 +413,14 @@ def main() -> int:
   profile_custom_below_min_response = _call_worker(profile_custom_below_min_operation, seed=args.seed)
   _assert_response(False, "profile:custom below minimum", profile_custom_below_min_response)
   _assert_error_category(profile_custom_below_min_response, "invalid_profile", "profile:custom below minimum")
-  _assert_meta_field(profile_custom_below_min_response, "profile", "custom", "profile:custom below minimum")
-  _assert_meta_field(profile_custom_below_min_response, "node_dim", 2, "profile:custom below minimum")
-  _assert_meta_field(profile_custom_below_min_response, "dim", 2, "profile:custom below minimum")
-  _assert_meta_contains(profile_custom_below_min_response, "errors", "profile value below minimum", "profile:custom below minimum")
-
-  profile_node_link_invalid_profile_operation = {
-    "kind": "detection",
-    "targets": [
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
-      {"node_id": 1, "qnic_index": 1, "qnic_type": 0, "qubit_index": 0},
-    ],
-    "backend_config": {
-      "qutip_node_profile": "standard_light",
-      "qutip_link_profile": "not_a_profile",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_node_link_invalid_profile_response = _call_worker(profile_node_link_invalid_profile_operation, seed=args.seed)
-  _assert_response(False, "profile:invalid link profile fallback", profile_node_link_invalid_profile_response)
-  _assert_error_category(profile_node_link_invalid_profile_response, "invalid_profile", "profile:invalid link profile fallback")
-  _assert_meta_field(profile_node_link_invalid_profile_response, "profile", "not_a_profile", "profile:invalid link profile fallback")
-  _assert_meta_field(profile_node_link_invalid_profile_response, "requested_profile", "not_a_profile", "profile:invalid link profile fallback")
-  _assert_meta_field(profile_node_link_invalid_profile_response, "mode", "link", "profile:invalid link profile fallback")
-  _assert_meta_field(profile_node_link_invalid_profile_response, "dim", 2, "profile:invalid link profile fallback")
-
-  profile_node_op_invalid_node_with_valid_link_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "X"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "not_existing_node",
-      "qutip_link_profile": "standard_qutrit",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_node_op_invalid_node_with_valid_link_response = _call_worker(profile_node_op_invalid_node_with_valid_link_operation, seed=args.seed)
-  _assert_response(False, "profile:invalid node fallback for node op", profile_node_op_invalid_node_with_valid_link_response)
-  _assert_error_category(profile_node_op_invalid_node_with_valid_link_response, "invalid_profile", "profile:invalid node fallback for node op")
-  _assert_meta_field(profile_node_op_invalid_node_with_valid_link_response, "profile", "not_existing_node", "profile:invalid node fallback for node op")
-  _assert_meta_field(profile_node_op_invalid_node_with_valid_link_response, "requested_profile", "not_existing_node", "profile:invalid node fallback for node op")
-  _assert_meta_field(profile_node_op_invalid_node_with_valid_link_response, "mode", "node", "profile:invalid node fallback for node op")
-  _assert_meta_field(profile_node_op_invalid_node_with_valid_link_response, "dim", 2, "profile:invalid node fallback for node op")
-
-  profile_custom_empty_overrides_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "X"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": "   ",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_empty_overrides_response = _call_worker(profile_custom_empty_overrides_operation, seed=args.seed)
-  _assert_response(True, "profile:custom empty overrides", profile_custom_empty_overrides_response)
-  _assert_meta_field(profile_custom_empty_overrides_response, "profile", "custom", "profile:custom empty overrides")
-  _assert_meta_field(profile_custom_empty_overrides_response, "dim", 2, "profile:custom empty overrides")
-  _assert_meta_field(profile_custom_empty_overrides_response, "node_dim", 2, "profile:custom empty overrides")
-
-  profile_custom_false_leakage_operation = {
-    "kind": "noise",
-    "payload": {"kind": "noise", "noise_kind": "dephasing", "p": 0.05},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": {"leakage_enabled": False},
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_false_leakage_response = _call_worker(profile_custom_false_leakage_operation, seed=args.seed)
-  _assert_response(True, "profile:custom leakage false", profile_custom_false_leakage_response)
-  _assert_meta_field(profile_custom_false_leakage_response, "profile", "custom", "profile:custom leakage false")
-  _assert_meta_field(profile_custom_false_leakage_response, "leakage_enabled", False, "profile:custom leakage false")
-
-  profile_custom_true_leakage_operation = {
-    "kind": "noise",
-    "payload": {"kind": "noise", "noise_kind": "dephasing", "p": 0.05},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": {"leakage_enabled": "true"},
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_true_leakage_response = _call_worker(profile_custom_true_leakage_operation, seed=args.seed)
-  _assert_response(True, "profile:custom leakage true", profile_custom_true_leakage_response)
-  _assert_meta_field(profile_custom_true_leakage_response, "profile", "custom", "profile:custom leakage true")
-  _assert_meta_field(profile_custom_true_leakage_response, "leakage_enabled", True, "profile:custom leakage true")
-
-  profile_custom_truncation_str_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "Y"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": {"truncation": "9"},
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_truncation_str_response = _call_worker(profile_custom_truncation_str_operation, seed=args.seed)
-  _assert_response(True, "profile:custom truncation string", profile_custom_truncation_str_response)
-  _assert_meta_field(profile_custom_truncation_str_response, "profile", "custom", "profile:custom truncation string")
-  _assert_meta_field(profile_custom_truncation_str_response, "truncation", 9, "profile:custom truncation string")
-
-  profile_custom_overrides_array_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "Y"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": "[1, 2, 3]",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_overrides_array_response = _call_worker(profile_custom_overrides_array_operation, seed=args.seed)
-  _assert_response(False, "profile:custom overrides array", profile_custom_overrides_array_response)
-  _assert_error_category(profile_custom_overrides_array_response, "invalid_profile", "profile:custom overrides array")
-  _assert_meta_field(profile_custom_overrides_array_response, "profile", "custom", "profile:custom overrides array")
-  _assert_meta_contains(profile_custom_overrides_array_response, "errors", "must be a JSON object", "profile:custom overrides array")
-
-  profile_custom_invalid_boolean_operation = {
-    "kind": "measurement",
-    "basis": "Z",
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": '{"leakage_enabled": "not-bool", "node_dim": 4}',
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_invalid_boolean_response = _call_worker(profile_custom_invalid_boolean_operation, seed=args.seed)
-  _assert_response(False, "profile:custom invalid leakage bool", profile_custom_invalid_boolean_response)
-  _assert_error_category(profile_custom_invalid_boolean_response, "invalid_profile", "profile:custom invalid leakage bool")
-  _assert_meta_field(profile_custom_invalid_boolean_response, "node_dim", 4, "profile:custom invalid leakage bool")
-  _assert_meta_contains(profile_custom_invalid_boolean_response, "errors", "invalid boolean value", "profile:custom invalid leakage bool")
-
-  profile_normalized_link_name_operation = {
-    "kind": "detection",
-    "targets": [
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
-    ],
-    "backend_config": {
-      "qutip_link_profile": "  HIGH-FIDELITY  ",
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_normalized_link_name_response = _call_worker(profile_normalized_link_name_operation, seed=args.seed)
-  _assert_response(True, "profile:normalized link name", profile_normalized_link_name_response)
-  _assert_meta_field(profile_normalized_link_name_response, "profile", "high_fidelity", "profile:normalized link name")
-  _assert_meta_field(profile_normalized_link_name_response, "requested_profile", "high_fidelity", "profile:normalized link name")
-  _assert_meta_field(profile_normalized_link_name_response, "dim", 6, "profile:normalized link name")
-
-  profile_custom_partial_overrides_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "X"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
-    "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": {"node_dim": "4"},
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_partial_overrides_response = _call_worker(profile_custom_partial_overrides_operation, seed=args.seed)
-  _assert_response(True, "profile:custom partial override", profile_custom_partial_overrides_response)
-  _assert_meta_field(profile_custom_partial_overrides_response, "profile", "custom", "profile:custom partial override")
-  _assert_meta_field(profile_custom_partial_overrides_response, "node_dim", 4, "profile:custom partial override")
-  _assert_meta_field(profile_custom_partial_overrides_response, "link_dim", 2, "profile:custom partial override")
-  _assert_meta_field(profile_custom_partial_overrides_response, "dim", 4, "profile:custom partial override")
 
   profile_custom_unknown_override_operation = {
     "kind": "unitary",
     "payload": {"kind": "unitary", "gate": "Y"},
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
-      "qutip_node_profile": "custom",
-      "qutip_profile_overrides": {"node_dim": 4, "bogus_option": 123, "another_one": "keep"},
+      "qutip_profile": "custom",
+      "qutip_profile_overrides": {"dim": 4, "bogus_option": 123},
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
@@ -781,113 +428,102 @@ def main() -> int:
   profile_custom_unknown_override_response = _call_worker(profile_custom_unknown_override_operation, seed=args.seed)
   _assert_response(True, "profile:custom unknown override key", profile_custom_unknown_override_response)
   _assert_meta_field(profile_custom_unknown_override_response, "profile", "custom", "profile:custom unknown override key")
-  _assert_meta_field(profile_custom_unknown_override_response, "errors", None, "profile:custom unknown override key")
-  _assert_meta_field(profile_custom_unknown_override_response, "node_dim", 4, "profile:custom unknown override key")
+  _assert_meta_field(profile_custom_unknown_override_response, "dim", 4, "profile:custom unknown override key")
 
-  profile_custom_link_partial_overrides_operation = {
-    "kind": "hom_interference",
-    "duration": 0.2,
-    "targets": [
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
-      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
-    ],
-    "backend_config": {
-      "qutip_link_profile": "custom",
-      "qutip_profile_overrides": {"link_mode_dim": "7"},
-      "qutip_worker_timeout_ms": 5000,
-      "qutip_backend_class": "qutip_density_matrix",
-    },
-  }
-  profile_custom_link_partial_overrides_response = _call_worker(profile_custom_link_partial_overrides_operation, seed=args.seed)
-  _assert_response(True, "profile:custom link partial override", profile_custom_link_partial_overrides_response)
-  _assert_meta_field(profile_custom_link_partial_overrides_response, "profile", "custom", "profile:custom link partial override")
-  _assert_meta_field(profile_custom_link_partial_overrides_response, "mode", "link", "profile:custom link partial override")
-  _assert_meta_field(profile_custom_link_partial_overrides_response, "link_dim", 7, "profile:custom link partial override")
-  _assert_meta_field(profile_custom_link_partial_overrides_response, "dim", 7, "profile:custom link partial override")
-
-  profile_high_fidelity_node_operation = {
+  profile_high_fidelity_operation = {
     "kind": "unitary",
     "payload": {"kind": "unitary", "gate": "H"},
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
-      "qutip_node_profile": "high_fidelity",
+      "qutip_profile": "high_fidelity",
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
   }
-  profile_high_fidelity_node_response = _call_worker(profile_high_fidelity_node_operation, seed=args.seed)
-  _assert_response(True, "profile:high fidelity node", profile_high_fidelity_node_response)
-  _assert_meta_field(profile_high_fidelity_node_response, "profile", "high_fidelity", "profile:high fidelity node")
-  _assert_meta_field(profile_high_fidelity_node_response, "mode", "node", "profile:high fidelity node")
-  _assert_meta_field(profile_high_fidelity_node_response, "dim", 5, "profile:high fidelity node")
+  profile_high_fidelity_response = _call_worker(profile_high_fidelity_operation, seed=args.seed)
+  _assert_response(True, "profile:high fidelity", profile_high_fidelity_response)
+  _assert_meta_field(profile_high_fidelity_response, "profile", "high_fidelity", "profile:high fidelity")
+  _assert_meta_field(profile_high_fidelity_response, "dim", 6, "profile:high fidelity")
 
-  profile_high_fidelity_link_operation = {
-    "kind": "hom_interference",
-    "duration": 0.2,
+  profile_normalized_name_operation = {
+    "kind": "detection",
     "targets": [
       {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
       {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
     ],
     "backend_config": {
-      "qutip_link_profile": "high_fidelity",
+      "qutip_profile": "  HIGH-FIDELITY  ",
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
   }
-  profile_high_fidelity_link_response = _call_worker(profile_high_fidelity_link_operation, seed=args.seed)
-  _assert_response(True, "profile:high fidelity link", profile_high_fidelity_link_response)
-  _assert_meta_field(profile_high_fidelity_link_response, "profile", "high_fidelity", "profile:high fidelity link")
-  _assert_meta_field(profile_high_fidelity_link_response, "mode", "link", "profile:high fidelity link")
-  _assert_meta_field(profile_high_fidelity_link_response, "dim", 6, "profile:high fidelity link")
+  profile_normalized_name_response = _call_worker(profile_normalized_name_operation, seed=args.seed)
+  _assert_response(True, "profile:normalized name", profile_normalized_name_response)
+  _assert_meta_field(profile_normalized_name_response, "profile", "high_fidelity", "profile:normalized name")
+  _assert_meta_field(profile_normalized_name_response, "requested_profile", "high_fidelity", "profile:normalized name")
+  _assert_meta_field(profile_normalized_name_response, "dim", 6, "profile:normalized name")
 
-  profile_qutrit_measurement_x_operation = {
-    "kind": "measurement",
-    "basis": "X",
+  profile_legacy_node_key_operation = {
+    "kind": "unitary",
+    "payload": {"kind": "unitary", "gate": "X"},
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
+      "qutip_profile": "standard_light",
       "qutip_node_profile": "standard_qutrit",
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
   }
-  profile_qutrit_measurement_x_response = _call_worker(profile_qutrit_measurement_x_operation, seed=args.seed)
-  _assert_response(True, "profile:qutrit measurement X", profile_qutrit_measurement_x_response)
-  _assert_meta_field(profile_qutrit_measurement_x_response, "profile", "standard_qutrit", "profile:qutrit measurement X")
-  _assert_meta_numeric_field(profile_qutrit_measurement_x_response, "measurement_plus_probability", 0.0, 1.0, "profile:qutrit measurement X")
-  _assert_meta_numeric_field(profile_qutrit_measurement_x_response, "measurement_minus_probability", 0.0, 1.0, "profile:qutrit measurement X")
+  profile_legacy_node_key_response = _call_worker(profile_legacy_node_key_operation, seed=args.seed)
+  _assert_response(False, "profile:legacy node profile key", profile_legacy_node_key_response)
+  _assert_error_category(profile_legacy_node_key_response, "invalid_profile", "profile:legacy node profile key")
 
-  profile_bad_name_node_operation = {
-    "kind": "unitary",
-    "payload": {"kind": "unitary", "gate": "X"},
-    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+  profile_legacy_link_key_operation = {
+    "kind": "hom_interference",
+    "duration": 0.2,
+    "targets": [
+      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0},
+      {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1},
+    ],
     "backend_config": {
-      "qutip_node_profile": "definitely_not_a_profile",
+      "qutip_profile": "standard_light",
+      "qutip_link_profile": "standard_qutrit",
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
   }
-  profile_bad_name_node_response = _call_worker(profile_bad_name_node_operation, seed=args.seed)
-  _assert_response(False, "profile:invalid profile fallback", profile_bad_name_node_response)
-  _assert_error_category(profile_bad_name_node_response, "invalid_profile", "profile:invalid profile fallback")
-  _assert_meta_field(profile_bad_name_node_response, "profile", "definitely_not_a_profile", "profile:invalid profile fallback")
-  _assert_meta_field(profile_bad_name_node_response, "requested_profile", "definitely_not_a_profile", "profile:invalid profile fallback")
-  _assert_meta_field(profile_bad_name_node_response, "node_dim", 2, "profile:invalid profile fallback")
+  profile_legacy_link_key_response = _call_worker(profile_legacy_link_key_operation, seed=args.seed)
+  _assert_response(False, "profile:legacy link profile key", profile_legacy_link_key_response)
+  _assert_error_category(profile_legacy_link_key_response, "invalid_profile", "profile:legacy link profile key")
 
-  profile_invalid_operation = {
+  profile_bad_name_operation = {
+    "kind": "unitary",
+    "payload": {"kind": "unitary", "gate": "X"},
+    "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+    "backend_config": {
+      "qutip_profile": "definitely_not_a_profile",
+      "qutip_worker_timeout_ms": 5000,
+      "qutip_backend_class": "qutip_density_matrix",
+    },
+  }
+  profile_bad_name_response = _call_worker(profile_bad_name_operation, seed=args.seed)
+  _assert_response(False, "profile:invalid profile name", profile_bad_name_response)
+  _assert_error_category(profile_bad_name_response, "invalid_profile", "profile:invalid profile name")
+
+  profile_invalid_override_operation = {
     "kind": "unitary",
     "payload": {"kind": "unitary", "gate": "Y"},
     "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
     "backend_config": {
-      "qutip_node_profile": "standard_light",
+      "qutip_profile": "standard_light",
       "qutip_profile_overrides": "{broken-json",
       "qutip_worker_timeout_ms": 5000,
       "qutip_backend_class": "qutip_density_matrix",
     },
   }
-  profile_invalid_response = _call_worker(profile_invalid_operation, seed=args.seed)
-  _assert_response(False, "profile:invalid override", profile_invalid_response)
-  _assert_error_category(profile_invalid_response, "invalid_profile", "profile:invalid override")
-  _assert_meta_field(profile_invalid_response, "profile", "standard_light", "profile:invalid override")
+  profile_invalid_override_response = _call_worker(profile_invalid_override_operation, seed=args.seed)
+  _assert_response(False, "profile:invalid override json", profile_invalid_override_response)
+  _assert_error_category(profile_invalid_override_response, "invalid_profile", "profile:invalid override json")
 
   return 0
 

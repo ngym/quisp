@@ -160,8 +160,7 @@ int64_t QutipBackend::nextClusterId() const {
   return id;
 }
 
-int64_t QutipBackend::attachClusterToTargets(const std::vector<QubitHandle>& targets, const std::string& operation_event) const {
-  (void)operation_event;
+int64_t QutipBackend::attachClusterToTargets(const std::vector<QubitHandle>& targets) const {
   if (targets.empty()) {
     return -1;
   }
@@ -559,8 +558,7 @@ nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
       {"qutip_truncation", 5.0},
       {"qutip_worker_timeout_ms", 1000},
       {"qutip_worker_script", "scripts/qutip_worker.py"},
-      {"qutip_node_profile", "standard_light"},
-      {"qutip_link_profile", "standard_light"},
+      {"qutip_profile", "standard_light"},
       {"qutip_profile_overrides", ""},
   };
 
@@ -597,11 +595,8 @@ nlohmann::json collectFromBackendModule(const omnetpp::cModule& module) {
       params["qutip_worker_script"] = value;
     }
   }
-  if (module.hasPar("qutip_node_profile")) {
-    params["qutip_node_profile"] = module.par("qutip_node_profile").stdstringValue();
-  }
-  if (module.hasPar("qutip_link_profile")) {
-    params["qutip_link_profile"] = module.par("qutip_link_profile").stdstringValue();
+  if (module.hasPar("qutip_profile")) {
+    params["qutip_profile"] = module.par("qutip_profile").stdstringValue();
   }
   if (module.hasPar("qutip_profile_overrides")) {
     params["qutip_profile_overrides"] = module.par("qutip_profile_overrides").stdstringValue();
@@ -622,8 +617,7 @@ omnetpp::cModule* getBackendModuleFromContext() {
     }
     if (module->hasPar("qutip_backend_class") || module->hasPar("qutip_python_executable") || module->hasPar("qutip_max_register_qubits") ||
         module->hasPar("qutip_max_hilbert_dim") || module->hasPar("qutip_solver") || module->hasPar("qutip_truncation") || module->hasPar("qutip_worker_timeout_ms") ||
-        module->hasPar("qutip_worker_script") || module->hasPar("qutip_node_profile") ||
-        module->hasPar("qutip_link_profile") || module->hasPar("qutip_profile_overrides")) {
+        module->hasPar("qutip_worker_script") || module->hasPar("qutip_profile") || module->hasPar("qutip_profile_overrides")) {
       return module;
     }
   }
@@ -681,8 +675,7 @@ nlohmann::json QutipBackend::collectBackendParameters() const {
       {"qutip_truncation", 5.0},
       {"qutip_worker_timeout_ms", 1000},
       {"qutip_worker_script", "scripts/qutip_worker.py"},
-      {"qutip_node_profile", "standard_light"},
-      {"qutip_link_profile", "standard_light"},
+      {"qutip_profile", "standard_light"},
       {"qutip_profile_overrides", ""},
   };
 
@@ -721,7 +714,7 @@ OperationResult QutipBackend::runUnitary(const BackendContext& ctx, const std::s
   PhysicalOperation operation;
   operation.kind = "unitary";
   operation.targets = qubits;
-  operation.cluster_id = attachClusterToTargets(operation.targets, context.empty() ? "unitary" : context);
+  operation.cluster_id = attachClusterToTargets(operation.targets);
   operation.cluster_event = context.empty() ? "unitary" : context;
   operation.payload = {{"kind", "unitary"}, {"gate", normalizedGateName(gate)}, {"context", context}};
   return executeQutipWorker(ctx, operation);
@@ -735,7 +728,7 @@ OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHan
   PhysicalOperation operation;
   operation.kind = "measurement";
   operation.targets = {qubit};
-  operation.cluster_id = attachClusterToTargets(operation.targets, "measurement");
+  operation.cluster_id = attachClusterToTargets(operation.targets);
   operation.cluster_event = "measurement";
   auto basis_label = std::string("Z");
   if (basis == MeasureBasis::X) {
@@ -764,7 +757,7 @@ OperationResult QutipBackend::runNoise(const BackendContext& ctx, QubitHandle qu
   PhysicalOperation operation;
   operation.kind = "noise";
   operation.targets = {qubit};
-  operation.cluster_id = attachClusterToTargets(operation.targets, "noise");
+  operation.cluster_id = attachClusterToTargets(operation.targets);
   operation.cluster_event = "noise";
   operation.payload = {
       {"kind", "noise"},
@@ -787,7 +780,7 @@ OperationResult QutipBackend::applyErrorChannel(const BackendContext& ctx, const
   PhysicalOperation operation;
   operation.kind = "error_channel";
   operation.targets = qubits;
-  operation.cluster_id = attachClusterToTargets(operation.targets, "error_channel");
+  operation.cluster_id = attachClusterToTargets(operation.targets);
   operation.cluster_event = "error_channel";
   operation.payload = payload;
   return executeQutipWorker(ctx, operation);
@@ -1023,7 +1016,7 @@ OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const Ph
     std::vector<QubitHandle> involved = clustered_operation.targets;
     involved.reserve(clustered_operation.targets.size() + clustered_operation.controls.size());
     involved.insert(involved.end(), clustered_operation.controls.begin(), clustered_operation.controls.end());
-    clustered_operation.cluster_id = attachClusterToTargets(involved, normalized_kind);
+    clustered_operation.cluster_id = attachClusterToTargets(involved);
     clustered_operation.cluster_event = normalized_kind;
     return executeQutipWorker(ctx, clustered_operation);
   }

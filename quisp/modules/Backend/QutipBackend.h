@@ -38,7 +38,7 @@ class QutipBackend : public IPhysicalBackend {
   OperationResult executeQutipWorker(const BackendContext& ctx, const PhysicalOperation& operation) const;
   std::string qubitKey(const QubitHandle& qubit) const;
   int64_t nextClusterId() const;
-  int64_t attachClusterToTargets(const std::vector<QubitHandle>& targets, const std::string& operation_event) const;
+  int64_t attachClusterToTargets(const std::vector<QubitHandle>& targets) const;
   void detachTargetFromCluster(const QubitHandle& qubit) const;
   bool isAdvancedOperation(const std::string& kind) const;
   OperationResult runUnitary(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits, const std::string& context) const;

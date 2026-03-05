@@ -222,66 +222,54 @@ Optional `qutip` tuning parameters are available on `Backend`:
 *.backend.qutip_solver = "mesolve"
 *.backend.qutip_truncation = 5
 *.backend.qutip_worker_timeout_ms = 1000
-*.backend.qutip_node_profile = "standard_light"
-*.backend.qutip_link_profile = "standard_light"
+*.backend.qutip_profile = "standard_light"
 *.backend.qutip_profile_overrides = ""
 ```
 
-`qutip_node_profile` / `qutip_link_profile` enable node/linkごとに異なる準位数を使う切替えです。
+`qutip_profile` は全 operation に共通適用される単一プロファイルです。
 
-- `standard_light`: 2準位ノード/2準位リンク（既定）
-- `standard_qutrit`: ノード3準位、リンク4準位
-- `high_fidelity`: 高精度運用向け（ノード5準位、リンク6準位）
-- `custom`: `qutip_profile_overrides` で `node_dim`, `link_mode_dim`, `leakage_enabled`, `truncation` をJSONで指定
-- `custom` では `node_dim` / `link_mode_dim` / `truncation` の最小値は `2` です。いずれかが未対応値なら `error_category="invalid_profile"` を返して処理は失敗扱い（`success=false`）です。
+- `standard_light`: `dim=2`（既定）
+- `standard_qutrit`: `dim=4`
+- `high_fidelity`: `dim=6`
+- `custom`: `qutip_profile_overrides` で `dim`, `leakage_enabled`, `truncation` を JSON で指定
+- `custom` では `dim` / `truncation` の最小値は `2` です。未対応値は `error_category="invalid_profile"` で失敗します。
 - `leakage_enabled` は `true`/`false` の他、`1`/`0`, `"on"`/`"off"`, `"yes"`/`"no"` も受理します。
 
 例:
 
 ```ini
-*.backend.qutip_node_profile = "standard_light"
-*.backend.qutip_link_profile = "standard_qutrit"
-*.backend.qutip_profile_overrides = "{\"node_dim\":4,\"link_mode_dim\":6,\"leakage_enabled\":true}"
+*.backend.qutip_profile = "custom"
+*.backend.qutip_profile_overrides = "{\"dim\":5,\"leakage_enabled\":true,\"truncation\":9}"
 ```
 
-`standard_light` は既定互換 (`2`準位) を保持します。`qutip_node_profile` / `qutip_link_profile` に
-不明な名前や `qutip_profile_overrides` の不正 JSON / 型違反が含まれた場合は `error_category="invalid_profile"` を返して
+`standard_light` は既定互換 (`2`準位) を保持します。`qutip_profile` に不明な名前や
+`qutip_profile_overrides` の不正 JSON / 型違反が含まれた場合は `error_category="invalid_profile"` を返して
 `success=false` となります。
-
-分類の目安:
-
-- ノード側: `unitary`, `measurement`, `noise`, `reset`, `hamiltonian`, `lindblad`,
-  `phase_shift`, `decoherence`, `dephasing`, `kerr`, `cross_kerr` など
-- リンク側: `hom_interference`, `dispersion`, `multiphoton`, `squeezing`, `loss`, `attenuation`,
-  `mode_coupling`, `loss_mode`, `fock_loss`, `photon_number_cutoff`, `two_mode_squeezing` など
 
 ### プロファイル別の推奨INI例
 
 A寄り（既定2準位）:
 
 ```ini
-*.backend.qutip_node_profile = "standard_light"
-*.backend.qutip_link_profile = "standard_light"
+*.backend.qutip_profile = "standard_light"
 *.backend.qutip_profile_overrides = "{}"
 ```
 
-B寄り（ノード・リンクを分離）:
+B寄り（4準位）:
 
 ```ini
-*.backend.qutip_node_profile = "standard_light"
-*.backend.qutip_link_profile = "standard_qutrit"
+*.backend.qutip_profile = "standard_qutrit"
 ```
 
 高忠実度寄り（必要時のみ）:
 
 ```ini
-*.backend.qutip_node_profile = "custom"
-*.backend.qutip_link_profile = "custom"
-*.backend.qutip_profile_overrides = '{"node_dim":5, "link_mode_dim":6, "leakage_enabled":true, "truncation":12}'
+*.backend.qutip_profile = "custom"
+*.backend.qutip_profile_overrides = '{"dim":6, "leakage_enabled":true, "truncation":12}'
 ```
 
 `custom`では、`qutip_profile_overrides` の `truncation` は内部のカットオフ値として参照されます。
-必要に応じて `link_mode_dim` を 4〜6、`node_dim` を 3〜5 の範囲で切り替えるのが実用的です。
+必要に応じて `dim` を 2〜6 の範囲で切り替える運用を想定しています。
 
 The default is now density-matrix qutip mode (`physical_backend_type = "qutip_density_matrix"`), with
 `graph_state` still available for compatibility.

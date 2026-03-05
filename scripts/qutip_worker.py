@@ -40,17 +40,15 @@ def _normalized_backend_class(value: str) -> str:
 @dataclass(frozen=True)
 class QutipProfile:
   name: str
-  node_dim: int
-  link_mode_dim: int
-  mode: str
+  dim: int
   leakage_enabled: bool = False
   truncation: int = 5
 
 
 _QUTIP_PROFILE_PRESETS = {
-    "standard_light": QutipProfile(name="standard_light", node_dim=2, link_mode_dim=2, mode="light"),
-    "standard_qutrit": QutipProfile(name="standard_qutrit", node_dim=3, link_mode_dim=4, mode="qutrit"),
-    "high_fidelity": QutipProfile(name="high_fidelity", node_dim=5, link_mode_dim=6, mode="high_fidelity"),
+    "standard_light": QutipProfile(name="standard_light", dim=2),
+    "standard_qutrit": QutipProfile(name="standard_qutrit", dim=4),
+    "high_fidelity": QutipProfile(name="high_fidelity", dim=6),
 }
 
 
@@ -62,54 +60,25 @@ _OPERATION_SEQUENCE = 0
 @dataclass
 class _ClusterState:
   cluster_id: int
-  mode: str
   representation: str
   dim: int
   qubits: list[tuple[int, int, int, int]]
   density_matrix: Any
 
 
-_QUTIP_CLUSTER_STATES: dict[tuple[int, str], _ClusterState] = {}
-_QUTIP_CLUSTER_ID_SIGNATURES: dict[tuple[str, tuple[tuple[int, int, int, int], ...]], int] = {}
-_QUTIP_NEXT_CLUSTER_ID = 10_000
+_QUTIP_CLUSTER_STATES: dict[int, _ClusterState] = {}
 
 
-_NODE_REPRESENTATION = "node"
-_LINK_REPRESENTATION = "link"
-_EMISSION_REPRESENTATION = "emission"
-_COLLECT_REPRESENTATION = "collect"
-_PROPAGATION_REPRESENTATION = "propagation"
-_HOM_REPRESENTATION = "hom_interference"
+_CLUSTER_DM_REPRESENTATION = "cluster_dm"
 
 
-def _canonical_representation(mode: str) -> str:
-  if mode == "link":
-    return _LINK_REPRESENTATION
-  return _NODE_REPRESENTATION
+def _canonical_representation() -> str:
+  return _CLUSTER_DM_REPRESENTATION
 
 
 def _advanced_representation(kind: str) -> str:
-  normalized = _canonicalize_kind(kind)
-  if normalized in {"photon_emission", "emission", "emit", "photon_emit", "photon_emit_event"}:
-    return _EMISSION_REPRESENTATION
-  if normalized in {"photon_collect", "collect", "fiber_collect", "collect_in_fiber"}:
-    return _COLLECT_REPRESENTATION
-  if normalized in {"photon_propagation", "propagation", "fiber_propagation", "propagate", "propagate_fiber"}:
-    return _PROPAGATION_REPRESENTATION
-  if normalized == "hom_interference":
-    return _HOM_REPRESENTATION
-  return _canonical_representation(normalized)
-
-
-def _cluster_id_from_signature(mode: str, qubits: list[tuple[int, int, int, int]]) -> int:
-  global _QUTIP_NEXT_CLUSTER_ID
-  signature = (mode, tuple(qubits))
-  cluster_id = _QUTIP_CLUSTER_ID_SIGNATURES.get(signature)
-  if cluster_id is None:
-    cluster_id = _QUTIP_NEXT_CLUSTER_ID
-    _QUTIP_NEXT_CLUSTER_ID += 1
-    _QUTIP_CLUSTER_ID_SIGNATURES[signature] = cluster_id
-  return cluster_id
+  _ = kind
+  return _CLUSTER_DM_REPRESENTATION
 
 
 def _normalize_cluster_id(value: Any) -> Optional[int]:
@@ -169,28 +138,12 @@ def _operation_qubit_keys(operation: dict) -> list[tuple[int, int, int, int]]:
   return ordered
 
 
-def _cluster_mode_from_profile(profile_meta: Optional[dict[str, Any]]) -> str:
-  if not isinstance(profile_meta, dict):
-    return "node"
-  mode = profile_meta.get("mode")
-  if mode == "link":
-    return "link"
-  return "node"
-
-
-def _cluster_key(operation: dict, profile_meta: Optional[dict[str, Any]]) -> Optional[tuple[int, str]]:
+def _cluster_key(operation: dict, profile_meta: Optional[dict[str, Any]]) -> Optional[int]:
+  _ = profile_meta
   cluster_id = _normalize_cluster_id(operation.get("cluster_id"))
-  mode = _cluster_mode_from_profile(profile_meta)
   if cluster_id is None:
-    required_qubits = _operation_qubit_keys(operation)
-    if not required_qubits:
-      return None
-    cluster_id = _cluster_id_from_signature(mode, required_qubits)
-  return (cluster_id, mode)
-
-
-def _cluster_keys_for_cluster_id(cluster_id: int) -> list[tuple[int, str]]:
-  return [key for key in _QUTIP_CLUSTER_STATES if key[0] == cluster_id]
+    return None
+  return cluster_id
 
 
 def _identity_map_from_dim(qutip: Any, source_dim: int, target_dim: int) -> Optional[Any]:
@@ -261,71 +214,32 @@ def _ensure_cluster_state(
     return None, False, ""
 
   normalized_dim = max(2, int(dim))
-  cluster_id, mode = key
-  requested_representation = target_representation or _canonical_representation(mode)
+  cluster_id = key
+  requested_representation = target_representation or _canonical_representation()
   state = _QUTIP_CLUSTER_STATES.get(key)
   required_qubits = _operation_qubit_keys(operation)
   if not required_qubits:
     return None, False, ""
 
   if state is None:
-    fallback_state = None
-    best_overlap = -1
-    for candidate_key in _cluster_keys_for_cluster_id(cluster_id):
-      if candidate_key == key:
-        continue
-      fallback_state = _QUTIP_CLUSTER_STATES.get(candidate_key)
-      if fallback_state is not None:
-        candidate_overlap = sum(1 for qubit in fallback_state.qubits if qubit in required_qubits)
-        if candidate_overlap > best_overlap:
-          best_overlap = candidate_overlap
-          chosen_fallback_key = candidate_key
-          chosen_fallback_state = fallback_state
-
-    if best_overlap > 0:
-      fallback_state = chosen_fallback_state
-      fallback_key = chosen_fallback_key
-      del _QUTIP_CLUSTER_STATES[fallback_key]
+    base = qutip.basis(normalized_dim, 0)
+    rho0 = base * base.dag()
+    if len(required_qubits) == 1:
+      rho = rho0
     else:
-      fallback_state = None
-
-    if fallback_state is not None:
-      convert_error = _convert_cluster_state_representation(
-          fallback_state,
-          target_dim=normalized_dim,
-          target_representation=requested_representation,
-          qutip=qutip,
-      )
-      if convert_error:
-        return fallback_state, False, convert_error
-      fallback_state.cluster_id = cluster_id
-      fallback_state.mode = mode
-      state = fallback_state
-      _QUTIP_CLUSTER_STATES[key] = state
-
-    else:
-      base = qutip.basis(normalized_dim, 0)
-      rho0 = base * base.dag()
-      if len(required_qubits) == 1:
-        rho = rho0
-      else:
-        rho = qutip.tensor(*([rho0] * len(required_qubits)))
-      state = _ClusterState(
-          cluster_id=cluster_id,
-          mode=mode,
-          representation=requested_representation,
-          dim=normalized_dim,
-          qubits=list(required_qubits),
-          density_matrix=rho,
-      )
-      _QUTIP_CLUSTER_STATES[key] = state
-      return state, True, ""
+      rho = qutip.tensor(*([rho0] * len(required_qubits)))
+    state = _ClusterState(
+        cluster_id=cluster_id,
+        representation=requested_representation,
+        dim=normalized_dim,
+        qubits=list(required_qubits),
+        density_matrix=rho,
+    )
+    _QUTIP_CLUSTER_STATES[key] = state
+    return state, True, ""
 
   if state is None:
     return None, False, ""
-
-  if state.mode != mode:
-    state.mode = mode
 
   if state.dim != normalized_dim or state.representation != requested_representation:
     convert_error = _convert_cluster_state_representation(
@@ -351,13 +265,13 @@ def _ensure_cluster_state(
   return state, False, ""
 
 
-def _cluster_state_meta(state: Optional[_ClusterState], key: Optional[tuple[int, str]]) -> dict[str, Any]:
+def _cluster_state_meta(state: Optional[_ClusterState], key: Optional[int]) -> dict[str, Any]:
   if state is None:
     return {}
-  meta = {"cluster_id": state.cluster_id, "cluster_mode": state.mode, "cluster_size": len(state.qubits)}
+  meta = {"cluster_id": state.cluster_id, "cluster_size": len(state.qubits)}
   meta["cluster_representation"] = state.representation
   if key is not None:
-    meta["cluster_key"] = f"{key[0]}:{key[1]}"
+    meta["cluster_key"] = f"{key}"
   return meta
 
 
@@ -530,12 +444,12 @@ def _build_cluster_noise_ops(
   return [], metadata, _categorize_error("unsupported_noise", f"qutip worker unsupported noise kind: {noise_kind}")
 
 
-def _remove_cluster_key(cluster_key: tuple[int, str]) -> None:
+def _remove_cluster_key(cluster_key: int) -> None:
   if cluster_key in _QUTIP_CLUSTER_STATES:
     del _QUTIP_CLUSTER_STATES[cluster_key]
 
 
-def _remove_qubit_from_cluster(operation: dict, cluster_key: tuple[int, str]) -> Optional[_ClusterState]:
+def _remove_qubit_from_cluster(operation: dict, cluster_key: int) -> Optional[_ClusterState]:
   state = _QUTIP_CLUSTER_STATES.get(cluster_key)
   if state is None:
     return None
@@ -636,52 +550,6 @@ def _normalize_profile_name(value: str) -> str:
   return normalized
 
 
-_LINK_KIND_SET = {
-    "photon_emission",
-    "emission",
-    "photon_collect",
-    "collect",
-    "photon_propagation",
-    "propagation",
-    "fiber_propagation",
-    "beam_splitter",
-    "cross_kerr",
-    "decoherence",
-    "dephasing",
-    "delay",
-    "dispersion",
-    "attenuation",
-    "detection",
-    "fock_loss",
-    "hamiltonian",
-    "hom_interference",
-    "jitter",
-    "kerr",
-    "lindblad",
-    "loss",
-    "loss_mode",
-    "mode_coupling",
-    "nonlinear",
-    "multiphoton",
-    "phase_shift",
-    "phase_modulation",
-    "self_phase_modulation",
-    "cross_phase_modulation",
-    "polarization_decoherence",
-    "polarization_rotation",
-    "photon_number_cutoff",
-    "reset",
-    "squeezing",
-    "source_multiphoton",
-    "timing_jitter",
-    "two_mode_squeezing",
-    "amplitude_damping",
-    "thermal_relaxation",
-    "bitflip",
-    "phaseflip",
-    "depolarizing",
-}
-
 _SUPPORTED_OPERATION_MODELS = {"unitary", "kraus", "sampled_kraus", "formula", "unsupported"}
 
 _KIND_OPERATION_MODEL: dict[str, str] = {
@@ -749,17 +617,6 @@ def _operation_model_for_kind(kind: str) -> str:
   return _normalize_operation_model(_KIND_OPERATION_MODEL.get(_canonicalize_kind(kind), "unsupported"))
 
 
-def _is_link_kind(kind: str, operation: dict) -> bool:
-  normalized = _canonicalize_kind(kind)
-  if normalized == "detection":
-    targets = operation.get("targets", [])
-    if isinstance(targets, list) and len(targets) >= 2:
-      return True
-  if not isinstance(operation, dict):
-    return normalized in _LINK_KIND_SET
-  return normalized in _LINK_KIND_SET
-
-
 def _resolve_cluster_targets(
     operation: dict,
     cluster_state: _ClusterState,
@@ -792,22 +649,32 @@ def _resolve_cluster_targets(
 
 
 def _resolve_profile(request: dict, kind: str, operation: dict) -> tuple[str, dict[str, Any], str | None]:
+  _ = kind
+  _ = operation
   config = request.get("backend_config", {}) if isinstance(request, dict) else {}
   if not isinstance(config, dict):
     config = {}
 
-  has_node_profile = isinstance(config, dict) and "qutip_node_profile" in config
-  has_link_profile = isinstance(config, dict) and "qutip_link_profile" in config
-  requested_node_profile = _normalize_profile_name(config.get("qutip_node_profile", "standard_light")) if has_node_profile else "standard_light"
-  requested_link_profile = _normalize_profile_name(config.get("qutip_link_profile", "standard_light")) if has_link_profile else "standard_light"
+  legacy_profile_keys = []
+  for legacy_key in ("qutip_node_profile", "qutip_link_profile"):
+    if legacy_key in config:
+      legacy_profile_keys.append(legacy_key)
+  if legacy_profile_keys:
+    profile_meta = {
+        "profile": "",
+        "requested_profile": "",
+        "dim": 2,
+        "leakage_enabled": False,
+        "truncation": 5,
+        "errors": f"legacy profile keys are not supported: {', '.join(legacy_profile_keys)}; use qutip_profile",
+    }
+    return "", profile_meta, "invalid_profile"
 
-  is_link_operation = _is_link_kind(kind, operation)
-  requested_profile = requested_link_profile if is_link_operation else requested_node_profile
+  requested_profile = _normalize_profile_name(config.get("qutip_profile", "standard_light"))
 
   if requested_profile == "custom":
     return _resolve_custom_profile(
       requested_profile=requested_profile,
-      is_link_operation=is_link_operation,
       parse_profile=config.get("qutip_profile_overrides", None),
     )
 
@@ -828,16 +695,10 @@ def _resolve_profile(request: dict, kind: str, operation: dict) -> tuple[str, di
   elif parse_error is not None:
     profile_error = "invalid_profile"
 
-  mode = "link" if is_link_operation else "node"
-  chosen_dim = effective_profile.link_mode_dim if is_link_operation else effective_profile.node_dim
-
   profile_meta = {
       "profile": requested_profile_name,
       "requested_profile": requested_profile_name,
-      "node_dim": int(effective_profile.node_dim),
-      "link_dim": int(effective_profile.link_mode_dim),
-      "mode": mode,
-      "dim": int(chosen_dim),
+      "dim": int(effective_profile.dim),
       "leakage_enabled": bool(effective_profile.leakage_enabled),
       "truncation": int(effective_profile.truncation),
       "errors": " | ".join(errors) if errors else None,
@@ -847,7 +708,7 @@ def _resolve_profile(request: dict, kind: str, operation: dict) -> tuple[str, di
 
 
 def _resolve_custom_profile(
-    requested_profile: str, is_link_operation: bool, parse_profile: Any
+    requested_profile: str, parse_profile: Any
 ) -> tuple[str, dict[str, Any], str | None]:
   base_profile = _QUTIP_PROFILE_PRESETS["standard_light"]
   overrides, parse_error = _parse_profile_overrides(parse_profile)
@@ -857,27 +718,31 @@ def _resolve_custom_profile(
     errors.append(parse_error)
     profile_error = "invalid_profile"
 
-  node_dim = overrides.get("node_dim")
-  link_mode_dim = overrides.get("link_mode_dim")
+  legacy_override_keys = []
+  for legacy_override_key in ("node_dim", "link_mode_dim"):
+    if legacy_override_key in overrides:
+      legacy_override_keys.append(legacy_override_key)
+  if legacy_override_keys:
+    errors.append(f"legacy custom override keys are not supported: {', '.join(legacy_override_keys)}; use dim")
+    profile_error = "invalid_profile"
+
+  dim = overrides.get("dim")
   leakage_enabled = overrides.get("leakage_enabled")
   truncation = overrides.get("truncation")
 
-  coerced_node_dim, node_err = _coerce_profile_int(node_dim, base_profile.node_dim, 2)
-  coerced_link_mode_dim, link_err = _coerce_profile_int(link_mode_dim, base_profile.link_mode_dim, 2)
+  coerced_dim, dim_err = _coerce_profile_int(dim, base_profile.dim, 2)
   coerced_leakage, leak_err = _coerce_profile_bool(leakage_enabled, base_profile.leakage_enabled)
   coerced_truncation, trunc_err = _coerce_profile_int(truncation, base_profile.truncation, 2)
 
-  profile_error = "invalid_profile" if parse_error is not None else None
-  for error in (node_err, link_err, leak_err, trunc_err):
+  profile_error = "invalid_profile" if (profile_error is not None or parse_error is not None) else None
+  for error in (dim_err, leak_err, trunc_err):
     if error is not None:
       profile_error = "invalid_profile"
       errors.append(error)
 
   profile = QutipProfile(
     name="custom",
-    node_dim=coerced_node_dim,
-    link_mode_dim=coerced_link_mode_dim,
-    mode="custom",
+    dim=coerced_dim,
     leakage_enabled=coerced_leakage,
     truncation=coerced_truncation,
   )
@@ -886,10 +751,7 @@ def _resolve_custom_profile(
   profile_meta = {
       "profile": profile_name,
       "requested_profile": requested_profile,
-      "node_dim": int(profile.node_dim),
-      "link_dim": int(profile.link_mode_dim),
-      "mode": "link" if is_link_operation else "node",
-      "dim": int(profile.link_mode_dim if is_link_operation else profile.node_dim),
+      "dim": int(profile.dim),
       "leakage_enabled": bool(profile.leakage_enabled),
       "truncation": int(profile.truncation),
       "errors": " | ".join(errors) if errors else None,
@@ -995,9 +857,13 @@ def _build_response(
   if "backend_class" in fields:
     response["backend_class"] = fields.pop("backend_class")
   response["operation_model"] = _normalize_operation_model(operation_model)
+  fidelity_estimate = fields.pop("fidelity_estimate", response["fidelity_estimate"])
+  if isinstance(fidelity_estimate, (int, float)) and math.isfinite(float(fidelity_estimate)):
+    fidelity_estimate = max(0.0, min(1.0, float(fidelity_estimate)))
+    response["fidelity_estimate"] = fidelity_estimate
+  response.update(fields)
   if meta is not None:
     response["meta"] = dict(meta)
-  response.update(fields)
   return response
 
 
@@ -2180,7 +2046,7 @@ def _handle_measurement(operation: dict, seed: int, dim: int = 2, profile_meta: 
       True,
       measured_plus=measured_plus,
       branch_probability=branch_probability,
-      fidelity_estimate=collapsed_norm,
+      fidelity_estimate=branch_probability,
       meta=meta,
       message=f"qutip worker measured {basis} in cluster {cluster_key}",
   )
@@ -2702,7 +2568,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
   duration = _as_float(operation.get("duration", 0.0))
   backend_name = str(payload.get("backend_name", ""))
   requested_representation = _advanced_representation(kind)
-  transition_from = None
 
   cluster_key = _cluster_key(operation, profile_meta)
   if cluster_key is None:
@@ -2718,10 +2583,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
   qutip, _ = qutip_modules
 
   normalized_dim = max(2, int(dim))
-  if cluster_key in _QUTIP_CLUSTER_STATES:
-    existing_state = _QUTIP_CLUSTER_STATES.get(cluster_key)
-    if existing_state is not None:
-      transition_from = f"{existing_state.mode}/{existing_state.representation}"
   cluster_state, _, cluster_error = _ensure_cluster_state(
       operation,
       normalized_dim,
@@ -2733,8 +2594,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
     return _build_response(False, message=_categorize_error("invalid_cluster", "missing cluster qubits"), error_category="invalid_cluster")
   if cluster_error:
     return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_cluster_state_meta(cluster_state, cluster_key))
-  transition_to = f"{cluster_state.mode}/{cluster_state.representation}"
-
   leakage_enabled = _resolve_profile_bool(profile_meta, "leakage_enabled", False)
 
   def _finalize(response: dict) -> dict:
@@ -2743,8 +2602,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
     if not isinstance(response_meta, dict):
       response_meta = {}
     response_meta.update(_cluster_state_meta(cluster_state, cluster_key))
-    if transition_from is not None and transition_from != transition_to:
-      response_meta["cluster_representation_transition"] = f"{transition_from}->{transition_to}"
     response["meta"] = response_meta
     return _mark_operation_metrics(response, backend_name=backend_name, kind=kind, duration=duration)
 
@@ -3261,7 +3118,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         identity_local = qutip.tensor(qutip.qeye(normalized_dim), qutip.qeye(normalized_dim))
         failure_projector_local = identity_local - psi_plus_like_projector - psi_minus_like_projector
         success_outcome = ""
-        failure_outcome = "none"
+        failure_outcome = "failure"
 
       raw_efficiency = payload.get("efficiency", payload.get("eta", 1.0))
       efficiency = _effective_probability(_as_float(raw_efficiency), 1.0)
@@ -3335,7 +3192,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         )
         if rng.random() < dark_count:
           selected_event = "none"
-          selected_outcome = "none"
+          selected_outcome = failure_outcome
           selected_operator = none_operator
           measured_plus = False
           branch_probability = float((none_operator * cluster_state.density_matrix * none_operator.dag()).tr())
@@ -3374,6 +3231,8 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
               branch_probability = probability / total_probability
               break
           selected_outcome = selected_event
+          if n_targets == 2 and selected_outcome == "none":
+            selected_outcome = failure_outcome
           measured_plus = selected_event == "d0,d1" or selected_event == "d2,d3"
           probability_success = sum(probability for probability, _, pattern in branch_probabilities if pattern != "none") / total_probability
           probability_failure = 1.0 - probability_success

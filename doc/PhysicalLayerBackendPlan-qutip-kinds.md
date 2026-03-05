@@ -60,59 +60,46 @@ Legend:
 | `photon_collect` | (direct) | registered | supported | formula |
 | `photon_propagation` | `propagation`,`fiber_propagation` | registered | supported | formula |
 
-## ノード/リンク別プロフィール運用（追加）
+## 単一プロフィール運用（vNext）
 
-`Backend.ned` で以下を追加:
+`Backend.ned` の `qutip` 設定は次の 2 つを使う:
 
-- `qutip_node_profile`
-- `qutip_link_profile`
+- `qutip_profile`
 - `qutip_profile_overrides`
 
-`qutip_worker.py` では、`node`/`link` 操作を次のように切り替える.
+`qutip_worker.py` は `kind` に関わらず単一 `qutip_profile` を適用する。
+`cluster_id` は全 operation で共通識別子として使われ、`mode` で分岐しない。
 
-- `unitary` / `measurement` / `noise` / `reset` / `phase` 系: `qutip_node_profile`
-- `hom_interference` / `dispersion` / `multiphoton` / `squeezing` など: `qutip_link_profile`
-
-例:
-
-- node-profile 対象: `unitary`, `measurement`, `noise`, `reset`, `phase_shift`, `phase_modulation`, `decoherence`, `dephasing`, `kerr`, `cross_kerr`, `hamiltonian`, `lindblad`, `detection` など
-- link-profile 対象: `hom_interference`, `dispersion`, `multiphoton`, `squeezing`, `loss`, `attenuation`, `mode_coupling`, `loss_mode`, `fock_loss`, `photon_number_cutoff`, `two_mode_squeezing` など
-
-既定は `standard_light` で、`qutip_profile_overrides` 未設定時は既存 2準位挙動を保持する。
-`qutip_profile_overrides` の不正JSONは受け付けずではなく安全に fallback し、`error_category="invalid_profile"` を付与する運用を想定している。
+既定は `standard_light` (`dim=2`)。
 
 ### プロファイル運用テンプレート
 
-- A寄り（既定）
+- 既定（2準位）
 
 ```ini
-*.backend.qutip_node_profile = "standard_light"
-*.backend.qutip_link_profile = "standard_light"
+*.backend.qutip_profile = "standard_light"
+*.backend.qutip_profile_overrides = "{}"
 ```
 
-- B寄り（ノード=2準位、リンク=3〜4準位）
+- 4準位運用
 
 ```ini
-*.backend.qutip_node_profile = "standard_light"
-*.backend.qutip_link_profile = "standard_qutrit"
+*.backend.qutip_profile = "standard_qutrit"
 ```
 
 - 高忠実度寄り（必要時のみ）
 
 ```ini
-*.backend.qutip_node_profile = "custom"
-*.backend.qutip_link_profile = "custom"
-*.backend.qutip_profile_overrides = '{"node_dim":5, "link_mode_dim":6, "leakage_enabled":true, "truncation":12}'
+*.backend.qutip_profile = "custom"
+*.backend.qutip_profile_overrides = '{"dim":6, "leakage_enabled":true, "truncation":12}'
 ```
 
-`custom`では、`node_dim` と `link_mode_dim` が実行時に `dim`/`link_mode_dim` に反映される。
-`custom` の受理値は次の通り:
-- `node_dim`, `link_mode_dim`, `truncation`: 最小値2、未達時は `2` にフォールバックして `invalid_profile` を付与
+`custom` の受理値:
+- `dim`, `truncation`: 最小値 2、未達時は `invalid_profile`
 - `leakage_enabled`: `true`/`false`/`1`/`0`/`"on"`/`"off"`/`"yes"`/`"no"` を受理
 
-ノード/リンクプロファイル境界:
-- `qutip_link_profile` は干渉/雑音/チャネル系の操作 (例: `hom_interference`, `dispersion`, `multiphoton`, `squeezing`, `loss_mode`, ...) に適用
-- `qutip_node_profile` は局所操作 (例: `unitary`, `measurement`, `noise`, `reset`, `hamiltonian` など) に適用
+旧キー `qutip_node_profile` / `qutip_link_profile` は fail-fast で `invalid_profile` を返す。
+`qutip_profile_overrides` で `node_dim` / `link_mode_dim` を渡した場合も fail-fast で `invalid_profile`。
 
 ## Known intentional unsupported kinds
 

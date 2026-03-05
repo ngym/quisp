@@ -41,3 +41,9 @@
 ## 4) GraphState backend (`ErrorBasisBackend`) の位置付け
 - `x_error`, `z_error`, `discarded`, `photon_lost` はバックエンド内部メタデータとしてのみ保持。
 - OMNeT 側 `PhotonicQubit` メッセージからは誤差フラグを参照しない。
+
+## 5) qutip profile contract (vNext)
+- `qutip_density_matrix` は `qutip_profile` の単一設定で動作する。
+- `qutip_node_profile` / `qutip_link_profile` は非対応（`invalid_profile`）。
+- `qutip_profile_overrides` は `dim`, `leakage_enabled`, `truncation` のみ受理。
+- `cluster_id` は全 operation で共通に使い、`mode` によるクラスタ分離は行わない。

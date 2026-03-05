@@ -290,7 +290,7 @@ def _entanglement_set_target_positions(state: _EntanglementSetState, targets: li
   return positions
 
 
-def _apply_local_operator_to_cluster(state: _EntanglementSetState, local_operator: Any, target_positions: list[int], qutip: Any) -> tuple[bool, Optional[Any]]:
+def _apply_local_operator_to_entanglement_set(state: _EntanglementSetState, local_operator: Any, target_positions: list[int], qutip: Any) -> tuple[bool, Optional[Any]]:
   if state.density_matrix is None:
     return False, None
   if not target_positions:
@@ -326,14 +326,14 @@ def _apply_local_operator_to_cluster(state: _EntanglementSetState, local_operato
   
 
 
-def _apply_unitary_to_cluster(state: _EntanglementSetState, unitary: Any, targets: list[Any], qutip: Any) -> tuple[bool, Optional[Any]]:
+def _apply_unitary_to_entanglement_set(state: _EntanglementSetState, unitary: Any, targets: list[Any], qutip: Any) -> tuple[bool, Optional[Any]]:
   if unitary is None or state is None:
     return False, None
   target_positions = _entanglement_set_target_positions(state, [_coerce_qubit_key(target) for target in targets] if isinstance(targets, list) else [])
   if target_positions is None:
     return False, None
 
-  success, operator = _apply_local_operator_to_cluster(state, unitary, target_positions, qutip)
+  success, operator = _apply_local_operator_to_entanglement_set(state, unitary, target_positions, qutip)
   if not success or operator is None:
     return False, None
 
@@ -341,7 +341,7 @@ def _apply_unitary_to_cluster(state: _EntanglementSetState, unitary: Any, target
   return True, evolved
 
 
-def _apply_kraus_to_cluster(
+def _apply_kraus_to_entanglement_set(
     state: _EntanglementSetState,
     ops: list[Any],
     target_positions: list[int],
@@ -354,7 +354,7 @@ def _apply_kraus_to_cluster(
 
   embedded: list[Any] = []
   for op in ops:
-    success, full_op = _apply_local_operator_to_cluster(state, op, target_positions, qutip)
+    success, full_op = _apply_local_operator_to_entanglement_set(state, op, target_positions, qutip)
     if not success or full_op is None:
       return False, None
     embedded.append(full_op)
@@ -374,7 +374,7 @@ def _apply_kraus_to_cluster(
   return True, rho1
 
 
-def _build_cluster_noise_ops(
+def _build_entanglement_set_noise_ops(
     qutip: Any,
     noise_kind: str,
     operation: dict,
@@ -972,7 +972,7 @@ def _embed_local_operator(
 ) -> tuple[bool, Optional[Any]]:
   if local_operator is None:
     return False, None
-  success, operator = _apply_local_operator_to_cluster(entanglement_set_state, local_operator, target_positions, qutip)
+  success, operator = _apply_local_operator_to_entanglement_set(entanglement_set_state, local_operator, target_positions, qutip)
   if not success:
     return False, None
   if operator is None:
@@ -1971,7 +1971,7 @@ def _handle_unitary(operation: dict, seed: int, dim: int = 2, profile_meta: Opti
     return _build_response(False, message=message, error_category=_extract_error_category(message) or "unsupported_gate", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
   previous_state = entanglement_set_state.density_matrix
-  apply_success, evolved_state = _apply_unitary_to_cluster(entanglement_set_state, op, operation.get("targets", []), qutip)
+  apply_success, evolved_state = _apply_unitary_to_entanglement_set(entanglement_set_state, op, operation.get("targets", []), qutip)
   if not apply_success or evolved_state is None:
     return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply unitary on entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
   entanglement_set_state.density_matrix = evolved_state
@@ -2094,7 +2094,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
 
   photon_lost = _rng(seed, operation).random() < _effective_probability(p, 0.0)
   if noise_kind == "loss":
-    ops, meta, build_error = _build_cluster_noise_ops(
+    ops, meta, build_error = _build_entanglement_set_noise_ops(
         qutip=qutip,
         noise_kind=noise_kind,
         operation=operation,
@@ -2104,7 +2104,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     )
     if build_error is not None:
       return _build_response(False, message=build_error, error_category=_extract_error_category(build_error) or "unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
-    success_apply, evolved_state = _apply_kraus_to_cluster(entanglement_set_state, ops, target_positions, qutip)
+    success_apply, evolved_state = _apply_kraus_to_entanglement_set(entanglement_set_state, ops, target_positions, qutip)
     if not success_apply or evolved_state is None:
       return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply loss in entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
     previous_state = entanglement_set_state.density_matrix
@@ -2132,7 +2132,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     canonical_noise_kind = "decoherence" if noise_kind == "decoherence" else noise_kind
     if canonical_noise_kind == "dephase":
       canonical_noise_kind = "dephasing"
-    ops, meta, build_error = _build_cluster_noise_ops(
+    ops, meta, build_error = _build_entanglement_set_noise_ops(
       qutip=qutip,
       noise_kind=canonical_noise_kind if canonical_noise_kind in {"decoherence", "dephasing", "amplitude_damping", "thermal_relaxation", "bitflip", "phaseflip", "depolarizing", "reset", "loss"} else noise_kind,
       operation=operation,
@@ -2142,7 +2142,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     )
     if build_error is not None:
       return _build_response(False, message=build_error, error_category=_extract_error_category(build_error) or "unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
-    success_apply, evolved_state = _apply_kraus_to_cluster(entanglement_set_state, ops, target_positions, qutip)
+    success_apply, evolved_state = _apply_kraus_to_entanglement_set(entanglement_set_state, ops, target_positions, qutip)
     if not success_apply or evolved_state is None:
       return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply noise in entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
     previous_state = entanglement_set_state.density_matrix
@@ -2221,7 +2221,7 @@ def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta
           continue
         has_photon_lost = True
 
-      ops, _, build_error = _build_cluster_noise_ops(
+      ops, _, build_error = _build_entanglement_set_noise_ops(
         qutip=qutip,
         noise_kind=noise_kind,
         operation=temp_operation,
@@ -2231,7 +2231,7 @@ def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta
       )
       if build_error is not None:
         return _build_response(False, message=build_error, error_category=_extract_error_category(build_error) or "unsupported_noise", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
-      success_apply, evolved_state = _apply_kraus_to_cluster(entanglement_set_state, ops, [target_position], qutip)
+      success_apply, evolved_state = _apply_kraus_to_entanglement_set(entanglement_set_state, ops, [target_position], qutip)
       if not success_apply or evolved_state is None:
         return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply error_channel noise"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
       entanglement_set_state.density_matrix = evolved_state
@@ -2624,13 +2624,13 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       min_targets=min_targets,
     )
 
-  def _apply_cluster_unitary(
+  def _apply_entanglement_set_unitary(
       operation_targets: list[tuple[int, int, int, int]],
       unitary: Any,
       message: str,
   ) -> dict:
     previous_state = entanglement_set_state.density_matrix
-    success, evolved = _apply_unitary_to_cluster(entanglement_set_state, unitary, operation_targets, qutip)
+    success, evolved = _apply_unitary_to_entanglement_set(entanglement_set_state, unitary, operation_targets, qutip)
     if not success or evolved is None:
       return _finalize(
         _build_response(
@@ -2648,14 +2648,14 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
     response = _build_response(True, fidelity_estimate=fidelity, message=message)
     return _finalize(response)
 
-  def _apply_cluster_kraus(
+  def _apply_entanglement_set_kraus(
     noise_kind_for_ops: str,
     operation_for_ops: dict,
     operation_targets: list[tuple[int, int, int, int]],
     target_positions: list[int],
     message: Optional[str] = None,
   ) -> dict:
-    ops, meta, build_error = _build_cluster_noise_ops(
+    ops, meta, build_error = _build_entanglement_set_noise_ops(
       qutip=qutip,
       noise_kind=noise_kind_for_ops,
       operation=operation_for_ops,
@@ -2674,7 +2674,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       )
 
     previous_state = entanglement_set_state.density_matrix
-    success_apply, evolved_state = _apply_kraus_to_cluster(entanglement_set_state, ops, target_positions, qutip)
+    success_apply, evolved_state = _apply_kraus_to_entanglement_set(entanglement_set_state, ops, target_positions, qutip)
     if not success_apply or evolved_state is None:
       return _invalid_payload("qutip worker failed to apply advanced operation on entanglement-set")
     entanglement_set_state.density_matrix = evolved_state
@@ -2726,13 +2726,13 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
           else qutip.tensor(*([_identity_in_dim(qutip, normalized_dim)] * n_targets))
       )
       unitary = (-1j * local_h * duration).expm() if duration > 0.0 else identity_identity
-      return _apply_cluster_unitary(
-        operation_targets,
-        unitary,
-        f"qutip worker applied polarization_rotation axis={axis} for duration={duration}",
+      return _apply_entanglement_set_unitary(
+          operation_targets,
+          unitary,
+          f"qutip worker applied polarization_rotation axis={axis} for duration={duration}",
       )
 
-    def _cluster_identity_for_targets() -> Any:
+    def _entanglement_set_identity_for_targets() -> Any:
       if n_targets <= 1:
         return _identity_in_dim(qutip, normalized_dim)
       return qutip.tensor(*([_identity_in_dim(qutip, normalized_dim)] * n_targets))
@@ -2745,7 +2745,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       n_op = (_identity_in_dim(qutip, normalized_dim) - sigma_z) * 0.5
       local_h = n_op * n_op * params_value
       unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _identity_in_dim(qutip, normalized_dim ** n_targets)
-      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with chi={params_value} for duration={duration}")
+      return _apply_entanglement_set_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with chi={params_value} for duration={duration}")
 
     if kind_for_handler == "cross_kerr":
       if n_targets < 2:
@@ -2759,8 +2759,8 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       if n_op_left is None or n_op_right is None:
         return _invalid_payload("qutip worker cannot build cross_kerr operator")
       local_h = params_value * n_op_left * n_op_right
-      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
-      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied cross_kerr with chi={params_value} for duration={duration}")
+      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _entanglement_set_identity_for_targets()
+      return _apply_entanglement_set_unitary(operation_targets, unitary, f"qutip worker applied cross_kerr with chi={params_value} for duration={duration}")
 
     if kind_for_handler in {"phase_shift", "phase_modulation", "self_phase_modulation", "cross_phase_modulation", "nonlinear"}:
       phase_raw = payload.get("angle", payload.get("phi", payload.get("theta", 0.0)))
@@ -2780,8 +2780,8 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
           return _invalid_payload(f"qutip worker cannot build phase operator for {kind_for_handler}")
         local_h = -0.5 * embedded
 
-      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _cluster_identity_for_targets()
-      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with coeff={params_value}")
+      unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _entanglement_set_identity_for_targets()
+      return _apply_entanglement_set_unitary(operation_targets, unitary, f"qutip worker applied {kind_for_handler} with coeff={params_value}")
 
     if kind_for_handler in {"beam_splitter", "hom_interference", "mode_coupling", "two_mode_squeezing"}:
       # "beam_splitter"/"hom_interference": use Hamiltonian coupling form for two-mode mixing.
@@ -2840,9 +2840,9 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
     unitary = (
       (-1j * local_h * unitary_duration).expm()
       if unitary_duration > 0.0
-      else _cluster_identity_for_targets()
+      else _entanglement_set_identity_for_targets()
     )
-    response = _apply_cluster_unitary(
+    response = _apply_entanglement_set_unitary(
       operation_targets,
       unitary,
       f"qutip worker applied {kind_for_handler} with angle={coupling_or_angle}",
@@ -2898,7 +2898,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       temp_payload["p"] = _effective_probability(loss_probability)
       temp_operation = dict(operation)
       temp_operation["payload"] = temp_payload
-      loss_response = _apply_cluster_kraus(
+      loss_response = _apply_entanglement_set_kraus(
         "loss",
         temp_operation,
         operation_targets,
@@ -2935,7 +2935,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       temp_payload["p"] = _effective_probability(attenuation)
       temp_operation = dict(operation)
       temp_operation["payload"] = temp_payload
-      response = _apply_cluster_kraus(
+      response = _apply_entanglement_set_kraus(
         "loss",
         temp_operation,
         operation_targets,
@@ -2954,7 +2954,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         return _invalid_payload("qutip worker cannot build propagation phase operator")
       local_h = (-0.5 * dispersion) * sigma_z
       unitary = (-1j * local_h * duration).expm() if duration > 0.0 else _identity_in_dim(qutip, normalized_dim)
-      response = _apply_cluster_unitary(
+      response = _apply_entanglement_set_unitary(
         operation_targets,
         unitary,
         f"qutip worker applied photon propagation with phase_dispersion={dispersion}",
@@ -2992,7 +2992,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       temp_payload["p"] = p
       temp_operation = dict(operation)
       temp_operation["payload"] = temp_payload
-      return _apply_cluster_kraus("decoherence", temp_operation, operation_targets, target_positions, f"qutip worker applied timing_jitter with p={p}")
+      return _apply_entanglement_set_kraus("decoherence", temp_operation, operation_targets, target_positions, f"qutip worker applied timing_jitter with p={p}")
 
     if kind_for_handler == "delay":
       p = _effective_probability(payload.get("p", 0.0))
@@ -3005,14 +3005,14 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       temp_payload["p"] = p
       temp_operation = dict(operation)
       temp_operation["payload"] = temp_payload
-      return _apply_cluster_kraus("decoherence", temp_operation, operation_targets, target_positions, f"qutip worker applied delay with p={p}")
+      return _apply_entanglement_set_kraus("decoherence", temp_operation, operation_targets, target_positions, f"qutip worker applied delay with p={p}")
 
     noise_kind = kind_for_handler
     if kind_for_handler in {"dephasing", "polarization_decoherence", "decoherence"}:
       noise_kind = "decoherence"
     if kind_for_handler in {"attenuation", "loss"}:
       noise_kind = "loss"
-    return _apply_cluster_kraus(noise_kind, operation, operation_targets, target_positions, f"qutip worker applied {kind_for_handler} in entanglement-set")
+    return _apply_entanglement_set_kraus(noise_kind, operation, operation_targets, target_positions, f"qutip worker applied {kind_for_handler} in entanglement-set")
 
   def _handle_hamiltonian_lindblad() -> dict:
     operation_targets, _, error = _resolve_targets(min_targets=1)
@@ -3033,7 +3033,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         unitary = _identity_in_dim(qutip, h_op.shape[0])
       else:
         unitary = (-1j * h_op * duration).expm()
-      return _apply_cluster_unitary(operation_targets, unitary, f"qutip worker applied hamiltonian with expr={expression} for duration={duration}")
+      return _apply_entanglement_set_unitary(operation_targets, unitary, f"qutip worker applied hamiltonian with expr={expression} for duration={duration}")
 
     expression = payload.get("collapse", payload.get("expr", []))
     collapse_specs = _coerce_expr_as_list(expression)
@@ -3137,8 +3137,8 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         success_operator_local = sqrt_efficiency * plus_projector_local + sqrt_dark * minus_projector_local
         failure_operator_local = sqrt_miss * plus_projector_local + sqrt_no_dark * minus_projector_local
 
-        success_ok, success_operator = _apply_local_operator_to_cluster(entanglement_set_state, success_operator_local, target_positions, qutip)
-        failure_ok, failure_operator = _apply_local_operator_to_cluster(entanglement_set_state, failure_operator_local, target_positions, qutip)
+        success_ok, success_operator = _apply_local_operator_to_entanglement_set(entanglement_set_state, success_operator_local, target_positions, qutip)
+        failure_ok, failure_operator = _apply_local_operator_to_entanglement_set(entanglement_set_state, failure_operator_local, target_positions, qutip)
         if not success_ok or not failure_ok or success_operator is None or failure_operator is None:
           return _invalid_payload("qutip worker failed to build detection operator")
 
@@ -3168,11 +3168,11 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         minus_click_b_local = click_scale * psi_minus_like_projector
         none_operator_local = none_scale * (psi_plus_like_projector + psi_minus_like_projector) + failure_projector_local
 
-        plus_click_a_ok, plus_click_a = _apply_local_operator_to_cluster(entanglement_set_state, plus_click_a_local, target_positions, qutip)
-        plus_click_b_ok, plus_click_b = _apply_local_operator_to_cluster(entanglement_set_state, plus_click_b_local, target_positions, qutip)
-        minus_click_a_ok, minus_click_a = _apply_local_operator_to_cluster(entanglement_set_state, minus_click_a_local, target_positions, qutip)
-        minus_click_b_ok, minus_click_b = _apply_local_operator_to_cluster(entanglement_set_state, minus_click_b_local, target_positions, qutip)
-        none_ok, none_operator = _apply_local_operator_to_cluster(entanglement_set_state, none_operator_local, target_positions, qutip)
+        plus_click_a_ok, plus_click_a = _apply_local_operator_to_entanglement_set(entanglement_set_state, plus_click_a_local, target_positions, qutip)
+        plus_click_b_ok, plus_click_b = _apply_local_operator_to_entanglement_set(entanglement_set_state, plus_click_b_local, target_positions, qutip)
+        minus_click_a_ok, minus_click_a = _apply_local_operator_to_entanglement_set(entanglement_set_state, minus_click_a_local, target_positions, qutip)
+        minus_click_b_ok, minus_click_b = _apply_local_operator_to_entanglement_set(entanglement_set_state, minus_click_b_local, target_positions, qutip)
+        none_ok, none_operator = _apply_local_operator_to_entanglement_set(entanglement_set_state, none_operator_local, target_positions, qutip)
         if (
             not plus_click_a_ok
             or not plus_click_b_ok

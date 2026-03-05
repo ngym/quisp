@@ -68,7 +68,7 @@ Legend:
 - `qutip_profile_overrides`
 
 `qutip_worker.py` は `kind` に関わらず単一 `qutip_profile` を適用する。
-`cluster_id` は全 operation で共通識別子として使われ、`mode` で分岐しない。
+`entanglement_set_id` は全 operation で共通識別子として使われ、`mode` 依存分岐は行わない。
 
 既定は `standard_light` (`dim=2`)。
 

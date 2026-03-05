@@ -103,6 +103,15 @@ def _assert_meta_contains(response: Dict[str, Any], key: str, expected_fragment:
     assert expected_fragment in value
 
 
+def _get_entanglement_set_state(qutip_worker: Any, entanglement_set_id: int):
+    return qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES.get(entanglement_set_id)
+
+
+def _assert_density_matrix_close(lhs: Any, rhs: Any, *, tol: float = 1e-9) -> None:
+    diff = lhs - rhs
+    assert float(diff.norm()) <= tol
+
+
 @pytest.mark.parametrize("legacy_key", ["cluster_id", "set_id"])
 def test_operation_legacy_entanglement_set_id_keys_rejected(legacy_key: str) -> None:
     _qutip_available()
@@ -840,6 +849,162 @@ def test_detection_two_photon_other_bell_states_map_to_failure_patterns(
     assert pattern in expected_patterns
     assert response.get("measured_plus") is False
     assert response.get("detection_click_count") == 1
+
+
+def test_hom_interference_updates_density_matrix_by_expected_unitary() -> None:
+    _qutip_available()
+    _clear_qutip_entanglement_set_state()
+    qutip_worker = _qutip_worker_module()
+    qutip_modules = qutip_worker._coerce_qutip_modules()
+    assert qutip_modules is not None
+    qutip, _ = qutip_modules
+
+    entanglement_set_id = 9701
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 40}
+    target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 41}
+
+    # prepare a non-trivial Bell state in the entanglement-set
+    _call_entanglement_set_worker(
+        {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9701,
+    )
+    _call_entanglement_set_worker(
+        {"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9702,
+    )
+    _call_entanglement_set_worker(
+        {"kind": "unitary", "targets": [target0, target1], "payload": {"gate": "CNOT"}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9703,
+    )
+    _call_entanglement_set_worker(
+        {"kind": "unitary", "targets": [target0], "payload": {"gate": "Z"}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9704,
+    )
+
+    before = _get_entanglement_set_state(qutip_worker, entanglement_set_id)
+    assert before is not None
+    before_state = before.density_matrix
+    assert float(before_state.tr()) == pytest.approx(1.0, rel=1e-12)
+
+    theta = math.pi / 7
+    duration = 0.23
+    response = _call_entanglement_set_worker(
+        {
+            "kind": "hom_interference",
+            "duration": duration,
+            "targets": [target0, target1],
+            "payload": {"theta": theta},
+        },
+        entanglement_set_id=entanglement_set_id,
+        seed=9705,
+    )
+    _assert_response(response, success=True)
+    _assert_meta(response, "entanglement_set_size", 2)
+
+    sx = qutip_worker._logical_pauli_in_dim(qutip, 2, "sx")
+    sy = qutip_worker._logical_pauli_in_dim(qutip, 2, "sy")
+    assert sx is not None and sy is not None
+    sx0 = qutip.tensor(sx, qutip.qeye(2))
+    sx1 = qutip.tensor(qutip.qeye(2), sx)
+    sy0 = qutip.tensor(sy, qutip.qeye(2))
+    sy1 = qutip.tensor(qutip.qeye(2), sy)
+    hamiltonian = 0.5 * theta * (sx0 * sx1 + sy0 * sy1)
+    expected_unitary = (-1j * hamiltonian * duration).expm()
+    expected_state = expected_unitary * before_state * expected_unitary.dag()
+
+    after = _get_entanglement_set_state(qutip_worker, entanglement_set_id)
+    assert after is not None
+    after_state = after.density_matrix
+    assert float(after_state.tr()) == pytest.approx(1.0, rel=1e-12)
+    _assert_density_matrix_close(after_state, expected_state)
+
+
+def test_detection_collapse_state_matches_selected_branch_kraus_operator() -> None:
+    _qutip_available()
+    _clear_qutip_entanglement_set_state()
+    qutip_worker = _qutip_worker_module()
+    qutip_modules = qutip_worker._coerce_qutip_modules()
+    assert qutip_modules is not None
+    qutip, _ = qutip_modules
+
+    entanglement_set_id = 9702
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 42}
+    target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 43}
+
+    # prepare a psi+ state
+    _call_entanglement_set_worker({"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}}, entanglement_set_id=entanglement_set_id, seed=9707)
+    _call_entanglement_set_worker({"kind": "unitary", "targets": [target0, target1], "payload": {"gate": "CNOT"}}, entanglement_set_id=entanglement_set_id, seed=9708)
+    _call_entanglement_set_worker({"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}}, entanglement_set_id=entanglement_set_id, seed=9709)
+
+    # use θ=0 as HOM-noop on this state so input to detection is explicit and reproducible
+    _call_entanglement_set_worker(
+        {"kind": "hom_interference", "targets": [target0, target1], "duration": 0.9, "payload": {"theta": 0.0}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9710,
+    )
+
+    before = _get_entanglement_set_state(qutip_worker, entanglement_set_id)
+    assert before is not None
+    rho_before = before.density_matrix
+
+    response = _call_entanglement_set_worker(
+        {
+            "kind": "detection",
+            "targets": [target0, target1],
+            "payload": {"efficiency": 1.0, "visibility": 1.0, "dark_count": 0.0},
+        },
+        entanglement_set_id=entanglement_set_id,
+        seed=9711,
+    )
+    _assert_response(response, success=True)
+    assert response.get("detection_click_count") in {1, 2}
+    pattern = response.get("outcome_pattern")
+    assert pattern in {"dAh,dAv", "dBh,dBv", "dAh,dBv", "dAv,dBh", "none"}
+
+    psi_plus_like, psi_minus_like = qutip_worker._bell_detection_projectors_for_two_targets(qutip, 2)
+    phi_plus_like, phi_minus_like = qutip_worker._phi_like_detection_projectors_for_two_targets(qutip, 2)
+    identity_local = qutip.tensor(qutip.qeye(2), qutip.qeye(2))
+    failure_projector = identity_local - psi_plus_like - psi_minus_like - phi_plus_like - phi_minus_like
+
+    scale = math.sqrt(0.5)
+    branch_operators = {
+        "dAh,dAv": scale * psi_plus_like,
+        "dBh,dBv": scale * psi_plus_like,
+        "dAh,dBv": scale * psi_minus_like,
+        "dAv,dBh": scale * psi_minus_like,
+        "dAh": scale * phi_plus_like,
+        "dAv": scale * phi_plus_like,
+        "dBh": scale * phi_minus_like,
+        "dBv": scale * phi_minus_like,
+        "none": failure_projector,
+    }
+    selected_operator = branch_operators[pattern]
+    rho_selected = selected_operator * rho_before * selected_operator.dag()
+    branch_probability = float(rho_selected.tr())
+    collapsed_norm = float((rho_selected * rho_selected.dag()).tr())
+    assert branch_probability >= 0.0
+    assert response.get("branch_probability") is not None
+    if pattern == "none":
+        assert branch_probability == pytest.approx(0.0)
+        assert float(response.get("branch_probability")) == pytest.approx(0.0)
+        return
+
+    assert collapsed_norm > 0.0
+    rho_after_expected = rho_selected / collapsed_norm
+    after = _get_entanglement_set_state(qutip_worker, entanglement_set_id)
+    assert after is not None
+    rho_after = after.density_matrix
+    _assert_density_matrix_close(rho_after, rho_after_expected)
+    assert float(response.get("branch_probability")) == pytest.approx(branch_probability, rel=1e-11, abs=1e-11)
+
+    if pattern in {"dAh,dAv", "dBh,dBv", "dAh,dBv", "dAv,dBh"}:
+        assert response.get("detection_click_count") == 2
+    else:
+        assert response.get("detection_click_count") == 1
 
 
 def test_hom_interference_defaults_to_50_50_angle_when_omitted() -> None:

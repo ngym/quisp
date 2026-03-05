@@ -46,4 +46,4 @@
 - `qutip_density_matrix` は `qutip_profile` の単一設定で動作する。
 - `qutip_node_profile` / `qutip_link_profile` は非対応（`invalid_profile`）。
 - `qutip_profile_overrides` は `dim`, `leakage_enabled`, `truncation` のみ受理。
-- `cluster_id` は全 operation で共通に使い、`mode` によるクラスタ分離は行わない。
+- `entanglement_set_id` は全 operation で共通に使い、`mode` による分離は行わない。

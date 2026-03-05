@@ -77,8 +77,8 @@ struct PhysicalOperation {
   std::vector<double> params;
   std::string basis;
   nlohmann::json payload = nlohmann::json::object();
-  int64_t cluster_id = -1;
-  std::string cluster_event;
+  int64_t entanglement_set_id = -1;
+  std::string entanglement_set_event;
 };
 
 class IPhysicalBackend {

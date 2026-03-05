@@ -154,13 +154,13 @@ std::string QutipBackend::qubitKey(const QubitHandle& qubit) const {
   return qubitHandleKey(qubit);
 }
 
-int64_t QutipBackend::nextClusterId() const {
-  const auto id = next_cluster_id_;
-  ++next_cluster_id_;
+int64_t QutipBackend::nextEntanglementSetId() const {
+  const auto id = next_entanglement_set_id_;
+  ++next_entanglement_set_id_;
   return id;
 }
 
-int64_t QutipBackend::attachClusterToTargets(const std::vector<QubitHandle>& targets) const {
+int64_t QutipBackend::attachEntanglementSetToTargets(const std::vector<QubitHandle>& targets) const {
   if (targets.empty()) {
     return -1;
   }
@@ -174,79 +174,79 @@ int64_t QutipBackend::attachClusterToTargets(const std::vector<QubitHandle>& tar
     }
   }
 
-  std::vector<ClusterId> seen_clusters;
+  std::vector<EntanglementSetId> seen_entanglement_sets;
   for (const auto& key : keys) {
-    const auto found = qubit_cluster_map_.find(key);
-    if (found == qubit_cluster_map_.end()) {
+    const auto found = qubit_entanglement_set_map_.find(key);
+    if (found == qubit_entanglement_set_map_.end()) {
       continue;
     }
-    const auto cluster_id = found->second;
-    if (std::find(seen_clusters.begin(), seen_clusters.end(), cluster_id) == seen_clusters.end()) {
-      seen_clusters.push_back(cluster_id);
+    const auto entanglement_set_id = found->second;
+    if (std::find(seen_entanglement_sets.begin(), seen_entanglement_sets.end(), entanglement_set_id) == seen_entanglement_sets.end()) {
+      seen_entanglement_sets.push_back(entanglement_set_id);
     }
   }
 
-  if (seen_clusters.empty()) {
-    const auto cluster_id = nextClusterId();
-    auto& members = cluster_members_[cluster_id];
+  if (seen_entanglement_sets.empty()) {
+    const auto entanglement_set_id = nextEntanglementSetId();
+    auto& members = entanglement_set_members_[entanglement_set_id];
     for (const auto& key : keys) {
       members.insert(key);
-      qubit_cluster_map_[key] = cluster_id;
+      qubit_entanglement_set_map_[key] = entanglement_set_id;
     }
-    return cluster_id;
+    return entanglement_set_id;
   }
 
-  auto main_cluster_id = seen_clusters.front();
-  auto& main_members = cluster_members_[main_cluster_id];
+  auto main_entanglement_set_id = seen_entanglement_sets.front();
+  auto& main_members = entanglement_set_members_[main_entanglement_set_id];
   for (const auto key : keys) {
-    const auto known = qubit_cluster_map_.find(key);
-    if (known == qubit_cluster_map_.end()) {
+    const auto known = qubit_entanglement_set_map_.find(key);
+    if (known == qubit_entanglement_set_map_.end()) {
       main_members.insert(key);
-      qubit_cluster_map_[key] = main_cluster_id;
+      qubit_entanglement_set_map_[key] = main_entanglement_set_id;
       continue;
     }
 
-    const auto cluster_id = known->second;
-    if (cluster_id == main_cluster_id) {
+    const auto entanglement_set_id = known->second;
+    if (entanglement_set_id == main_entanglement_set_id) {
       main_members.insert(key);
       continue;
     }
 
-    const auto merged_cluster = cluster_members_.find(cluster_id);
-    if (merged_cluster != cluster_members_.end()) {
-      for (const auto& merged_key : merged_cluster->second) {
+    const auto merged_entanglement_set = entanglement_set_members_.find(entanglement_set_id);
+    if (merged_entanglement_set != entanglement_set_members_.end()) {
+      for (const auto& merged_key : merged_entanglement_set->second) {
         main_members.insert(merged_key);
-        qubit_cluster_map_[merged_key] = main_cluster_id;
+        qubit_entanglement_set_map_[merged_key] = main_entanglement_set_id;
       }
-      cluster_members_.erase(merged_cluster);
+      entanglement_set_members_.erase(merged_entanglement_set);
     } else {
       main_members.insert(key);
-      qubit_cluster_map_[key] = main_cluster_id;
+      qubit_entanglement_set_map_[key] = main_entanglement_set_id;
     }
   }
 
-  return main_cluster_id;
+  return main_entanglement_set_id;
 }
 
-void QutipBackend::detachTargetFromCluster(const QubitHandle& qubit) const {
+void QutipBackend::detachTargetFromEntanglementSet(const QubitHandle& qubit) const {
   const auto key = qubitKey(qubit);
-  const auto mapped = qubit_cluster_map_.find(key);
-  if (mapped == qubit_cluster_map_.end()) {
+  const auto mapped = qubit_entanglement_set_map_.find(key);
+  if (mapped == qubit_entanglement_set_map_.end()) {
     return;
   }
 
-  const auto cluster_id = mapped->second;
-  qubit_cluster_map_.erase(mapped);
+  const auto entanglement_set_id = mapped->second;
+  qubit_entanglement_set_map_.erase(mapped);
 
-  const auto cluster = cluster_members_.find(cluster_id);
-  if (cluster == cluster_members_.end()) {
+  const auto entanglement_set = entanglement_set_members_.find(entanglement_set_id);
+  if (entanglement_set == entanglement_set_members_.end()) {
     return;
   }
-  cluster->second.erase(key);
-  if (!cluster->second.empty()) {
+  entanglement_set->second.erase(key);
+  if (!entanglement_set->second.empty()) {
     return;
   }
-  cluster_members_.erase(cluster);
+  entanglement_set_members_.erase(entanglement_set);
 }
 
 std::string findWorkerScript(const nlohmann::json& backend_config) {
@@ -301,8 +301,8 @@ nlohmann::json operationToJson(const PhysicalOperation& operation) {
   op["params"] = operation.params;
   op["basis"] = operation.basis;
   op["payload"] = operation.payload;
-  op["cluster_id"] = operation.cluster_id;
-  op["cluster_event"] = operation.cluster_event;
+  op["entanglement_set_id"] = operation.entanglement_set_id;
+  op["entanglement_set_event"] = operation.entanglement_set_event;
 
   for (const auto& handle : operation.targets) {
     op["targets"].push_back(qubitHandleToJson(handle));
@@ -714,8 +714,8 @@ OperationResult QutipBackend::runUnitary(const BackendContext& ctx, const std::s
   PhysicalOperation operation;
   operation.kind = "unitary";
   operation.targets = qubits;
-  operation.cluster_id = attachClusterToTargets(operation.targets);
-  operation.cluster_event = context.empty() ? "unitary" : context;
+  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets);
+  operation.entanglement_set_event = context.empty() ? "unitary" : context;
   operation.payload = {{"kind", "unitary"}, {"gate", normalizedGateName(gate)}, {"context", context}};
   return executeQutipWorker(ctx, operation);
 }
@@ -728,8 +728,8 @@ OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHan
   PhysicalOperation operation;
   operation.kind = "measurement";
   operation.targets = {qubit};
-  operation.cluster_id = attachClusterToTargets(operation.targets);
-  operation.cluster_event = "measurement";
+  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets);
+  operation.entanglement_set_event = "measurement";
   auto basis_label = std::string("Z");
   if (basis == MeasureBasis::X) {
     basis_label = "X";
@@ -742,7 +742,7 @@ OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHan
   operation.payload = {{"basis", basis_label}, {"noiseless", is_noiseless}};
   auto result = executeQutipWorker(ctx, operation);
   if (result.success) {
-    detachTargetFromCluster(qubit);
+    detachTargetFromEntanglementSet(qubit);
   }
   return result;
 }
@@ -757,8 +757,8 @@ OperationResult QutipBackend::runNoise(const BackendContext& ctx, QubitHandle qu
   PhysicalOperation operation;
   operation.kind = "noise";
   operation.targets = {qubit};
-  operation.cluster_id = attachClusterToTargets(operation.targets);
-  operation.cluster_event = "noise";
+  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets);
+  operation.entanglement_set_event = "noise";
   operation.payload = {
       {"kind", "noise"},
       {"noise_kind", noise_kind},
@@ -780,8 +780,8 @@ OperationResult QutipBackend::applyErrorChannel(const BackendContext& ctx, const
   PhysicalOperation operation;
   operation.kind = "error_channel";
   operation.targets = qubits;
-  operation.cluster_id = attachClusterToTargets(operation.targets);
-  operation.cluster_event = "error_channel";
+  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets);
+  operation.entanglement_set_event = "error_channel";
   operation.payload = payload;
   return executeQutipWorker(ctx, operation);
 }
@@ -1012,13 +1012,13 @@ OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const Ph
       return unsupported("qutip backend advanced operation invalid control handle(s) [category=invalid_payload]");
     }
 
-    PhysicalOperation clustered_operation = operation;
-    std::vector<QubitHandle> involved = clustered_operation.targets;
-    involved.reserve(clustered_operation.targets.size() + clustered_operation.controls.size());
-    involved.insert(involved.end(), clustered_operation.controls.begin(), clustered_operation.controls.end());
-    clustered_operation.cluster_id = attachClusterToTargets(involved);
-    clustered_operation.cluster_event = normalized_kind;
-    return executeQutipWorker(ctx, clustered_operation);
+    PhysicalOperation entanglement_set_operation = operation;
+    std::vector<QubitHandle> involved = entanglement_set_operation.targets;
+    involved.reserve(entanglement_set_operation.targets.size() + entanglement_set_operation.controls.size());
+    involved.insert(involved.end(), entanglement_set_operation.controls.begin(), entanglement_set_operation.controls.end());
+    entanglement_set_operation.entanglement_set_id = attachEntanglementSetToTargets(involved);
+    entanglement_set_operation.entanglement_set_event = normalized_kind;
+    return executeQutipWorker(ctx, entanglement_set_operation);
   }
 
   return unsupported("qutip backend does not support operation.kind=" + operation.kind + " [category=unsupported_kind]");

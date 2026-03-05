@@ -42,7 +42,7 @@ def _call_worker(operation: Dict[str, Any], seed: int = 12345) -> Dict[str, Any]
   import scripts.qutip_worker as qutip_worker
 
   operation = dict(operation)
-  operation.setdefault("cluster_id", int(seed) + 100000)
+  operation.setdefault("entanglement_set_id", int(seed) + 100000)
   backend_config = dict(
       operation.pop("backend_config", {
           "python_executable": "python3",

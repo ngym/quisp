@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Pytest coverage for qutip worker profile routing and metadata.
 
-These tests exercise profile resolution paths added for node/link profile support,
-including custom overrides and invalid fallback behavior.
+These tests exercise entanglement-set keyed worker behavior introduced in vNext,
+including profile routing and invalid fallback behavior.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def _call_worker(operation: Dict[str, Any], seed: int = 12345) -> Dict[str, Any]
     qutip_worker = _qutip_worker_module()
 
     operation = dict(operation)
-    operation.setdefault("cluster_id", int(seed) + 100000)
+    operation.setdefault("entanglement_set_id", int(seed) + 100000)
     backend_config = dict(operation.pop("backend_config", {}))
     backend_config.setdefault("python_executable", "python3")
     backend_config.setdefault("qutip_backend_class", "qutip_density_matrix")
@@ -61,20 +61,39 @@ def _call_worker(operation: Dict[str, Any], seed: int = 12345) -> Dict[str, Any]
     return qutip_worker.run_operation(request)
 
 
-def _call_cluster_worker(
+def _call_entanglement_set_worker(
     operation: Dict[str, Any],
-    cluster_id: int,
+    entanglement_set_id: int,
     seed: int = 12345,
 ) -> Dict[str, Any]:
     operation = dict(operation)
-    operation["cluster_id"] = cluster_id
+    operation["entanglement_set_id"] = entanglement_set_id
     return _call_worker(operation, seed=seed)
 
 
-def _clear_qutip_cluster_state() -> None:
+def _call_cluster_worker(
+    operation: Dict[str, Any],
+    entanglement_set_id: int | None = None,
+    seed: int = 12345,
+    cluster_id: int | None = None,
+) -> Dict[str, Any]:
+    if entanglement_set_id is None:
+        if cluster_id is None:
+            raise ValueError("entanglement_set_id (or legacy cluster_id) is required")
+        entanglement_set_id = cluster_id
+    elif cluster_id is not None and cluster_id != entanglement_set_id:
+        raise ValueError("entanglement_set_id and cluster_id must be identical if both are set")
+    return _call_entanglement_set_worker(operation, entanglement_set_id, seed=seed)
+
+
+def _clear_qutip_entanglement_set_state() -> None:
     qutip_worker = _qutip_worker_module()
-    if hasattr(qutip_worker, "_QUTIP_CLUSTER_STATES"):
-        qutip_worker._QUTIP_CLUSTER_STATES.clear()
+    if hasattr(qutip_worker, "_QUTIP_ENTANGLEMENT_SET_STATES"):
+        qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES.clear()
+
+
+def _clear_qutip_cluster_state() -> None:
+    _clear_qutip_entanglement_set_state()
 
 
 def _assert_response(response: Dict[str, Any], success: bool = True) -> None:
@@ -871,9 +890,9 @@ def test_photon_pipeline_representation_transitions() -> None:
         seed=501,
     )
     _assert_response(response_emission, success=True)
-    _assert_meta(response_emission, "cluster_id", cluster_id)
-    _assert_meta(response_emission, "cluster_representation", "cluster_dm")
-    _assert_meta(response_emission, "cluster_size", 1)
+    _assert_meta(response_emission, "entanglement_set_id", cluster_id)
+    _assert_meta(response_emission, "entanglement_set_representation", "entanglement_set_dm")
+    _assert_meta(response_emission, "entanglement_set_size", 1)
 
     response_collect = _call_cluster_worker(
         {
@@ -886,8 +905,8 @@ def test_photon_pipeline_representation_transitions() -> None:
         seed=502,
     )
     _assert_response(response_collect, success=True)
-    _assert_meta(response_collect, "cluster_representation", "cluster_dm")
-    _assert_meta(response_collect, "cluster_size", 1)
+    _assert_meta(response_collect, "entanglement_set_representation", "entanglement_set_dm")
+    _assert_meta(response_collect, "entanglement_set_size", 1)
 
     response_propagation = _call_cluster_worker(
         {
@@ -901,8 +920,8 @@ def test_photon_pipeline_representation_transitions() -> None:
         seed=503,
     )
     _assert_response(response_propagation, success=True)
-    _assert_meta(response_propagation, "cluster_representation", "cluster_dm")
-    _assert_meta(response_propagation, "cluster_size", 1)
+    _assert_meta(response_propagation, "entanglement_set_representation", "entanglement_set_dm")
+    _assert_meta(response_propagation, "entanglement_set_size", 1)
     _assert_meta(response_propagation, "propagation_attenuation", 0.08)
     _assert_meta(response_propagation, "propagation_dispersion", 0.05)
 
@@ -918,9 +937,9 @@ def test_photon_pipeline_representation_transitions() -> None:
         seed=504,
     )
     _assert_response(response_hom, success=True)
-    _assert_meta(response_hom, "cluster_representation", "cluster_dm")
-    _assert_meta(response_hom, "cluster_id", cluster_id)
-    _assert_meta(response_hom, "cluster_size", 2)
+    _assert_meta(response_hom, "entanglement_set_representation", "entanglement_set_dm")
+    _assert_meta(response_hom, "entanglement_set_id", cluster_id)
+    _assert_meta(response_hom, "entanglement_set_size", 2)
 
 
 _ADVANCED_SINGLE_TARGET_INVALID_CASES = [
@@ -958,8 +977,8 @@ def test_cluster_state_isolated_profiles() -> None:
         seed=100,
     )
     _assert_response(response_node, success=True)
-    _assert_meta(response_node, "cluster_id", 3001)
-    _assert_meta(response_node, "cluster_size", 1)
+    _assert_meta(response_node, "entanglement_set_id", 3001)
+    _assert_meta(response_node, "entanglement_set_size", 1)
 
     response_node_2 = _call_cluster_worker(
         {
@@ -972,12 +991,12 @@ def test_cluster_state_isolated_profiles() -> None:
         seed=100,
     )
     _assert_response(response_node_2, success=True)
-    _assert_meta(response_node_2, "cluster_id", 3002)
-    _assert_meta(response_node_2, "cluster_size", 1)
+    _assert_meta(response_node_2, "entanglement_set_id", 3002)
+    _assert_meta(response_node_2, "entanglement_set_size", 1)
 
-    assert 3001 in qutip_worker._QUTIP_CLUSTER_STATES
-    assert 3002 in qutip_worker._QUTIP_CLUSTER_STATES
-    assert len(qutip_worker._QUTIP_CLUSTER_STATES) >= 2
+    assert 3001 in qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES
+    assert 3002 in qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES
+    assert len(qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES) >= 2
 
 
 def test_cluster_state_single_cluster_id_across_mixed_operations() -> None:
@@ -998,7 +1017,7 @@ def test_cluster_state_single_cluster_id_across_mixed_operations() -> None:
         seed=200,
     )
     _assert_response(response_node, success=True)
-    _assert_meta(response_node, "cluster_size", 1)
+    _assert_meta(response_node, "entanglement_set_size", 1)
 
     response_hom = _call_cluster_worker(
         {
@@ -1014,7 +1033,7 @@ def test_cluster_state_single_cluster_id_across_mixed_operations() -> None:
         seed=201,
     )
     _assert_response(response_hom, success=True)
-    _assert_meta(response_hom, "cluster_size", 2)
+    _assert_meta(response_hom, "entanglement_set_size", 2)
 
     response_detection = _call_cluster_worker(
         {
@@ -1042,8 +1061,8 @@ def test_cluster_state_single_cluster_id_across_mixed_operations() -> None:
         seed=203,
     )
     _assert_response(response_error, success=True)
-    assert cluster_id in qutip_worker._QUTIP_CLUSTER_STATES
-    assert len(qutip_worker._QUTIP_CLUSTER_STATES) == 1
+    assert cluster_id in qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES
+    assert len(qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES) == 1
 
 
 def test_cluster_meta_has_no_mode_and_cluster_key_is_plain_id() -> None:
@@ -1063,8 +1082,7 @@ def test_cluster_meta_has_no_mode_and_cluster_key_is_plain_id() -> None:
     _assert_response(response, success=True)
     meta = response.get("meta", {})
     assert "cluster_mode" not in meta
-    assert str(meta.get("cluster_key")) == str(cluster_id)
-    assert ":" not in str(meta.get("cluster_key"))
+    assert str(meta.get("entanglement_set_id")) == str(cluster_id)
 
 
 def test_cluster_state_entangle_measurement_detach() -> None:
@@ -1086,8 +1104,8 @@ def test_cluster_state_entangle_measurement_detach() -> None:
         seed=101,
     )
     _assert_response(response_entangle, success=True)
-    _assert_meta(response_entangle, "cluster_id", 4001)
-    _assert_meta(response_entangle, "cluster_size", 2)
+    _assert_meta(response_entangle, "entanglement_set_id", 4001)
+    _assert_meta(response_entangle, "entanglement_set_size", 2)
 
     response_measure_first = _call_cluster_worker(
         {
@@ -1100,8 +1118,8 @@ def test_cluster_state_entangle_measurement_detach() -> None:
         seed=102,
     )
     _assert_response(response_measure_first, success=True)
-    _assert_meta(response_measure_first, "cluster_id", 4001)
-    _assert_meta(response_measure_first, "cluster_size", 1)
+    _assert_meta(response_measure_first, "entanglement_set_id", 4001)
+    _assert_meta(response_measure_first, "entanglement_set_size", 1)
 
     response_measure_second = _call_cluster_worker(
         {
@@ -1114,8 +1132,8 @@ def test_cluster_state_entangle_measurement_detach() -> None:
         seed=103,
     )
     _assert_response(response_measure_second, success=True)
-    assert "cluster_size" not in response_measure_second.get("meta", {})
-    assert 4001 not in qutip_worker._QUTIP_CLUSTER_STATES
+    assert "entanglement_set_size" not in response_measure_second.get("meta", {})
+    assert 4001 not in qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES
 
 
 def test_default_profile_preserves_baseline_compatibility() -> None:

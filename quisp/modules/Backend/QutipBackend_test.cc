@@ -327,16 +327,7 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
   no_op_op.kind = "no-op";
   no_op_op.targets = {QubitHandle{1, 0, 0, 10}};
   const auto no_op_result = qutip_backend.applyOperation(defaultContext(), no_op_op);
-  if (runtimes_available) {
-    // no-op intentionally returns success with a concise message that may be empty.
-  } else {
-    EXPECT_FALSE(no_op_result.message.empty());
-  }
-  if (runtimes_available) {
-    EXPECT_TRUE(no_op_result.success) << "kind=" << no_op_op.kind;
-  } else {
-    EXPECT_FALSE(no_op_result.success) << "kind=" << no_op_op.kind;
-  }
+  EXPECT_TRUE(no_op_result.success) << "kind=" << no_op_op.kind;
 }
 
 TEST(QutipBackendContractTest, ApplyOperationRejectsUnknownKind) {

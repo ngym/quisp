@@ -38,7 +38,6 @@ class BellStateAnalyzer : public omnetpp::cSimpleModule {
   void processPhotonRecords();
   physical::types::BSAClickResult processIndistinguishPhotons(PhotonRecord &left_photon, PhotonRecord &right_photon);
   physical::types::BSAClickResult determineClickResult(const std::string& outcome_pattern);
-  std::string normalizeOutcomePattern(const std::string& pattern) const;
   void validateProperties();
 
   // device parameters

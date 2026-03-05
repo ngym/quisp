@@ -870,30 +870,6 @@ def _build_response(
   return response
 
 
-def _normalize_detector_pattern(pattern: Any) -> str:
-  if not isinstance(pattern, str):
-    return ""
-  raw_tokens = [token.strip().lower() for token in pattern.split(",") if token.strip()]
-  if not raw_tokens:
-    return ""
-  if len(raw_tokens) == 1:
-    return raw_tokens[0]
-  if len(raw_tokens) != 2:
-    return ",".join(raw_tokens)
-
-  normalized: list[tuple[int, str]] = []
-  for token in raw_tokens:
-    if not token.startswith("d"):
-      return ",".join(sorted(raw_tokens))
-    try:
-      index = int(token[1:])
-    except ValueError:
-      return ",".join(sorted(raw_tokens))
-    normalized.append((index, token))
-  normalized.sort(key=lambda item: item[0])
-  return ",".join(token for _, token in normalized)
-
-
 def _attach_profile_metadata(response: dict, profile_meta: Optional[dict[str, Any]]) -> dict:
   if profile_meta is None:
     return response
@@ -948,11 +924,22 @@ def _bell_detection_projectors_for_two_targets(qutip: Any, dim: int) -> tuple[An
   basis0 = qutip.basis(normalized_dim, 0)
   basis1 = qutip.basis(normalized_dim, 1)
   # ψ+ / ψ− Bell-like two-photon sectors used for HOM+PBS click mapping:
-  #   ψ+  -> d0,d1 or d2,d3
-  #   ψ−  -> d0,d3 or d1,d2
+  #   ψ+  -> dAh,dAv or dBh,dBv
+  #   ψ−  -> dAh,dBv or dAv,dBh
   psi_plus_like = (qutip.tensor(basis0, basis1) + qutip.tensor(basis1, basis0)) / math.sqrt(2)
   psi_minus_like = (qutip.tensor(basis0, basis1) - qutip.tensor(basis1, basis0)) / math.sqrt(2)
   return psi_plus_like * psi_plus_like.dag(), psi_minus_like * psi_minus_like.dag()
+
+
+def _phi_like_detection_projectors_for_two_targets(qutip: Any, dim: int) -> tuple[Any, Any]:
+  normalized_dim = max(2, int(dim))
+  basis0 = qutip.basis(normalized_dim, 0)
+  basis1 = qutip.basis(normalized_dim, 1)
+  # φ-like sectors are modeled for physical click-pattern reproduction.
+  # They map to BSA failure outcomes in backend decision logic.
+  phi_plus_like = (qutip.tensor(basis0, basis0) + qutip.tensor(basis1, basis1)) / math.sqrt(2)
+  phi_minus_like = (qutip.tensor(basis0, basis0) - qutip.tensor(basis1, basis1)) / math.sqrt(2)
+  return phi_plus_like * phi_plus_like.dag(), phi_minus_like * phi_minus_like.dag()
 
 
 def _onoff_detection_projectors_for_one_target(qutip: Any, dim: int) -> tuple[Any, Any]:
@@ -3107,17 +3094,19 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
 
       if n_targets == 1:
         plus_projector_local, minus_projector_local = _onoff_detection_projectors_for_one_target(qutip, normalized_dim)
-        success_event = "d0"
+        success_event = "dAh"
         failure_event = "none"
         success_outcome = "click"
         failure_outcome = "no_click"
       else:
         # In the HOM+BSA convention:
-        #  ψ+ (psi_plus_like) -> d0,d1 or d2,d3
-        #  ψ− (psi_minus_like) -> d0,d3 or d1,d2
+        #  ψ+ (psi_plus_like) -> dAh,dAv or dBh,dBv
+        #  ψ− (psi_minus_like) -> dAh,dBv or dAv,dBh
+        #  φ± (failure outcomes) -> dAh, dAv, dBh, dBv
         psi_plus_like_projector, psi_minus_like_projector = _bell_detection_projectors_for_two_targets(qutip, normalized_dim)
+        phi_plus_like_projector, phi_minus_like_projector = _phi_like_detection_projectors_for_two_targets(qutip, normalized_dim)
         identity_local = qutip.tensor(qutip.qeye(normalized_dim), qutip.qeye(normalized_dim))
-        failure_projector_local = identity_local - psi_plus_like_projector - psi_minus_like_projector
+        failure_projector_local = identity_local - psi_plus_like_projector - psi_minus_like_projector - phi_plus_like_projector - phi_minus_like_projector
         success_outcome = ""
         failure_outcome = "failure"
 
@@ -3166,23 +3155,59 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         plus_click_b_local = click_scale * psi_plus_like_projector
         minus_click_a_local = click_scale * psi_minus_like_projector
         minus_click_b_local = click_scale * psi_minus_like_projector
+        phi_plus_click_a_local = click_scale * phi_plus_like_projector
+        phi_plus_click_b_local = click_scale * phi_plus_like_projector
+        phi_minus_click_a_local = click_scale * phi_minus_like_projector
+        phi_minus_click_b_local = click_scale * phi_minus_like_projector
         none_operator_local = none_scale * (psi_plus_like_projector + psi_minus_like_projector) + failure_projector_local
 
         plus_click_a_ok, plus_click_a = _apply_local_operator_to_entanglement_set(entanglement_set_state, plus_click_a_local, target_positions, qutip)
         plus_click_b_ok, plus_click_b = _apply_local_operator_to_entanglement_set(entanglement_set_state, plus_click_b_local, target_positions, qutip)
         minus_click_a_ok, minus_click_a = _apply_local_operator_to_entanglement_set(entanglement_set_state, minus_click_a_local, target_positions, qutip)
         minus_click_b_ok, minus_click_b = _apply_local_operator_to_entanglement_set(entanglement_set_state, minus_click_b_local, target_positions, qutip)
+        phi_plus_click_a_ok, phi_plus_click_a = _apply_local_operator_to_entanglement_set(
+          entanglement_set_state,
+          phi_plus_click_a_local,
+          target_positions,
+          qutip,
+        )
+        phi_plus_click_b_ok, phi_plus_click_b = _apply_local_operator_to_entanglement_set(
+          entanglement_set_state,
+          phi_plus_click_b_local,
+          target_positions,
+          qutip,
+        )
+        phi_minus_click_a_ok, phi_minus_click_a = _apply_local_operator_to_entanglement_set(
+          entanglement_set_state,
+          phi_minus_click_a_local,
+          target_positions,
+          qutip,
+        )
+        phi_minus_click_b_ok, phi_minus_click_b = _apply_local_operator_to_entanglement_set(
+          entanglement_set_state,
+          phi_minus_click_b_local,
+          target_positions,
+          qutip,
+        )
         none_ok, none_operator = _apply_local_operator_to_entanglement_set(entanglement_set_state, none_operator_local, target_positions, qutip)
         if (
             not plus_click_a_ok
             or not plus_click_b_ok
             or not minus_click_a_ok
             or not minus_click_b_ok
+            or not phi_plus_click_a_ok
+            or not phi_plus_click_b_ok
+            or not phi_minus_click_a_ok
+            or not phi_minus_click_b_ok
             or not none_ok
             or plus_click_a is None
             or plus_click_b is None
             or minus_click_a is None
             or minus_click_b is None
+            or phi_plus_click_a is None
+            or phi_plus_click_b is None
+            or phi_minus_click_a is None
+            or phi_minus_click_b is None
             or none_operator is None
         ):
           return _invalid_payload("qutip worker failed to build two-photon detection operator")
@@ -3202,10 +3227,14 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         else:
           rho = entanglement_set_state.density_matrix
           branches = [
-            (plus_click_a, "d0,d1"),
-            (plus_click_b, "d2,d3"),
-            (minus_click_a, "d0,d3"),
-            (minus_click_b, "d1,d2"),
+            (plus_click_a, "dAh,dAv"),
+            (plus_click_b, "dBh,dBv"),
+            (minus_click_a, "dAh,dBv"),
+            (minus_click_b, "dAv,dBh"),
+            (phi_plus_click_a, "dAh"),
+            (phi_plus_click_b, "dAv"),
+            (phi_minus_click_a, "dBh"),
+            (phi_minus_click_b, "dBv"),
             (none_operator, "none"),
           ]
           branch_probabilities = []
@@ -3234,7 +3263,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
           selected_outcome = selected_event
           if n_targets == 2 and selected_outcome == "none":
             selected_outcome = failure_outcome
-          measured_plus = selected_event == "d0,d1" or selected_event == "d2,d3"
+          measured_plus = selected_event == "dAh,dAv" or selected_event == "dBh,dBv"
           probability_success = sum(probability for probability, _, pattern in branch_probabilities if pattern != "none") / total_probability
           probability_failure = 1.0 - probability_success
 
@@ -3254,27 +3283,42 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
           "detection_dark_count": dark_count,
         },
       )
-      detection_pattern = _normalize_detector_pattern(selected_event)
+      detection_pattern = selected_event
+      allowed_single_click_patterns = {"dAh", "dAv", "dBh", "dBv"}
+      allowed_two_click_patterns = {"dAh,dAv", "dAh,dBv", "dAv,dBh", "dBh,dBv"}
+      if detection_pattern not in allowed_single_click_patterns and detection_pattern not in allowed_two_click_patterns and detection_pattern != "none":
+        return _build_response(
+          False,
+          message=_categorize_error("invalid_payload", f"qutip worker emitted invalid detection pattern: {selected_event}"),
+          error_category="invalid_payload",
+          meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id),
+        )
       detection_histogram = [0, 0, 0, 0]
-      if detection_pattern == "d0":
+      if detection_pattern == "dAh":
         detection_histogram[0] = 1
-      elif detection_pattern == "d0,d1":
+      elif detection_pattern == "dAv":
+        detection_histogram[1] = 1
+      elif detection_pattern == "dBh":
+        detection_histogram[2] = 1
+      elif detection_pattern == "dBv":
+        detection_histogram[3] = 1
+      elif detection_pattern == "dAh,dAv":
         detection_histogram[0] = 1
         detection_histogram[1] = 1
-      elif detection_pattern == "d2,d3":
+      elif detection_pattern == "dBh,dBv":
         detection_histogram[2] = 1
         detection_histogram[3] = 1
-      elif detection_pattern == "d0,d3":
+      elif detection_pattern == "dAh,dBv":
         detection_histogram[0] = 1
         detection_histogram[3] = 1
-      elif detection_pattern == "d1,d2":
+      elif detection_pattern == "dAv,dBh":
         detection_histogram[1] = 1
         detection_histogram[2] = 1
       return _finalize(
         _build_response(
           True,
           outcome_pattern=detection_pattern,
-          detection_click_count=1 if n_targets == 1 and detection_pattern != "none" else (2 if n_targets == 2 else 0),
+          detection_click_count=0 if detection_pattern == "none" else (2 if "," in detection_pattern else 1),
           detector_histogram=detection_histogram,
           outcome=selected_outcome,
           branch_probability=branch_probability,

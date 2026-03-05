@@ -17,7 +17,7 @@
 - `photon_lost`: 物理現象としての損失（channel attenuation / loss）  
   - **バックエンド側が決定する物理的消失フラグ**
 - `discard_reason`: `"expired"`, `"cutoff"`, `"photon_loss"` など
-- `outcome_pattern`: BSA 等の検出結果パターン（例: `d0,d1` / `d2,d3` / `d0,d3` / `d1,d2` / `none`）
+- `outcome_pattern`: BSA 等の検出結果パターン（例: `dAh,dAv` / `dBh,dBv` / `dAh,dBv` / `dAv,dBh` / `dAh` / `dAv` / `dBh` / `dBv` / `none`）
 - `detection_click_count` / `detector_histogram` / `classical_payload`: BSA 解析に使う補助情報
 
 ### 用語の明文化
@@ -26,6 +26,9 @@
   - `discarded=true` は「運用上これ以上参照しない」扱い。  
   - `photon_lost=true` は「量子情報が物理的に到達不能/消失」扱い。  
 - OMNeT 側ロジックは、状態遷移/ノイズの実行を行わず、基本的に両フラグを読み取り用途にのみ使います。
+
+- `outcome_pattern` は文字列正規化しない strict 比較です。  
+  - 旧 `d0` 系の文字列や順序を入れ替えた表現は受け入れません。
 
 ## 3) 代表 API
 - `applyErrorChannel(qubit_ids, channel_profile_name, params)`

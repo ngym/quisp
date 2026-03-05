@@ -650,7 +650,7 @@ def test_detection_two_photon_pattern_for_psi_plus() -> None:
         seed=115,
     )
     _assert_response(response, success=True)
-    assert response.get("outcome_pattern") in {"d0,d1", "d2,d3"}
+    assert response.get("outcome_pattern") in {"dAh,dAv", "dBh,dBv"}
     assert response.get("detection_click_count") == 2
 
 
@@ -708,15 +708,15 @@ def test_detection_two_photon_pattern_for_psi_minus() -> None:
         seed=126,
     )
     _assert_response(response, success=True)
-    assert response.get("outcome_pattern") in {"d0,d3", "d1,d2"}
+    assert response.get("outcome_pattern") in {"dAh,dBv", "dAv,dBh"}
     assert response.get("detection_click_count") == 2
 
 
 @pytest.mark.parametrize(
     "bell_label,expected_patterns,expected_measured_plus",
     [
-        ("psi_plus", {"d0,d1", "d2,d3"}, True),
-        ("psi_minus", {"d0,d3", "d1,d2"}, False),
+        ("psi_plus", {"dAh,dAv", "dBh,dBv"}, True),
+        ("psi_minus", {"dAh,dBv", "dAv,dBh"}, False),
     ],
 )
 def test_detection_two_photon_measured_plus_flag_matches_psi_branch(
@@ -767,7 +767,7 @@ def test_detection_two_photon_measured_plus_flag_matches_psi_branch(
 
 
 @pytest.mark.parametrize(
-    "bell_label,init_ops",
+    "bell_label,init_ops,expected_patterns",
     [
         (
             "phi_plus",
@@ -782,6 +782,7 @@ def test_detection_two_photon_measured_plus_flag_matches_psi_branch(
                     "payload": {"gate": "CNOT"},
                 },
             ],
+            {"dAh", "dAv", "dBh", "dBv"},
         ),
         (
             "phi_minus",
@@ -797,12 +798,14 @@ def test_detection_two_photon_measured_plus_flag_matches_psi_branch(
                 },
                 {"kind": "unitary", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 18}], "payload": {"gate": "Z"}},
             ],
+            {"dAh", "dAv", "dBh", "dBv"},
         ),
     ],
 )
-def test_detection_two_photon_other_bell_states_map_to_none(
+def test_detection_two_photon_other_bell_states_map_to_failure_patterns(
     bell_label: str,
     init_ops: list[dict],
+    expected_patterns: set[str],
 ) -> None:
     _qutip_available()
     _clear_qutip_entanglement_set_state()
@@ -833,10 +836,10 @@ def test_detection_two_photon_other_bell_states_map_to_none(
     )
     _assert_response(response, success=True)
 
-    assert response.get("outcome_pattern") == "none"
+    pattern = response.get("outcome_pattern")
+    assert pattern in expected_patterns
     assert response.get("measured_plus") is False
-    assert float(response.get("meta", {}).get("detection_success_probability", 0.0)) == pytest.approx(0.0)
-    assert float(response.get("meta", {}).get("detection_failure_probability", 1.0)) == pytest.approx(1.0)
+    assert response.get("detection_click_count") == 1
 
 
 def test_hom_interference_defaults_to_50_50_angle_when_omitted() -> None:
@@ -951,7 +954,7 @@ def test_detection_two_photon_visibility_extremes() -> None:
         seed=9316,
     )
     _assert_response(response_plus_vis1, success=True)
-    assert response_plus_vis1.get("outcome_pattern") in {"d0,d1", "d2,d3"}
+    assert response_plus_vis1.get("outcome_pattern") in {"dAh,dAv", "dBh,dBv"}
 
     _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target3], "payload": {"gate": "X"}},
@@ -1001,7 +1004,7 @@ def test_detection_two_photon_visibility_extremes() -> None:
         seed=9327,
     )
     _assert_response(response_minus_vis1, success=True)
-    assert response_minus_vis1.get("outcome_pattern") in {"d0,d3", "d1,d2"}
+    assert response_minus_vis1.get("outcome_pattern") in {"dAh,dBv", "dAv,dBh"}
 
 
 def test_photon_pipeline_representation_transitions() -> None:
@@ -1287,13 +1290,59 @@ def test_default_profile_preserves_baseline_compatibility() -> None:
     assert 0.0 <= response.get("fidelity_estimate", 1.0) <= 1.0
 
 
-def test_normalize_detector_pattern_orders_and_lowercases_tokens() -> None:
-    worker = _qutip_worker_module()
+def test_detection_pattern_does_not_use_legacy_d0_tokens() -> None:
+    _qutip_available()
+    _clear_qutip_entanglement_set_state()
+    target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 34}
+    target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 35}
+    entanglement_set_id = 9400
 
-    assert worker._normalize_detector_pattern("d1,d0") == "d0,d1"
-    assert worker._normalize_detector_pattern(" D2 , d3 ") == "d2,d3"
-    assert worker._normalize_detector_pattern("D0,d3") == "d0,d3"
-    assert worker._normalize_detector_pattern("") == ""
+    _call_entanglement_set_worker(
+        {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9401,
+    )
+    _call_entanglement_set_worker(
+        {"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9402,
+    )
+    _call_entanglement_set_worker(
+        {
+            "kind": "unitary",
+            "targets": [target0, target1],
+            "payload": {"gate": "CNOT"},
+        },
+        entanglement_set_id=entanglement_set_id,
+        seed=9403,
+    )
+    _call_entanglement_set_worker(
+        {"kind": "hom_interference", "targets": [target0, target1]},
+        entanglement_set_id=entanglement_set_id,
+        seed=9404,
+    )
+
+    response = _call_entanglement_set_worker(
+        {
+            "kind": "detection",
+            "targets": [target0, target1],
+            "payload": {"efficiency": 1.0, "visibility": 1.0},
+        },
+        entanglement_set_id=entanglement_set_id,
+        seed=9405,
+    )
+    _assert_response(response, success=True)
+    assert response.get("outcome_pattern") in {
+        "dAh,dAv",
+        "dBh,dBv",
+        "dAh,dBv",
+        "dAv,dBh",
+        "dAh",
+        "dAv",
+        "dBh",
+        "dBv",
+        "none",
+    }
 
 
 def test_compute_channel_loss_probability_with_distance_and_overhead_model() -> None:

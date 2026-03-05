@@ -31,13 +31,18 @@ record_right = []
 state = 'idle' | 'accepting_left' | 'accepting_right' | 'accepting'
 indistinguish_time_period = 'positive number in (ns)'
 # backend.detect(p_handle, q_handle) returns
-#   {outcome_pattern: 'd0,d1'|'d2,d3'|'d0,d3'|'d1,d2'|'none'|..., detection_click_count: int, ...}
+#   {outcome_pattern: 'dAh,dAv'|'dBh,dBv'|'dAh,dBv'|'dAv,dBh'|'dAh'|'dAv'|'dBh'|'dBv'|'none'|..., detection_click_count: int, ...}
 # where these four two-click patterns are the Bell-success patterns
+# dAh = detector A, horizontal polarization branch
+# dAv = detector A, vertical polarization branch
+# dBh = detector B, horizontal polarization branch
+# dBv = detector B, vertical polarization branch
 # Backend contract for optical BSA model:
 #   hom_interference -> HOM-like 50:50 mixing on two input modes
 #   detection -> PBS + 4-detector readout
-#   ψ− -> d0,d3 or d1,d2
-#   ψ+ -> d0,d1 or d2,d3
+#   ψ− -> dAh,dBv or dAv,dBh
+#   ψ+ -> dAh,dAv or dBh,dBv
+# Pattern strings are compared strictly; no normalization is performed.
 ```
 
 State management part
@@ -85,10 +90,10 @@ def process_indistinguish_photons(p, q):
     # OMNeT logic only consumes the classical outcome pattern.
     detection = backend_detection(p, q)
 
-    if detection.outcome_pattern in {'d0,d3', 'd1,d2'}:
+    if detection.outcome_pattern in {'dAh,dBv', 'dAv,dBh'}:
         # Pauli-X correction
         return 'success', 'Psi+' | 'Psi-'
-    if detection.outcome_pattern in {'d0,d1', 'd2,d3'}:
+    if detection.outcome_pattern in {'dAh,dAv', 'dBh,dBv'}:
         # Pauli-Z correction
         return 'success', 'Psi+' | 'Psi-'
     return 'fail'

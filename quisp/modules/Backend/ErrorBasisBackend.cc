@@ -475,7 +475,7 @@ OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, con
     std::string pattern = "none";
     if (clicked) {
       histogram[0] = 1;
-      pattern = "d0";
+      pattern = "dAh";
     }
     auto result = OperationResult{
       true,
@@ -536,22 +536,22 @@ OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, con
       if (is_psi_plus) {
         measured_plus = true;
         if (eventOccurs(ctx.seed, rng_seed + "/detection_plus_pattern", 0.5)) {
-          pattern = "d0,d1";
+          pattern = "dAh,dAv";
           histogram[0] = 1;
           histogram[1] = 1;
         } else {
-          pattern = "d2,d3";
+          pattern = "dBh,dBv";
           histogram[2] = 1;
           histogram[3] = 1;
         }
       } else {
         measured_plus = false;
         if (eventOccurs(ctx.seed, rng_seed + "/detection_minus_pattern", 0.5)) {
-          pattern = "d0,d3";
+          pattern = "dAh,dBv";
           histogram[0] = 1;
           histogram[3] = 1;
         } else {
-          pattern = "d1,d2";
+          pattern = "dAv,dBh";
           histogram[1] = 1;
           histogram[2] = 1;
         }

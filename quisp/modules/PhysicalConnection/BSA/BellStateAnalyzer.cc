@@ -4,7 +4,6 @@
  */
 #include "BellStateAnalyzer.h"
 
-#include <cctype>
 #include <omnetpp/cexception.h>
 #include <stdexcept>
 #include <string>
@@ -162,7 +161,7 @@ BSAClickResult BellStateAnalyzer::processIndistinguishPhotons(PhotonRecord &p, P
   const auto detection_result = service.applyDetection(
       {p_handle, q_handle},
       {{"efficiency", detection_efficiency * collection_efficiency}, {"dark_count", darkcount_probability}, {"visibility", detection_efficiency}});
-  auto pattern = normalizeOutcomePattern(detection_result.outcome_pattern);
+  auto pattern = detection_result.outcome_pattern;
   if (pattern.empty()) pattern = "none";
   pattern_count[pattern]++;
 
@@ -172,24 +171,12 @@ BSAClickResult BellStateAnalyzer::processIndistinguishPhotons(PhotonRecord &p, P
   return click_result;
 }
 
-std::string BellStateAnalyzer::normalizeOutcomePattern(const std::string& pattern) const {
-  std::string normalized;
-  normalized.reserve(pattern.size());
-  for (char ch : pattern) {
-    if (std::isspace(static_cast<unsigned char>(ch))) {
-      continue;
-    }
-    normalized.push_back(std::tolower(static_cast<unsigned char>(ch)));
-  }
-  return normalized;
-}
-
 BSAClickResult BellStateAnalyzer::determineClickResult(const std::string& pattern) {
-  if (pattern == "d0,d3" || pattern == "d3,d0" || pattern == "d1,d2" || pattern == "d2,d1") {
-    return {true, PauliOperator::X};
-  }
-  if (pattern == "d0,d1" || pattern == "d1,d0" || pattern == "d2,d3" || pattern == "d3,d2") {
+  if (pattern == "dAh,dAv" || pattern == "dBh,dBv") {
     return {true, PauliOperator::Z};
+  }
+  if (pattern == "dAh,dBv" || pattern == "dAv,dBh") {
+    return {true, PauliOperator::X};
   }
   return {false, PauliOperator::I};
 }

@@ -766,6 +766,79 @@ def test_detection_two_photon_measured_plus_flag_matches_psi_branch(
     assert measured_plus is expected_measured_plus
 
 
+@pytest.mark.parametrize(
+    "bell_label,init_ops",
+    [
+        (
+            "phi_plus",
+            [
+                {"kind": "unitary", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 16}], "payload": {"gate": "H"}},
+                {
+                    "kind": "unitary",
+                    "targets": [
+                        {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 16},
+                        {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 17},
+                    ],
+                    "payload": {"gate": "CNOT"},
+                },
+            ],
+        ),
+        (
+            "phi_minus",
+            [
+                {"kind": "unitary", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 18}], "payload": {"gate": "H"}},
+                {
+                    "kind": "unitary",
+                    "targets": [
+                        {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 18},
+                        {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 19},
+                    ],
+                    "payload": {"gate": "CNOT"},
+                },
+                {"kind": "unitary", "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 18}], "payload": {"gate": "Z"}},
+            ],
+        ),
+    ],
+)
+def test_detection_two_photon_other_bell_states_map_to_none(
+    bell_label: str,
+    init_ops: list[dict],
+) -> None:
+    _qutip_available()
+    _clear_qutip_entanglement_set_state()
+    entanglement_set_id = 9300
+    target0 = init_ops[0]["targets"][0]
+    target1 = init_ops[1]["targets"][1] if len(init_ops[1]["targets"]) > 1 else init_ops[0]["targets"][0]
+
+    if bell_label == "phi_plus":
+        target0 = init_ops[0]["targets"][0]
+        target1 = init_ops[1]["targets"][1]
+    else:
+        target0 = init_ops[0]["targets"][0]
+        target1 = init_ops[1]["targets"][1]
+
+    for idx, init_op in enumerate(init_ops, start=1):
+        _call_entanglement_set_worker(init_op, entanglement_set_id=entanglement_set_id, seed=9300 + idx)
+
+    _call_entanglement_set_worker(
+        {"kind": "hom_interference", "targets": [target0, target1]},
+        entanglement_set_id=entanglement_set_id,
+        seed=9304,
+    )
+
+    response = _call_entanglement_set_worker(
+        {"kind": "detection", "targets": [target0, target1], "payload": {"efficiency": 1.0, "visibility": 1.0}},
+        entanglement_set_id=entanglement_set_id,
+        seed=9305,
+    )
+    _assert_response(response, success=True)
+
+    assert response.get("outcome_pattern") == "none"
+    assert response.get("measured_plus") is False
+    assert float(response.get("meta", {}).get("detection_success_probability", 0.0)) == pytest.approx(0.0)
+    assert float(response.get("meta", {}).get("detection_failure_probability", 1.0)) == pytest.approx(1.0)
+
+
 def test_hom_interference_defaults_to_50_50_angle_when_omitted() -> None:
     _qutip_available()
     _clear_qutip_entanglement_set_state()

@@ -299,6 +299,28 @@ when the required `qutip` modules are available.
 
 Unhandled/unknown kinds fail fast with an explicit category (for example `[category=unsupported_kind]`).
 
+## Running module tests (OMNeT++ tests)
+
+Module tests are driven by `module_tests/runtest` and executed by:
+
+```bash
+# OMNeT++ runtime environment
+export PATH="/path/to/omnetpp/bin:$PATH"
+export PYTHONPATH="/path/to/omnetpp/python:$PYTHONPATH"
+export OMNETPP_CONFIGFILE="/path/to/omnetpp/Makefile.inc"
+
+# Optional: avoid ccache temp-file permission issues in restricted sandboxes
+export CCACHE_DIR=/tmp/ccache
+export CCACHE_TEMPDIR=/tmp/ccache
+
+cd /path/to/quisp
+make lib-debug
+CCACHE_DISABLE=1 make run-module-test
+```
+
+`module_tests/runtest` now tolerates older OMNeT++/make combinations where
+`--no-deep-includes` is unsupported, and keeps the legacy test harness compatible.
+
 ## Trying it out on the web
 
 If you just want to take a peek at the basic sample simulation set, we encourage you to try them out on the web ([here](https://aqua.sfc.wide.ad.jp/quisp-online/master/)) which is built using the [WebAssembly](https://webassembly.org). Currently the Wasm version only supports running the pre-configured simulations and users cannot upload custom topology, we are still working on that. Also due to the heavy load of the OMNeT++ and the QuISP itself the performance on the web version is a lot slower than running it locally.

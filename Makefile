@@ -114,9 +114,8 @@ help:
 	echo '  test       			build and run all tests'; \
 	echo '  run-unit-test       build unit tests and run it'; \
 	echo '  run-sim-test       	build simulation tests and run it'; \
-	echo '  run-module-test     build modele tests(opp_test) and run it'; \
+	echo '  run-module-test     build module tests(opp_test) and run it'; \
 	echo '  coverage            generate coverage as quisp/lcov.info'; \
 	echo '  coverage-report     generate html coverage report at quisp/coverage/index.html'; \
 	echo '  format              run clang-format on the source files'; \
 	echo '  tidy                run clang-tidy on the source files to do static analysis'; \
-

@@ -43,11 +43,17 @@ def _qutip_worker_module():
     return qutip_worker
 
 
-def _call_worker(operation: Dict[str, Any], seed: int = 12345) -> Dict[str, Any]:
+def _call_worker(
+    operation: Dict[str, Any],
+    seed: int = 12345,
+    *,
+    inject_entanglement_set_id: bool = True,
+) -> Dict[str, Any]:
     qutip_worker = _qutip_worker_module()
 
     operation = dict(operation)
-    operation.setdefault("entanglement_set_id", int(seed) + 100000)
+    if inject_entanglement_set_id:
+        operation.setdefault("entanglement_set_id", int(seed) + 100000)
     backend_config = dict(operation.pop("backend_config", {}))
     backend_config.setdefault("python_executable", "python3")
     backend_config.setdefault("qutip_backend_class", "qutip_density_matrix")
@@ -71,29 +77,10 @@ def _call_entanglement_set_worker(
     return _call_worker(operation, seed=seed)
 
 
-def _call_cluster_worker(
-    operation: Dict[str, Any],
-    entanglement_set_id: int | None = None,
-    seed: int = 12345,
-    cluster_id: int | None = None,
-) -> Dict[str, Any]:
-    if entanglement_set_id is None:
-        if cluster_id is None:
-            raise ValueError("entanglement_set_id (or legacy cluster_id) is required")
-        entanglement_set_id = cluster_id
-    elif cluster_id is not None and cluster_id != entanglement_set_id:
-        raise ValueError("entanglement_set_id and cluster_id must be identical if both are set")
-    return _call_entanglement_set_worker(operation, entanglement_set_id, seed=seed)
-
-
 def _clear_qutip_entanglement_set_state() -> None:
     qutip_worker = _qutip_worker_module()
     if hasattr(qutip_worker, "_QUTIP_ENTANGLEMENT_SET_STATES"):
         qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES.clear()
-
-
-def _clear_qutip_cluster_state() -> None:
-    _clear_qutip_entanglement_set_state()
 
 
 def _assert_response(response: Dict[str, Any], success: bool = True) -> None:
@@ -116,6 +103,26 @@ def _assert_meta_contains(response: Dict[str, Any], key: str, expected_fragment:
     assert expected_fragment in value
 
 
+@pytest.mark.parametrize("legacy_key", ["cluster_id", "set_id"])
+def test_operation_legacy_entanglement_set_id_keys_rejected(legacy_key: str) -> None:
+    _qutip_available()
+    response = _call_worker(
+        {
+            "kind": "unitary",
+            "payload": {"kind": "unitary", "gate": "X"},
+            "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
+            legacy_key: 7001,
+            "backend_config": {"qutip_profile": "standard_light"},
+        },
+        seed=2001,
+        inject_entanglement_set_id=False,
+    )
+    _assert_response(response, success=False)
+    assert response.get("error_category") == "invalid_entanglement_set_id"
+    message = str(response.get("message", ""))
+    assert "entanglement_set_id required" in message
+
+
 def _measurement_probabilities(response: Dict[str, Any], plus: float, minus: float) -> None:
     meta = response.get("meta")
     assert isinstance(meta, dict)
@@ -134,7 +141,7 @@ def _assert_profile_meta_shape(response: Dict[str, Any], expected_keys: set[str]
 
 def test_profile_default_metadata() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     response = _call_worker(
         {
             "kind": "unitary",
@@ -153,7 +160,7 @@ def test_profile_default_metadata() -> None:
 
 def test_profile_standard_qutrit_uses_single_dim_for_all_kinds() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}
     target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}
     config = {"qutip_profile": "standard_qutrit"}
@@ -185,7 +192,7 @@ def test_profile_standard_qutrit_uses_single_dim_for_all_kinds() -> None:
 
 def test_profile_custom_dim_override() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     response = _call_worker(
         {
             "kind": "unitary",
@@ -348,7 +355,7 @@ def test_profile_custom_override_boundary_values(overrides: Any, expected_dim: i
 )
 def test_measurement_profile_probabilities(operation: Dict[str, Any], plus: float, minus: float) -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     response = _call_worker(operation, seed=12345)
     _assert_response(response, success=True)
     assert response.get("operation_model") == "sampled_kraus"
@@ -402,7 +409,7 @@ def test_profile_invalid_error_paths(operation: Dict[str, Any], expected_error_c
 
 def test_error_channel_loss_profile_uses_distance_and_node_overhead() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}
     attenuation_db_per_km = 0.2
     length_km = 15
@@ -436,7 +443,7 @@ def test_error_channel_loss_profile_uses_distance_and_node_overhead() -> None:
 
 def test_error_channel_loss_uses_legacy_loss_rate_fallback() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}
     legacy_loss_rate = 0.35
 
@@ -458,7 +465,7 @@ def test_error_channel_loss_uses_legacy_loss_rate_fallback() -> None:
 
 def test_error_channel_profile_is_explicit_only_for_qutip_flip_probability() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 2}
 
     response = _call_worker(
@@ -532,10 +539,10 @@ _ADVANCED_SUCCESS_CASES: list[tuple[str, Dict[str, Any]]] = [
 
 
 @pytest.mark.parametrize("kind,operation", _ADVANCED_SUCCESS_CASES)
-def test_supported_advanced_kinds_cluster_success(kind: str, operation: Dict[str, Any]) -> None:
+def test_supported_advanced_kinds_entanglement_set_success(kind: str, operation: Dict[str, Any]) -> None:
     del kind
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     response = _call_worker(operation, seed=555)
     _assert_response(response, success=True)
     qutip_worker = _qutip_worker_module()
@@ -544,13 +551,13 @@ def test_supported_advanced_kinds_cluster_success(kind: str, operation: Dict[str
     assert response.get("error_category") is None
 
 
-def test_detection_success_probability_depends_on_cluster_state() -> None:
+def test_detection_success_probability_depends_on_entanglement_set_state() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}
-    cluster_id = 9001
+    entanglement_set_id = 9001
 
-    response_fail = _call_cluster_worker(
+    response_fail = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target0],
@@ -558,7 +565,7 @@ def test_detection_success_probability_depends_on_cluster_state() -> None:
                 "qutip_profile": "standard_light",
             },
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=777,
     )
     _assert_response(response_fail, success=True)
@@ -571,7 +578,7 @@ def test_detection_success_probability_depends_on_cluster_state() -> None:
     assert float(response_fail.get("branch_probability", -1.0)) == pytest.approx(1.0)
     assert response_fail.get("measured_plus") is False
 
-    response_success = _call_cluster_worker(
+    response_success = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target0],
@@ -580,7 +587,7 @@ def test_detection_success_probability_depends_on_cluster_state() -> None:
             },
             "payload": {"dark_count": 1.0},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=778,
     )
     _assert_response(response_success, success=True)
@@ -596,50 +603,50 @@ def test_detection_success_probability_depends_on_cluster_state() -> None:
 
 def test_detection_two_photon_pattern_for_psi_plus() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 10}
     target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 11}
-    cluster_id = 9101
+    entanglement_set_id = 9101
 
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=111,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "targets": [target0],
             "payload": {"gate": "H"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=112,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "targets": [target0, target1],
             "payload": {"gate": "CNOT"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=113,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {
             "kind": "hom_interference",
             "targets": [target0, target1],
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=114,
     )
 
-    response = _call_cluster_worker(
+    response = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target0, target1],
             "payload": {"efficiency": 1.0, "visibility": 1.0},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=115,
     )
     _assert_response(response, success=True)
@@ -649,55 +656,55 @@ def test_detection_two_photon_pattern_for_psi_plus() -> None:
 
 def test_detection_two_photon_pattern_for_psi_minus() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 12}
     target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 13}
-    cluster_id = 9102
+    entanglement_set_id = 9102
 
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=121,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}},
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=122,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "targets": [target0, target1],
             "payload": {"gate": "CNOT"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=123,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "targets": [target1],
             "payload": {"gate": "Z"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=124,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {
             "kind": "hom_interference",
             "targets": [target0, target1],
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=125,
     )
 
-    response = _call_cluster_worker(
+    response = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target0, target1],
             "payload": {"efficiency": 1.0, "visibility": 1.0},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=126,
     )
     _assert_response(response, success=True)
@@ -707,52 +714,52 @@ def test_detection_two_photon_pattern_for_psi_minus() -> None:
 
 def test_hom_interference_defaults_to_50_50_angle_when_omitted() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 20}
     target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 21}
     target2 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 22}
     target3 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 23}
-    cluster_default = 9301
-    cluster_explicit = 9302
+    entanglement_set_default = 9301
+    entanglement_set_explicit = 9302
 
-    response_default = _call_cluster_worker(
+    response_default = _call_entanglement_set_worker(
         {"kind": "hom_interference", "targets": [target0, target1]},
-        cluster_id=cluster_default,
+        entanglement_set_id=entanglement_set_default,
         seed=930,
     )
     _assert_response(response_default, success=True)
     assert float(response_default.get("meta", {}).get("hom_interference_angle")) == pytest.approx(math.pi / 4)
     assert float(response_default.get("meta", {}).get("hom_interference_duration")) == pytest.approx(1.0)
 
-    response_explicit = _call_cluster_worker(
+    response_explicit = _call_entanglement_set_worker(
         {
             "kind": "hom_interference",
             "targets": [target2, target3],
             "payload": {"theta": math.pi / 4},
         },
-        cluster_id=cluster_explicit,
+        entanglement_set_id=entanglement_set_explicit,
         seed=930,
     )
     _assert_response(response_explicit, success=True)
     assert float(response_explicit.get("meta", {}).get("hom_interference_angle")) == pytest.approx(math.pi / 4)
     assert response_default.get("meta", {}).get("hom_interference_angle") == response_explicit.get("meta", {}).get("hom_interference_angle")
 
-    detection_default = _call_cluster_worker(
+    detection_default = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target0, target1],
             "payload": {"efficiency": 1.0, "visibility": 1.0},
         },
-        cluster_id=cluster_default,
+        entanglement_set_id=entanglement_set_default,
         seed=931,
     )
-    detection_explicit = _call_cluster_worker(
+    detection_explicit = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target2, target3],
             "payload": {"efficiency": 1.0, "visibility": 1.0},
         },
-        cluster_id=cluster_explicit,
+        entanglement_set_id=entanglement_set_explicit,
         seed=931,
     )
     _assert_response(detection_default, success=True)
@@ -762,108 +769,108 @@ def test_hom_interference_defaults_to_50_50_angle_when_omitted() -> None:
 
 def test_detection_two_photon_visibility_extremes() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     target0 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 30}
     target1 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 31}
     target2 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 32}
     target3 = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 33}
-    cluster_plus = 9303
-    cluster_minus = 9304
+    entanglement_set_plus = 9303
+    entanglement_set_minus = 9304
 
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target1], "payload": {"gate": "X"}},
-        cluster_id=cluster_plus,
+        entanglement_set_id=entanglement_set_plus,
         seed=9311,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target0], "payload": {"gate": "H"}},
-        cluster_id=cluster_plus,
+        entanglement_set_id=entanglement_set_plus,
         seed=9312,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "targets": [target0, target1],
             "payload": {"gate": "CNOT"},
         },
-        cluster_id=cluster_plus,
+        entanglement_set_id=entanglement_set_plus,
         seed=9313,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "hom_interference", "targets": [target0, target1]},
-        cluster_id=cluster_plus,
+        entanglement_set_id=entanglement_set_plus,
         seed=9314,
     )
 
-    response_plus_vis0 = _call_cluster_worker(
+    response_plus_vis0 = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target0, target1],
             "payload": {"efficiency": 1.0, "visibility": 0.0},
         },
-        cluster_id=cluster_plus,
+        entanglement_set_id=entanglement_set_plus,
         seed=9315,
     )
     _assert_response(response_plus_vis0, success=True)
     assert response_plus_vis0.get("outcome_pattern") == "none"
 
-    response_plus_vis1 = _call_cluster_worker(
+    response_plus_vis1 = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target0, target1],
             "payload": {"efficiency": 1.0, "visibility": 1.0},
         },
-        cluster_id=cluster_plus,
+        entanglement_set_id=entanglement_set_plus,
         seed=9316,
     )
     _assert_response(response_plus_vis1, success=True)
     assert response_plus_vis1.get("outcome_pattern") in {"d0,d1", "d2,d3"}
 
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target3], "payload": {"gate": "X"}},
-        cluster_id=cluster_minus,
+        entanglement_set_id=entanglement_set_minus,
         seed=9321,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target2], "payload": {"gate": "H"}},
-        cluster_id=cluster_minus,
+        entanglement_set_id=entanglement_set_minus,
         seed=9322,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target2, target3], "payload": {"gate": "CNOT"}},
-        cluster_id=cluster_minus,
+        entanglement_set_id=entanglement_set_minus,
         seed=9323,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "unitary", "targets": [target3], "payload": {"gate": "Z"}},
-        cluster_id=cluster_minus,
+        entanglement_set_id=entanglement_set_minus,
         seed=9324,
     )
-    _call_cluster_worker(
+    _call_entanglement_set_worker(
         {"kind": "hom_interference", "targets": [target2, target3]},
-        cluster_id=cluster_minus,
+        entanglement_set_id=entanglement_set_minus,
         seed=9325,
     )
 
-    response_minus_vis0 = _call_cluster_worker(
+    response_minus_vis0 = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target2, target3],
             "payload": {"efficiency": 1.0, "visibility": 0.0},
         },
-        cluster_id=cluster_minus,
+        entanglement_set_id=entanglement_set_minus,
         seed=9326,
     )
     _assert_response(response_minus_vis0, success=True)
     assert response_minus_vis0.get("outcome_pattern") == "none"
 
-    response_minus_vis1 = _call_cluster_worker(
+    response_minus_vis1 = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [target2, target3],
             "payload": {"efficiency": 1.0, "visibility": 1.0},
         },
-        cluster_id=cluster_minus,
+        entanglement_set_id=entanglement_set_minus,
         seed=9327,
     )
     _assert_response(response_minus_vis1, success=True)
@@ -872,43 +879,43 @@ def test_detection_two_photon_visibility_extremes() -> None:
 
 def test_photon_pipeline_representation_transitions() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
 
-    cluster_id = 5001
+    entanglement_set_id = 5001
     base_target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}
     second_target = {"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}
     profile = {"qutip_profile": "standard_qutrit"}
 
-    response_emission = _call_cluster_worker(
+    response_emission = _call_entanglement_set_worker(
         {
             "kind": "photon_emission",
             "targets": [base_target],
             "payload": {"efficiency": 0.93},
             "backend_config": profile,
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=501,
     )
     _assert_response(response_emission, success=True)
-    _assert_meta(response_emission, "entanglement_set_id", cluster_id)
+    _assert_meta(response_emission, "entanglement_set_id", entanglement_set_id)
     _assert_meta(response_emission, "entanglement_set_representation", "entanglement_set_dm")
     _assert_meta(response_emission, "entanglement_set_size", 1)
 
-    response_collect = _call_cluster_worker(
+    response_collect = _call_entanglement_set_worker(
         {
             "kind": "photon_collect",
             "targets": [base_target],
             "payload": {"coupling": 0.75},
             "backend_config": profile,
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=502,
     )
     _assert_response(response_collect, success=True)
     _assert_meta(response_collect, "entanglement_set_representation", "entanglement_set_dm")
     _assert_meta(response_collect, "entanglement_set_size", 1)
 
-    response_propagation = _call_cluster_worker(
+    response_propagation = _call_entanglement_set_worker(
         {
             "kind": "photon_propagation",
             "targets": [base_target],
@@ -916,7 +923,7 @@ def test_photon_pipeline_representation_transitions() -> None:
             "duration": 0.2,
             "backend_config": profile,
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=503,
     )
     _assert_response(response_propagation, success=True)
@@ -925,7 +932,7 @@ def test_photon_pipeline_representation_transitions() -> None:
     _assert_meta(response_propagation, "propagation_attenuation", 0.08)
     _assert_meta(response_propagation, "propagation_dispersion", 0.05)
 
-    response_hom = _call_cluster_worker(
+    response_hom = _call_entanglement_set_worker(
         {
             "kind": "hom_interference",
             "duration": 0.3,
@@ -933,12 +940,12 @@ def test_photon_pipeline_representation_transitions() -> None:
             "payload": {"visibility": 0.9},
             "backend_config": profile,
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=504,
     )
     _assert_response(response_hom, success=True)
     _assert_meta(response_hom, "entanglement_set_representation", "entanglement_set_dm")
-    _assert_meta(response_hom, "entanglement_set_id", cluster_id)
+    _assert_meta(response_hom, "entanglement_set_id", entanglement_set_id)
     _assert_meta(response_hom, "entanglement_set_size", 2)
 
 
@@ -953,7 +960,7 @@ _ADVANCED_SINGLE_TARGET_INVALID_CASES = [
 @pytest.mark.parametrize("kind,operation", _ADVANCED_SINGLE_TARGET_INVALID_CASES)
 def test_two_target_advanced_kinds_reject_single_target(kind: str, operation: Dict[str, Any]) -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     response = _call_worker(operation, seed=556)
     assert response.get("success") is False
     assert response.get("error_category") == "invalid_payload"
@@ -961,33 +968,33 @@ def test_two_target_advanced_kinds_reject_single_target(kind: str, operation: Di
     assert ("at least 2 target" in message) or ("exactly 2 target" in message)
 
 
-def test_cluster_state_isolated_profiles() -> None:
+def test_entanglement_set_isolated_profiles() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
 
     qutip_worker = _qutip_worker_module()
-    response_node = _call_cluster_worker(
+    response_node = _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "payload": {"kind": "unitary", "gate": "X"},
             "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=3001,
+        entanglement_set_id=3001,
         seed=100,
     )
     _assert_response(response_node, success=True)
     _assert_meta(response_node, "entanglement_set_id", 3001)
     _assert_meta(response_node, "entanglement_set_size", 1)
 
-    response_node_2 = _call_cluster_worker(
+    response_node_2 = _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "payload": {"kind": "unitary", "gate": "Y"},
             "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}],
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=3002,
+        entanglement_set_id=3002,
         seed=100,
     )
     _assert_response(response_node_2, success=True)
@@ -999,27 +1006,27 @@ def test_cluster_state_isolated_profiles() -> None:
     assert len(qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES) >= 2
 
 
-def test_cluster_state_single_cluster_id_across_mixed_operations() -> None:
+def test_entanglement_set_single_id_across_mixed_operations() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
 
     qutip_worker = _qutip_worker_module()
-    cluster_id = 3003
+    entanglement_set_id = 3003
 
-    response_node = _call_cluster_worker(
+    response_node = _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "payload": {"kind": "unitary", "gate": "X"},
             "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=200,
     )
     _assert_response(response_node, success=True)
     _assert_meta(response_node, "entanglement_set_size", 1)
 
-    response_hom = _call_cluster_worker(
+    response_hom = _call_entanglement_set_worker(
         {
             "kind": "hom_interference",
             "targets": [
@@ -1029,13 +1036,13 @@ def test_cluster_state_single_cluster_id_across_mixed_operations() -> None:
             "duration": 0.1,
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=201,
     )
     _assert_response(response_hom, success=True)
     _assert_meta(response_hom, "entanglement_set_size", 2)
 
-    response_detection = _call_cluster_worker(
+    response_detection = _call_entanglement_set_worker(
         {
             "kind": "detection",
             "targets": [
@@ -1045,52 +1052,52 @@ def test_cluster_state_single_cluster_id_across_mixed_operations() -> None:
             "payload": {"efficiency": 1.0, "visibility": 1.0},
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=202,
     )
     _assert_response(response_detection, success=True)
 
-    response_error = _call_cluster_worker(
+    response_error = _call_entanglement_set_worker(
         {
             "kind": "error_channel",
             "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}],
             "payload": {"channel_profile": "loss_channel", "channel_loss_rate": 0.0},
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=203,
     )
     _assert_response(response_error, success=True)
-    assert cluster_id in qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES
+    assert entanglement_set_id in qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES
     assert len(qutip_worker._QUTIP_ENTANGLEMENT_SET_STATES) == 1
 
 
-def test_cluster_meta_has_no_mode_and_cluster_key_is_plain_id() -> None:
+def test_entanglement_set_meta_has_no_mode_and_plain_id() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
-    cluster_id = 3010
-    response = _call_cluster_worker(
+    _clear_qutip_entanglement_set_state()
+    entanglement_set_id = 3010
+    response = _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "payload": {"kind": "unitary", "gate": "X"},
             "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=cluster_id,
+        entanglement_set_id=entanglement_set_id,
         seed=333,
     )
     _assert_response(response, success=True)
     meta = response.get("meta", {})
     assert "cluster_mode" not in meta
-    assert str(meta.get("entanglement_set_id")) == str(cluster_id)
+    assert str(meta.get("entanglement_set_id")) == str(entanglement_set_id)
 
 
-def test_cluster_state_entangle_measurement_detach() -> None:
+def test_entanglement_set_state_entangle_measurement_detach() -> None:
     _qutip_available()
-    _clear_qutip_cluster_state()
+    _clear_qutip_entanglement_set_state()
     qutip_worker = _qutip_worker_module()
 
-    response_entangle = _call_cluster_worker(
+    response_entangle = _call_entanglement_set_worker(
         {
             "kind": "unitary",
             "payload": {"kind": "unitary", "gate": "CNOT"},
@@ -1100,35 +1107,35 @@ def test_cluster_state_entangle_measurement_detach() -> None:
             ],
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=4001,
+        entanglement_set_id=4001,
         seed=101,
     )
     _assert_response(response_entangle, success=True)
     _assert_meta(response_entangle, "entanglement_set_id", 4001)
     _assert_meta(response_entangle, "entanglement_set_size", 2)
 
-    response_measure_first = _call_cluster_worker(
+    response_measure_first = _call_entanglement_set_worker(
         {
             "kind": "measurement",
             "basis": "Z",
             "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 0}],
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=4001,
+        entanglement_set_id=4001,
         seed=102,
     )
     _assert_response(response_measure_first, success=True)
     _assert_meta(response_measure_first, "entanglement_set_id", 4001)
     _assert_meta(response_measure_first, "entanglement_set_size", 1)
 
-    response_measure_second = _call_cluster_worker(
+    response_measure_second = _call_entanglement_set_worker(
         {
             "kind": "measurement",
             "basis": "Z",
             "targets": [{"node_id": 1, "qnic_index": 0, "qnic_type": 0, "qubit_index": 1}],
             "backend_config": {"qutip_profile": "standard_qutrit"},
         },
-        cluster_id=4001,
+        entanglement_set_id=4001,
         seed=103,
     )
     _assert_response(response_measure_second, success=True)

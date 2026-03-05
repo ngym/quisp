@@ -207,7 +207,7 @@ def _convert_entanglement_set_state_representation(
   return ""
 
 
-def _ensure_cluster_state(
+def _ensure_entanglement_set_state(
     entanglement_set_id: int,
     operation: dict,
     dim: int,
@@ -452,7 +452,7 @@ def _remove_entanglement_set_key(entanglement_set_id: int) -> None:
     del _QUTIP_ENTANGLEMENT_SET_STATES[entanglement_set_id]
 
 
-def _remove_qubit_from_cluster(operation: dict, entanglement_set_id: int) -> Optional[_EntanglementSetState]:
+def _remove_qubit_from_entanglement_set(operation: dict, entanglement_set_id: int) -> Optional[_EntanglementSetState]:
   state = _QUTIP_ENTANGLEMENT_SET_STATES.get(entanglement_set_id)
   if state is None:
     return None
@@ -1960,11 +1960,11 @@ def _handle_unitary(operation: dict, seed: int, dim: int = 2, profile_meta: Opti
   entanglement_set_id, key_error = _entanglement_set_key(operation, profile_meta)
   if entanglement_set_id is None:
     return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", key_error or "missing entanglement_set_id"), error_category="invalid_entanglement_set_id")
-  entanglement_set_state, _, cluster_error = _ensure_cluster_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
+  entanglement_set_state, _, entanglement_set_error = _ensure_entanglement_set_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
   if entanglement_set_state is None:
     return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
-  if cluster_error:
-    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+  if entanglement_set_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", entanglement_set_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
   op_success, op, message = _build_unitary_operator(qutip=qutip, operation=operation, dim=normalized_dim)
   if not op_success or op is None:
@@ -1999,11 +1999,11 @@ def _handle_measurement(operation: dict, seed: int, dim: int = 2, profile_meta: 
   if entanglement_set_id is None:
     return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", key_error or "missing entanglement_set_id"), error_category="invalid_entanglement_set_id")
 
-  entanglement_set_state, _, cluster_error = _ensure_cluster_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
+  entanglement_set_state, _, entanglement_set_error = _ensure_entanglement_set_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
   if entanglement_set_state is None:
     return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
-  if cluster_error:
-    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+  if entanglement_set_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", entanglement_set_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
   operation_targets = operation.get("targets", [])
   if len(operation_targets) != 1:
@@ -2039,7 +2039,7 @@ def _handle_measurement(operation: dict, seed: int, dim: int = 2, profile_meta: 
     return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker collapsed measurement state has zero norm"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
   entanglement_set_state.density_matrix = collapsed / collapsed_norm
   branch_probability = probability_plus if measured_plus else probability_minus
-  remaining_state = _remove_qubit_from_cluster(operation, entanglement_set_id)
+  remaining_state = _remove_qubit_from_entanglement_set(operation, entanglement_set_id)
   meta = {
       "measurement_plus_probability": probability_plus,
       "measurement_minus_probability": probability_minus,
@@ -2074,11 +2074,11 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
   if mods is None:
     return _qutip_unavailable_response(f"noise:{noise_kind}")
   qutip, _ = mods
-  entanglement_set_state, _, cluster_error = _ensure_cluster_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
+  entanglement_set_state, _, entanglement_set_error = _ensure_entanglement_set_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
   if entanglement_set_state is None:
     return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
-  if cluster_error:
-    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+  if entanglement_set_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", entanglement_set_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
   operation_targets = operation.get("targets", [])
   if len(operation_targets) != 1:
@@ -2181,11 +2181,11 @@ def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta
   if qutip_modules is None:
     return _qutip_unavailable_response("error_channel")
   qutip, _ = qutip_modules
-  entanglement_set_state, _, cluster_error = _ensure_cluster_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
+  entanglement_set_state, _, entanglement_set_error = _ensure_entanglement_set_state(entanglement_set_id, operation, normalized_dim, profile_meta, qutip)
   if entanglement_set_state is None:
     return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
-  if cluster_error:
-    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+  if entanglement_set_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", entanglement_set_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
 
   operation_targets, target_positions, resolution_error = _resolve_entanglement_set_targets(operation, entanglement_set_state, min_targets=1)
   if resolution_error is not None:
@@ -2583,7 +2583,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
   qutip, _ = qutip_modules
 
   normalized_dim = max(2, int(dim))
-  entanglement_set_state, _, cluster_error = _ensure_cluster_state(
+  entanglement_set_state, _, entanglement_set_error = _ensure_entanglement_set_state(
       entanglement_set_id,
       operation,
       normalized_dim,
@@ -2593,8 +2593,8 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
   )
   if entanglement_set_state is None:
     return _build_response(False, message=_categorize_error("invalid_entanglement_set_id", "missing entanglement-set qubits"), error_category="invalid_entanglement_set_id")
-  if cluster_error:
-    return _build_response(False, message=_categorize_error("invalid_profile", cluster_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
+  if entanglement_set_error:
+    return _build_response(False, message=_categorize_error("invalid_profile", entanglement_set_error), error_category="invalid_profile", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
   leakage_enabled = _resolve_profile_bool(profile_meta, "leakage_enabled", False)
 
   def _finalize(response: dict) -> dict:

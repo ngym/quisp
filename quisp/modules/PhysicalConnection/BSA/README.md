@@ -2,7 +2,9 @@
 
 In QuISP, we assume that there is an implicit mechanism for repeaters and end nodes to signal the BSA module about the beginning and the end of the photon trains (e.g., strong light pulse before and after each train).
 We achieve this in QuISP using the `STATIONARY_PULSE_XXX` flag where `<XXX>` can be `BEGIN`, `END`, or `BOUND`.
-The flag is one of the parameters of the photonic qubit we send to the BSA.
+
+Note: In this vNext design, OMNeT message flags are not used for quantum error/loss state.
+Arrival/loss and BSA click outcome are handled by the backend and returned as classical result data.
 
 The BSA component in QuISP comprises two modules, the BellStateAnalyzer and the BSAController.
 BellStateAnalyzer is the physical module where it only concerns itself with measuring the photons coming from the two ports.
@@ -32,7 +34,12 @@ state = 'idle' | 'accepting_left' | 'accepting_right' | 'accepting'
 indistinguish_time_period = 'positive number in (ns)'
 # backend.detect(p_handle, q_handle) returns
 #   {outcome_pattern: 'dAh,dAv'|'dBh,dBv'|'dAh,dBv'|'dAv,dBh'|'dAh'|'dAv'|'dBh'|'dBv'|'none'|..., detection_click_count: int, ...}
-# where these four two-click patterns are the Bell-success patterns
+# pattern strings are compared strictly (no normalization).
+# success patterns:
+#   ψ+: dAh,dAv or dBh,dBv
+#   ψ−: dAh,dBv or dAv,dBh
+# failure patterns:
+#   dAh, dAv, dBh, dBv, none
 # dAh = detector A, horizontal polarization branch
 # dAv = detector A, vertical polarization branch
 # dBh = detector B, horizontal polarization branch
@@ -40,9 +47,8 @@ indistinguish_time_period = 'positive number in (ns)'
 # Backend contract for optical BSA model:
 #   hom_interference -> HOM-like 50:50 mixing on two input modes
 #   detection -> PBS + 4-detector readout
-#   ψ− -> dAh,dBv or dAv,dBh
-#   ψ+ -> dAh,dAv or dBh,dBv
-# Pattern strings are compared strictly; no normalization is performed.
+#   ψ+: dAh,dAv or dBh,dBv
+#   ψ−: dAh,dBv or dAv,dBh
 ```
 
 State management part
@@ -91,9 +97,11 @@ def process_indistinguish_photons(p, q):
     detection = backend_detection(p, q)
 
     if detection.outcome_pattern in {'dAh,dBv', 'dAv,dBh'}:
+        # ψ− outcome
         # Pauli-X correction
         return 'success', 'Psi+' | 'Psi-'
     if detection.outcome_pattern in {'dAh,dAv', 'dBh,dBv'}:
+        # ψ+ outcome
         # Pauli-Z correction
         return 'success', 'Psi+' | 'Psi-'
     return 'fail'

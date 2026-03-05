@@ -26,7 +26,7 @@ channel QuantumChannel extends DatarateChannel
     double channel_z_error_rate = default(0);
     double channel_y_error_rate = default(0);
     string channel_profile = default("loss_channel");
-    double channel_length_km = default(0km);
+    double channel_length_km = default(0);
     double channel_attenuation_rate_db_per_km = default(0);
     double channel_node_io_overhead_db = default(0);
     int channel_node_count = default(0);

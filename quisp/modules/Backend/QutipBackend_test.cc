@@ -117,7 +117,7 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsLegacyAliasAndCaseNormaliza
   QutipBackend qutip_backend{&backend, "qutip"};
 
   PhysicalOperation kerr_op;
-  kerr_op.kind = "Cross-Kerr";
+  kerr_op.kind = "Kerr";
   kerr_op.targets = {QubitHandle{1, 0, 0, 8}};
   auto kerr_result = qutip_backend.applyOperation(defaultContext(), kerr_op);
   if (qutipRuntimeAvailable()) {
@@ -279,6 +279,8 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
         kind == "bsinterference" ||
         kind == "two_photon_interference" ||
         kind == "twophoton_interference" ||
+        kind == "cross_kerr_effect" ||
+        kind == "cross-kerr" ||
         kind == "two_mode_squeezing"
     ) {
       op.targets = {QubitHandle{1, 0, 0, 7}, QubitHandle{1, 0, 0, 8}};

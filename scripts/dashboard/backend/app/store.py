@@ -107,7 +107,11 @@ class RunStore:
                 return run_id
             raise ValueError(f"run_id {run_id} already exists")
 
-        self._runs[run_id] = RunState(run_id=run_id, path=Path(path))
+        resolved = Path(path)
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        if not resolved.exists():
+            resolved.touch(exist_ok=True)
+        self._runs[run_id] = RunState(run_id=run_id, path=resolved)
         return run_id
 
     def get_event_count(self, run_id: str) -> int:

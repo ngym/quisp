@@ -1,0 +1,1270 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuISP Dashboard</title>
+  <style>
+    :root {
+      --bg: #060d1f;
+      --panel: #111a33;
+      --line: #2d4470;
+      --text: #e7efff;
+      --sub: #98aed3;
+      --accent: #52d6ff;
+      --ok: #89ff7d;
+      --warn: #ffd06b;
+      --bad: #ff7788;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Space Grotesk", "Noto Sans JP", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(82, 214, 255, 0.18), transparent 42%),
+        radial-gradient(circle at 92% 8%, rgba(137, 255, 125, 0.14), transparent 34%),
+        var(--bg);
+      padding: 12px;
+    }
+    .shell {
+      max-width: 1600px;
+      margin: 0 auto;
+      display: grid;
+      gap: 12px;
+    }
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      background: linear-gradient(90deg, #101a35, #17224a);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .topbar h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0.01em;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .pill { font-size: 11px; border-radius: 999px; padding: 3px 9px; background: rgba(4, 10, 23, 0.8); border: 1px solid #2e4672; color: #96dbff; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .btn, .input {
+      border: 1px solid #2e4672;
+      background: #111a34;
+      color: #d8e6ff;
+      border-radius: 8px;
+      padding: 8px 10px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+    }
+    .btn[disabled] { opacity: 0.45; cursor: not-allowed; }
+    .btn.small { padding: 5px 8px; font-size: 12px; }
+    .panel {
+      background: linear-gradient(180deg, rgba(17, 28, 52, 0.95), rgba(13, 22, 41, 0.95));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .kpi {
+      border: 1px solid #2f4671;
+      border-radius: 10px;
+      background: linear-gradient(180deg, #1b2a4a, #13203e);
+      padding: 9px 10px;
+      min-height: 84px;
+    }
+    .kpi .label {
+      color: #aac0e8;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+    .kpi .value {
+      font-size: 28px;
+      line-height: 1;
+    }
+    .muted { color: var(--sub); font-size: 11px; }
+    .canvasWrap {
+      height: 560px;
+      position: relative;
+      border-radius: 12px;
+      background: #0a1330;
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+    #topologyCanvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #0b1430;
+    }
+    .overlay {
+      position: absolute;
+      left: 8px;
+      right: 8px;
+      bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      color: #9fb3db;
+      pointer-events: none;
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 300px;
+      gap: 12px;
+      margin-top: 12px;
+      align-items: start;
+    }
+    .split {
+      display: grid;
+      gap: 10px;
+    }
+    .list {
+      border: 1px solid #2d4672;
+      border-radius: 9px;
+      max-height: 210px;
+      overflow: auto;
+      padding: 8px;
+      background: #090f22;
+      font-size: 12px;
+    }
+    .event-row {
+      border-bottom: 1px solid #22365e;
+      display: grid;
+      grid-template-columns: 86px 76px 1fr;
+      gap: 8px;
+      padding: 4px 0;
+      color: #d3e2ff;
+    }
+    .badge { border-radius: 999px; width: fit-content; padding: 2px 7px; color: #041021; font-weight: 700; font-size: 11px; }
+    .controls {
+      display: grid;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .controls label { display: flex; flex-direction: column; gap: 4px; color: #d4e3ff; }
+    .help {
+      font-size: 11px;
+      color: #8ea2cd;
+      margin-top: 6px;
+      line-height: 1.4;
+    }
+    input[type="text"], input[type="number"], input[type="range"], select, textarea {
+      width: 100%;
+      background: #09112a;
+      border: 1px solid #29426f;
+      color: #d9e8ff;
+      padding: 5px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-family: inherit;
+    }
+    textarea {
+      min-height: 72px;
+      resize: vertical;
+    }
+    .section-title {
+      margin: 0 0 6px;
+      font-size: 13px;
+      color: #d5e7ff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .sim-run-row {
+      border-bottom: 1px solid #22365e;
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+      padding: 5px 0;
+      color: #d3e2ff;
+      font-size: 11px;
+    }
+    .sim-run-meta {
+      color: #96afd8;
+      font-size: 10px;
+      margin-top: 2px;
+    }
+    .sim-run-actions {
+      display: flex;
+      gap: 5px;
+      flex-shrink: 0;
+    }
+    .status {
+      font-size: 12px;
+      color: #9cb1d7;
+    }
+    @media (max-width: 1200px) {
+      .layout, .grid2 { grid-template-columns: 1fr; }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .kpis { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar panel">
+      <h1>QuISP Dashboard <span class="pill">Production</span></h1>
+      <div class="row">
+        <label class="row" style="gap:6px; align-items:center;">
+          Run:
+          <select id="runSelect" class="input"></select>
+        </label>
+        <button id="refreshRuns" class="btn small">実行一覧更新</button>
+        <button id="playBtn" class="btn">再生</button>
+        <button id="pauseBtn" class="btn">停止</button>
+        <button id="resetBtn" class="btn">カーソル先頭</button>
+        <label class="row" style="align-items:center;">速度
+          <input id="speed" type="range" min="1" max="20" value="5" class="btn" style="padding:0 0;" />
+        </label>
+        <span id="cursorLabel" class="status">cursor:0</span>
+      </div>
+    </div>
+
+    <div class="kpis panel">
+      <div class="kpi">
+        <div class="label">イベント / 秒</div>
+        <div class="value" id="metricEventRate">0.0</div>
+      </div>
+      <div class="kpi">
+        <div class="label">再生中ログイベント</div>
+        <div class="value" id="metricLiveEvents">0</div>
+      </div>
+      <div class="kpi">
+        <div class="label">可視ノード</div>
+        <div class="value" id="metricNodes">0</div>
+      </div>
+      <div class="kpi">
+        <div class="label">可視エッジ</div>
+        <div class="value" id="metricEdges">0</div>
+      </div>
+      <div class="kpi">
+        <div class="label">FPS</div>
+        <div class="value" id="metricFps">--</div>
+      </div>
+      <div class="kpi">
+        <div class="label">次イベント時刻</div>
+        <div class="value" id="metricTime">--</div>
+      </div>
+    </div>
+
+    <div class="layout">
+      <aside class="panel">
+        <div class="section-title">
+          <span>シミュレーション起動</span>
+          <button id="refreshTemplates" class="btn small">テンプレ更新</button>
+        </div>
+        <div class="controls">
+          <label>
+            Template
+            <select id="simTemplate"></select>
+          </label>
+          <label>
+            Config
+            <select id="simConfig"></select>
+          </label>
+          <label>
+            Run Name
+            <input id="simRunName" type="text" placeholder="optional" />
+          </label>
+          <label class="row" style="gap:6px">
+            Num Runs
+            <input id="simNumRuns" type="number" min="1" max="10000" value="1" />
+          </label>
+          <label class="row" style="gap:6px">
+            Seed Set
+            <input id="simSeedSet" type="number" min="0" placeholder="optional" />
+          </label>
+          <label>
+            sim-time-limit
+            <input id="simTimeLimit" type="number" min="0" step="0.1" placeholder="optional (秒)" />
+          </label>
+          <label>
+            Workdir (任意: template側以外)
+            <input id="simWorkdir" type="text" placeholder="例: /tmp/quisp" />
+          </label>
+          <label>
+            Overrides（key=value, 改行区切り）
+            <textarea id="simOverrides" placeholder='e.g. scheduler.precision=1\nchannels[0].bit_error_prob=0.01'></textarea>
+            <div class="help">キーは英数字・ピリオド・アンダースコア・ブラケット・ハイフンのみ使用可能です。</div>
+          </label>
+          <div class="row">
+            <button id="startSimRun" class="btn">Run</button>
+            <button id="stopSimRun" class="btn">Stop Selected</button>
+            <button id="refreshSimRuns" class="btn">更新</button>
+          </div>
+          <p class="help">起動は `/api/sim/runs` でキュー登録され、同じrun_idが可視化対象として `/api/runs` にも出ます。</p>
+        </div>
+
+        <div class="section-title">
+          <span>実行ジョブ</span>
+          <span id="simRunSummary" class="status"></span>
+        </div>
+        <div class="list" id="simRunList"></div>
+
+        <div class="section-title"><span>コントロール</span></div>
+        <div class="controls">
+          <label>
+            タイムライン
+            <input id="timeline" type="range" min="0" max="0" value="0" />
+          </label>
+          <label>
+            表示ノード上限
+            <input id="maxNodes" type="number" min="10" max="200000" value="3000" />
+          </label>
+          <label>
+            フォーカスノード（任意）
+            <input id="focusNode" type="text" placeholder="例: 1" />
+          </label>
+          <label>
+            ホップ数
+            <input id="hopDepth" type="number" min="0" max="20" value="0" />
+          </label>
+          <label>
+            ノード正規表現（任意）
+            <input id="nodeRegex" type="text" placeholder="例: ^node_" />
+          </label>
+          <label>
+            描画ノードサンプル時のジッタ有効
+            <input id="animateNodes" type="checkbox" checked />
+          </label>
+          <button id="applyFilters" class="btn">サブグラフ再計算</button>
+          <button id="toggleEdges" class="btn">エッジ描画: 表示</button>
+          <button id="zoomIn" class="btn">ズーム+</button>
+          <button id="zoomOut" class="btn">ズーム-</button>
+          <p class="help">パネル左でフォーカス/ホップ/正規表現を設定すると表示サブネットを切り替えます。<br/>ノードは10000件以上でも描画可否を保つため、画面外は自動でスキップします。</p>
+        </div>
+      </aside>
+
+      <main class="panel split">
+        <div class="canvasWrap">
+          <canvas id="topologyCanvas"></canvas>
+          <div class="overlay">
+            <span>表示ノード: <strong id="visibleNodes">0</strong> / <strong id="allNodes">0</strong></span>
+            <span>描画エッジ: <strong id="visibleEdges">0</strong></span>
+            <span>カーソル: <strong id="cursorText">0</strong></span>
+          </div>
+        </div>
+        <div class="panel list" id="eventList"></div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const API_PREFIX = '/api';
+    const state = {
+      runs: [],
+      simTemplates: [],
+      simTemplateConfigs: {},
+      simRuns: [],
+      runId: null,
+      simRunId: null,
+      topology: { nodes: [], edges: [] },
+      edgesVisible: true,
+      cursor: 0,
+      liveMode: true,
+      playing: false,
+      speed: 5,
+      maxNodes: 3000,
+      timelineMax: 0,
+      ws: null,
+      wsReconnectTimer: null,
+      wsEnabled: true,
+      metricsWindow: [],
+      camera: { x: 0, y: 0, scale: 1 },
+      pan: { dragging: false, x: 0, y: 0 },
+      eventRateCounter: [],
+      animNodeJitter: true,
+      lastRender: performance.now(),
+      pendingRender: false,
+      hoverNode: null,
+      fpsSamples: [],
+    };
+
+    const ui = {
+      runSelect: document.getElementById('runSelect'),
+      simTemplate: document.getElementById('simTemplate'),
+      simConfig: document.getElementById('simConfig'),
+      simRunName: document.getElementById('simRunName'),
+      simNumRuns: document.getElementById('simNumRuns'),
+      simSeedSet: document.getElementById('simSeedSet'),
+      simTimeLimit: document.getElementById('simTimeLimit'),
+      simWorkdir: document.getElementById('simWorkdir'),
+      simOverrides: document.getElementById('simOverrides'),
+      startSimRun: document.getElementById('startSimRun'),
+      stopSimRun: document.getElementById('stopSimRun'),
+      refreshSimRuns: document.getElementById('refreshSimRuns'),
+      simRunList: document.getElementById('simRunList'),
+      simRunSummary: document.getElementById('simRunSummary'),
+      refreshTemplates: document.getElementById('refreshTemplates'),
+      refreshRuns: document.getElementById('refreshRuns'),
+      playBtn: document.getElementById('playBtn'),
+      pauseBtn: document.getElementById('pauseBtn'),
+      resetBtn: document.getElementById('resetBtn'),
+      speed: document.getElementById('speed'),
+      cursorLabel: document.getElementById('cursorLabel'),
+      cursorText: document.getElementById('cursorText'),
+      timeline: document.getElementById('timeline'),
+      maxNodes: document.getElementById('maxNodes'),
+      focusNode: document.getElementById('focusNode'),
+      hopDepth: document.getElementById('hopDepth'),
+      nodeRegex: document.getElementById('nodeRegex'),
+      animateNodes: document.getElementById('animateNodes'),
+      applyFilters: document.getElementById('applyFilters'),
+      toggleEdges: document.getElementById('toggleEdges'),
+      zoomIn: document.getElementById('zoomIn'),
+      zoomOut: document.getElementById('zoomOut'),
+      visibleNodes: document.getElementById('visibleNodes'),
+      allNodes: document.getElementById('allNodes'),
+      visibleEdges: document.getElementById('visibleEdges'),
+      metricEventRate: document.getElementById('metricEventRate'),
+      metricLiveEvents: document.getElementById('metricLiveEvents'),
+      metricNodes: document.getElementById('metricNodes'),
+      metricEdges: document.getElementById('metricEdges'),
+      metricFps: document.getElementById('metricFps'),
+      metricTime: document.getElementById('metricTime'),
+      eventList: document.getElementById('eventList'),
+      canvas: document.getElementById('topologyCanvas'),
+    };
+
+    const ctx = ui.canvas.getContext('2d');
+
+    async function apiGet(path, params = {}) {
+      const url = new URL(`${API_PREFIX}${path}`, window.location.origin);
+      Object.entries(params).forEach(([key, value]) => {
+        if (value === null || value === undefined || value === '') {
+          return;
+        }
+        url.searchParams.set(key, String(value));
+      });
+      const response = await fetch(url, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    }
+
+    async function apiPost(path, payload) {
+      const url = new URL(`${API_PREFIX}${path}`, window.location.origin);
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        let detail = null;
+        try {
+          detail = (await response.json()).detail;
+        } catch (_e) {
+          detail = await response.text();
+        }
+        throw new Error(`${response.status} ${detail || ''}`.trim());
+      }
+      return response.json();
+    }
+
+    function normalizeEvents(items) {
+      if (!Array.isArray(items)) {
+        return [];
+      }
+      return items.map((event) => ({
+        event_type: event.event_type || 'unknown',
+        source: event.source || '',
+        sim_time: typeof event.sim_time === 'number' ? event.sim_time : 0,
+        ts: event.ts || '',
+        payload: event.payload || {},
+        cursor: event.cursor ?? null,
+      }));
+    }
+
+    function parseOverridesText(rawText) {
+      const result = {};
+      if (!rawText) {
+        return result;
+      }
+      const lines = String(rawText).split('\n');
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          continue;
+        }
+        const eq = trimmed.indexOf('=');
+        if (eq < 0) {
+          continue;
+        }
+        const key = trimmed.slice(0, eq).trim();
+        const value = trimmed.slice(eq + 1).trim();
+        if (!key) {
+          continue;
+        }
+        result[key] = value;
+      }
+      return result;
+    }
+
+    function colorForType(type) {
+      const lower = String(type).toLowerCase();
+      if (lower.includes('error') || lower.includes('bad')) return '#ff7788';
+      if (lower.includes('retry') || lower.includes('warn')) return '#ffd06b';
+      return '#52d6ff';
+    }
+
+    function ensureCanvasSize() {
+      const rect = ui.canvas.getBoundingClientRect();
+      ui.canvas.width = Math.max(1, Math.floor(rect.width * devicePixelRatio));
+      ui.canvas.height = Math.max(1, Math.floor(rect.height * devicePixelRatio));
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      requestRender();
+    }
+
+    function toScreen(x, y) {
+      return {
+        x: x * state.camera.scale + state.camera.x,
+        y: y * state.camera.scale + state.camera.y,
+      };
+    }
+
+    function requestRender() {
+      if (!state.pendingRender) {
+        state.pendingRender = true;
+        requestAnimationFrame(() => {
+          renderCanvas();
+          state.pendingRender = false;
+        });
+      }
+    }
+
+    function renderCanvas() {
+      const t0 = performance.now();
+      const canvas = ui.canvas;
+      ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      ctx.fillStyle = '#0b1430';
+      ctx.fillRect(0, 0, width, height);
+
+      const nodes = state.topology.nodes || [];
+      const edges = state.topology.edges || [];
+      if (!nodes.length) {
+        ctx.fillStyle = '#96afdf';
+        ctx.font = '12px sans-serif';
+        ctx.fillText('No topology yet. Select a run and load topology.', 12, 24);
+        return;
+      }
+
+      const view = {
+        left: -state.camera.x / state.camera.scale,
+        right: (width - state.camera.x) / state.camera.scale,
+        top: -state.camera.y / state.camera.scale,
+        bottom: (height - state.camera.y) / state.camera.scale,
+      };
+
+      const nodeMap = new Map();
+      for (const node of nodes) {
+        const x = Number(node.x) || 0;
+        const y = Number(node.y) || 0;
+        node._renderX = x;
+        node._renderY = y;
+        nodeMap.set(node.id, node);
+      }
+
+      let visibleNodes = 0;
+      let visibleEdges = 0;
+
+      if (state.edgesVisible) {
+        ctx.strokeStyle = '#2f4770';
+        ctx.lineWidth = Math.max(1, 1.2 * state.camera.scale);
+        for (const edge of edges) {
+          const src = nodeMap.get(edge.src);
+          const dst = nodeMap.get(edge.dst);
+          if (!src || !dst) {
+            continue;
+          }
+          const s = toScreen(src._renderX, src._renderY);
+          const d = toScreen(dst._renderX, dst._renderY);
+          if (!segmentVisible(s.x, s.y, d.x, d.y, view, state.camera.scale)) {
+            continue;
+          }
+          visibleEdges += 1;
+          ctx.beginPath();
+          ctx.moveTo(s.x, s.y);
+          ctx.lineTo(d.x, d.y);
+          ctx.stroke();
+        }
+      }
+
+      const jitterBase = state.animNodeJitter ? (Math.sin(performance.now() / 300) * 0.8) : 0;
+      for (const node of nodes) {
+        const x = node._renderX;
+        const y = node._renderY;
+        const sx = x * state.camera.scale + state.camera.x;
+        const sy = y * state.camera.scale + state.camera.y;
+        if (sx < -20 || sy < -20 || sx > width + 20 || sy > height + 20) {
+          continue;
+        }
+        visibleNodes += 1;
+
+        const jitter = jitterBase + (hashString(node.id) % 5) * 0.03;
+        ctx.beginPath();
+        ctx.fillStyle = edgeColorByLoad(node);
+        const r = Math.max(2.4, Math.min(6, 4 * Math.log2(state.maxNodes ? Math.sqrt(state.maxNodes) / 20 : 1) + 1));
+        ctx.arc(sx + jitter, sy + jitter, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        if (state.hoverNode === node.id) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText(node.id, sx + 8, sy - 4);
+        }
+      }
+
+      ui.visibleNodes.textContent = String(visibleNodes);
+      ui.visibleEdges.textContent = String(visibleEdges);
+      ui.allNodes.textContent = String(nodes.length);
+      ui.metricNodes.textContent = String(nodes.length);
+      ui.metricEdges.textContent = String(edges.length);
+
+      const t1 = performance.now();
+      const dt = t1 - t0;
+      state.fpsSamples.push(dt ? 1000 / dt : 0);
+      if (state.fpsSamples.length > 20) state.fpsSamples.shift();
+      const avgFps = state.fpsSamples.reduce((acc, v) => acc + v, 0) / Math.max(1, state.fpsSamples.length);
+      ui.metricFps.textContent = `${avgFps.toFixed(1)} FPS`;
+    }
+
+    function segmentVisible(x1, y1, x2, y2, view, scale) {
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2);
+      const minY = Math.min(y1, y2);
+      const maxY = Math.max(y1, y2);
+      const extra = Math.max(12, 120 / Math.max(1, scale));
+      return maxX >= view.left - extra && minX <= view.right + extra && maxY >= view.top - extra && minY <= view.bottom + extra;
+    }
+
+    function edgeColorByLoad(node) {
+      const last = Number(node.meta && node.meta.last_seen) || 0;
+      if (last <= 0) return '#52d6ff';
+      if (last < 1.0) return '#89ff7d';
+      return '#d9e6ff';
+    }
+
+    function hashString(value) {
+      let h = 2166136261;
+      const text = String(value || '');
+      for (let i = 0; i < text.length; i++) {
+        h ^= text.charCodeAt(i);
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    }
+
+    function appendEvents(events) {
+      const now = performance.now() / 1000;
+      const entries = normalizeEvents(events);
+      state.eventRateCounter.push({ t: now, c: entries.length });
+      if (state.eventRateCounter.length > 40) {
+        state.eventRateCounter.shift();
+      }
+      const window = state.eventRateCounter.slice();
+      const dt = Math.max(1e-6, window[window.length - 1].t - window[0].t);
+      const total = window.reduce((acc, e) => acc + e.c, 0);
+      ui.metricEventRate.textContent = `${(total / dt).toFixed(2)}`;
+
+      if (entries.length) {
+        state.cursor = entries[entries.length - 1].cursor != null ? Number(entries[entries.length - 1].cursor) : state.cursor;
+      }
+
+      for (const e of entries) {
+        state.metricsWindow.push(e);
+      }
+      while (state.metricsWindow.length > 200) {
+        state.metricsWindow.shift();
+      }
+      ui.metricLiveEvents.textContent = String(state.metricsWindow.length);
+      if (entries.length) {
+        ui.metricTime.textContent = entries[entries.length - 1].ts || String(entries[entries.length - 1].sim_time);
+      }
+
+      if (state.liveMode) {
+        while (state.eventList.childElementCount > 140) {
+          state.eventList.removeChild(state.eventList.lastElementChild);
+        }
+        for (let i = entries.length - 1; i >= 0; i--) {
+          const e = entries[i];
+          const row = document.createElement('div');
+          row.className = 'event-row';
+          const badgeColor = colorForType(e.event_type);
+          row.innerHTML = `<span class="badge" style="background:${badgeColor}">${e.event_type}</span>` +
+            `<span>${e.sim_time.toFixed?.call(e.sim_time, 4) ?? e.sim_time}</span>` +
+            `<span>src:${e.source || '-'} @ ${e.ts || ''}</span>`;
+          ui.eventList.prepend(row);
+          if (ui.eventList.childElementCount > 300) {
+            ui.eventList.removeChild(ui.eventList.lastElementChild);
+          }
+        }
+      }
+
+      ui.cursorText.textContent = String(state.cursor);
+      ui.cursorLabel.textContent = `cursor:${state.cursor}`;
+      ui.timeline.max = Math.max(state.cursor, Number(ui.timeline.max) || 0);
+      if (!state.playing) {
+        ui.timeline.value = String(state.cursor);
+      }
+    }
+
+    function clearEventList() {
+      state.metricsWindow = [];
+      ui.eventList.textContent = '';
+      ui.metricEventRate.textContent = '0.0';
+      ui.metricLiveEvents.textContent = '0';
+      ui.metricTime.textContent = '--';
+    }
+
+    function fillTemplateConfigs(templateId, configNames) {
+      ui.simConfig.innerHTML = '';
+      const list = Array.isArray(configNames) ? configNames : [];
+      for (const configName of list) {
+        const option = document.createElement('option');
+        option.value = String(configName);
+        option.textContent = String(configName);
+        ui.simConfig.appendChild(option);
+      }
+      if (ui.simConfig.options.length === 0) {
+        const option = document.createElement('option');
+        option.value = 'General';
+        option.textContent = 'General';
+        ui.simConfig.appendChild(option);
+      }
+    }
+
+    async function loadSimulationTemplates() {
+      const templates = await apiGet('/sim/templates');
+      state.simTemplates = Array.isArray(templates) ? templates : [];
+      state.simTemplateConfigs = {};
+      const previous = ui.simTemplate.value;
+      ui.simTemplate.innerHTML = '';
+      for (const template of state.simTemplates) {
+        const option = document.createElement('option');
+        option.value = template.template_id;
+        option.textContent = `${template.template_id}`;
+        ui.simTemplate.appendChild(option);
+        const configNames = template.available_configs || template.config_names || [];
+        state.simTemplateConfigs[template.template_id] = configNames.slice();
+      }
+      if (previous && state.simTemplateConfigs[previous]) {
+        ui.simTemplate.value = previous;
+      }
+      const currentTemplateId = ui.simTemplate.value || (state.simTemplates[0] && state.simTemplates[0].template_id);
+      if (currentTemplateId) {
+        fillTemplateConfigs(currentTemplateId, state.simTemplateConfigs[currentTemplateId] || []);
+      } else {
+        fillTemplateConfigs('', []);
+      }
+    }
+
+    function renderSimRuns() {
+      ui.simRunList.innerHTML = '';
+      if (!state.simRuns.length) {
+        ui.simRunSummary.textContent = '0';
+        ui.simRunList.innerHTML = '<div class="muted">ジョブなし</div>';
+        return;
+      }
+      const runningCount = state.simRuns.filter((run) => ['queued', 'starting', 'running'].includes(run.status)).length;
+      ui.simRunSummary.textContent = `running ${runningCount}/${state.simRuns.length}`;
+      for (const run of state.simRuns) {
+        const row = document.createElement('div');
+        row.className = 'sim-run-row';
+        const head = document.createElement('div');
+        const title = document.createElement('div');
+        title.textContent = run.run_id;
+        const meta = document.createElement('div');
+        meta.className = 'sim-run-meta';
+        meta.textContent = `${run.status}${run.exit_code != null ? ` / code:${run.exit_code}` : ''} / ${run.event_count ?? 0} events`;
+        head.appendChild(title);
+        head.appendChild(meta);
+        const actions = document.createElement('div');
+        actions.className = 'sim-run-actions';
+
+        const btnView = document.createElement('button');
+        btnView.className = 'btn small';
+        btnView.textContent = 'ビューへ';
+        btnView.addEventListener('click', () => {
+          state.runId = run.run_id;
+          state.simRunId = run.run_id;
+          ui.runSelect.value = run.run_id;
+          state.cursor = 0;
+          ui.timeline.value = '0';
+          state.playing = false;
+          state.liveMode = true;
+          clearEventList();
+          Promise.resolve(loadTopology()).then(() => {
+            connectWebSocket();
+            fetchAndRenderSubgraph();
+          });
+        });
+
+        const btnStop = document.createElement('button');
+        btnStop.className = 'btn small';
+        btnStop.textContent = 'Stop';
+        btnStop.disabled = !['queued', 'starting', 'running'].includes(run.status);
+        btnStop.addEventListener('click', async () => {
+          try {
+            await apiPost(`/sim/runs/${encodeURIComponent(run.run_id)}/stop`, {});
+            await loadSimRuns();
+          } catch (_e) {
+            // ignore
+          }
+        });
+
+        actions.appendChild(btnView);
+        actions.appendChild(btnStop);
+        row.appendChild(head);
+        row.appendChild(actions);
+        ui.simRunList.appendChild(row);
+      }
+    }
+
+    async function loadSimRuns() {
+      const runs = await apiGet('/sim/runs');
+      state.simRuns = Array.isArray(runs) ? runs : [];
+      renderSimRuns();
+    }
+
+    async function startSimRun() {
+      const templateId = ui.simTemplate.value;
+      const configName = ui.simConfig.value || '';
+      const payload = {
+        template_id: templateId,
+        config_name: configName,
+        run_name: ui.simRunName.value.trim() || null,
+        workdir: ui.simWorkdir.value.trim() || null,
+        num_runs: Number(ui.simNumRuns.value) || 1,
+        seed_set: ui.simSeedSet.value.trim() ? Number(ui.simSeedSet.value) : null,
+        sim_time_limit: ui.simTimeLimit.value.trim() ? Number(ui.simTimeLimit.value) : null,
+        overrides: parseOverridesText(ui.simOverrides.value),
+      };
+      const response = await apiPost('/sim/runs', payload);
+      state.simRunId = response.run_id || null;
+      state.runId = response.dashboard_run_id || state.simRunId;
+      await Promise.all([loadRuns(), loadSimRuns()]);
+      if (state.runId) {
+        await selectRunForView(state.runId);
+      }
+    }
+
+    async function stopCurrentSimRun() {
+      const targetRunId = state.simRunId || state.runId;
+      if (!targetRunId) {
+        return;
+      }
+      await apiPost(`/sim/runs/${encodeURIComponent(targetRunId)}/stop`, {});
+      await loadSimRuns();
+    }
+
+    async function selectRunForView(runId) {
+      if (!runId) {
+        return;
+      }
+      if (Array.from(ui.runSelect.options).some((option) => option.value === runId)) {
+        ui.runSelect.value = runId;
+      }
+      state.runId = runId;
+      state.cursor = 0;
+      state.playing = false;
+      state.liveMode = true;
+      clearEventList();
+      await Promise.all([loadTopology(), connectWebSocket(), fetchAndRenderSubgraph()]);
+    }
+
+    async function loadRuns() {
+      const runs = await apiGet('/runs');
+      state.runs = Array.isArray(runs) ? runs : [];
+      const prevRun = ui.runSelect.value;
+      ui.runSelect.innerHTML = '';
+      for (const run of state.runs) {
+        const option = document.createElement('option');
+        option.value = run.run_id;
+        option.textContent = `${run.run_id} (${run.event_count})`;
+        ui.runSelect.appendChild(option);
+      }
+      if (prevRun && state.runs.some((run) => run.run_id === prevRun)) {
+        ui.runSelect.value = prevRun;
+      }
+      if (!ui.runSelect.value && state.runs.length > 0) {
+        ui.runSelect.value = state.runs[0].run_id;
+      }
+      state.runId = ui.runSelect.value || null;
+    }
+
+    async function loadTopology() {
+      if (!state.runId) {
+        return;
+      }
+      const maxNodes = Number(ui.maxNodes.value) || state.maxNodes;
+      state.maxNodes = Math.max(10, maxNodes);
+      const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/topology`, {
+        max_nodes: state.maxNodes,
+      });
+      if (payload && Array.isArray(payload.nodes)) {
+        state.topology = payload;
+        requestRender();
+      }
+    }
+
+    async function fetchAndRenderSubgraph() {
+      if (!state.runId) {
+        return;
+      }
+      const params = {
+        max_nodes: Number(ui.maxNodes.value) || state.maxNodes,
+        hops: Number(ui.hopDepth.value) || 0,
+      };
+      const focusText = ui.focusNode.value.trim();
+      if (focusText) params.focus = focusText;
+      const regex = ui.nodeRegex.value.trim();
+      if (regex) params.node_regex = regex;
+      const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/subgraph`, params);
+      if (payload && Array.isArray(payload.nodes)) {
+        state.topology = payload;
+        clearEventList();
+        requestRender();
+      }
+    }
+
+    async function connectWebSocket() {
+      closeSocket();
+      if (!state.runId) return;
+
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+      const wsUrl = `${protocol}://${location.host}${API_PREFIX}/runs/${encodeURIComponent(state.runId)}/stream?from_cursor=${state.cursor}`;
+
+      const websocket = new WebSocket(wsUrl);
+      state.ws = websocket;
+      state.wsEnabled = true;
+
+      websocket.onopen = () => {
+        if (state.wsReconnectTimer) {
+          clearTimeout(state.wsReconnectTimer);
+          state.wsReconnectTimer = null;
+        }
+      };
+
+      websocket.onmessage = (event) => {
+        try {
+          const payload = JSON.parse(event.data);
+          appendEvents(payload.events || []);
+          if (payload.next_cursor != null) {
+            state.cursor = payload.next_cursor;
+          }
+          if (payload.has_more) {
+            requestRender();
+          }
+        } catch (_e) {
+          // ignore
+        }
+      };
+
+      websocket.onerror = () => {
+        state.wsEnabled = false;
+      };
+
+      websocket.onclose = () => {
+        state.ws = null;
+        state.wsEnabled = false;
+        if (state.liveMode) {
+          schedulePollFallback();
+        }
+      };
+    }
+
+    function closeSocket() {
+      if (state.ws) {
+        state.ws.onclose = null;
+        state.ws.onerror = null;
+        state.ws.close();
+        state.ws = null;
+      }
+    }
+
+    function schedulePollFallback() {
+      if (!state.liveMode || !state.runId || state.wsEnabled) {
+        return;
+      }
+      const doPoll = async () => {
+        if (!state.liveMode || state.wsEnabled) {
+          return;
+        }
+        try {
+          const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/events/stream`, {
+            from_cursor: state.cursor,
+            limit: 4000,
+            timeout: 1.0,
+          });
+          if (Array.isArray(payload.events) && payload.events.length > 0) {
+            appendEvents(payload.events);
+            state.cursor = payload.next_cursor;
+          }
+        } catch (_e) {
+          // fallback wait
+        }
+
+        if (state.liveMode && !state.wsEnabled) {
+          state.wsReconnectTimer = setTimeout(doPoll, 350);
+        }
+      };
+      doPoll();
+    }
+
+    async function tickPlayback() {
+      if (!state.playing || !state.runId || !state.liveMode) {
+        return;
+      }
+      if (state.wsEnabled && state.ws && state.ws.readyState === WebSocket.OPEN) {
+        const delayMs = Math.max(60, 700 / Math.max(1, state.speed));
+        if (state.playing) {
+          setTimeout(tickPlayback, delayMs);
+        }
+        return;
+      }
+      try {
+        const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/events`, {
+          from_event_id: state.cursor,
+          limit: Math.max(1, Math.round(state.speed * 70)),
+        });
+        if (Array.isArray(payload.events) && payload.events.length > 0) {
+          appendEvents(payload.events);
+          state.cursor = payload.next_cursor;
+          ui.timeline.value = String(state.cursor);
+          await fetchAndRenderSubgraph();
+        }
+      } catch (_e) {
+        // ignore
+      }
+
+      if (state.playing) {
+        const delayMs = Math.max(60, 700 / Math.max(1, state.speed));
+        setTimeout(tickPlayback, delayMs);
+      }
+    }
+
+    function attachControls() {
+      ui.refreshTemplates.addEventListener('click', async () => {
+        await loadSimulationTemplates();
+      });
+
+      ui.simTemplate.addEventListener('change', () => {
+        const templateId = ui.simTemplate.value;
+        fillTemplateConfigs(templateId, state.simTemplateConfigs[templateId] || []);
+      });
+
+      ui.startSimRun.addEventListener('click', async () => {
+        try {
+          await startSimRun();
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      ui.stopSimRun.addEventListener('click', async () => {
+        try {
+          await stopCurrentSimRun();
+        } catch (err) {
+          console.error(err);
+        }
+      });
+
+      ui.refreshSimRuns.addEventListener('click', async () => {
+        await loadSimRuns();
+      });
+
+      ui.refreshRuns.addEventListener('click', async () => {
+        await loadRuns();
+        await loadSimRuns();
+      });
+
+      ui.runSelect.addEventListener('change', async () => {
+        const selected = ui.runSelect.value;
+        await selectRunForView(selected);
+      });
+
+      ui.applyFilters.addEventListener('click', async () => {
+        state.liveMode = false;
+        await fetchAndRenderSubgraph();
+      });
+
+      ui.toggleEdges.addEventListener('click', () => {
+        state.edgesVisible = !state.edgesVisible;
+        ui.toggleEdges.textContent = `エッジ描画: ${state.edgesVisible ? '表示' : '非表示'}`;
+        requestRender();
+      });
+
+      ui.playBtn.addEventListener('click', () => {
+        state.playing = true;
+        state.liveMode = true;
+        state.wsEnabled = true;
+        closeSocket();
+        connectWebSocket();
+        tickPlayback();
+      });
+
+      ui.pauseBtn.addEventListener('click', () => {
+        state.playing = false;
+        closeSocket();
+        state.wsEnabled = false;
+      });
+
+      ui.resetBtn.addEventListener('click', async () => {
+        state.cursor = 0;
+        ui.cursorText.textContent = '0';
+        ui.timeline.value = '0';
+        clearEventList();
+        state.liveMode = true;
+        closeSocket();
+        await connectWebSocket();
+      });
+
+      ui.speed.addEventListener('input', () => {
+        state.speed = Number(ui.speed.value) || 1;
+      });
+
+      ui.timeline.addEventListener('input', (event) => {
+        const nextCursor = Number(event.target.value) || 0;
+        if (nextCursor !== state.cursor) {
+          state.cursor = nextCursor;
+          if (!state.playing) {
+            state.liveMode = false;
+            loadFromCursor(nextCursor);
+          }
+        }
+      });
+
+      ui.timeline.addEventListener('change', (event) => {
+        const nextCursor = Number(event.target.value) || 0;
+        state.cursor = nextCursor;
+        if (!state.playing) {
+          state.liveMode = false;
+          loadFromCursor(nextCursor);
+        }
+      });
+
+      ui.maxNodes.addEventListener('change', () => {
+        if (state.liveMode) fetchAndRenderSubgraph();
+      });
+
+      ui.animateNodes.addEventListener('change', () => {
+        state.animNodeJitter = ui.animateNodes.checked;
+        requestRender();
+      });
+
+      ui.zoomIn.addEventListener('click', () => {
+        state.camera.scale *= 1.2;
+        requestRender();
+      });
+
+      ui.zoomOut.addEventListener('click', () => {
+        state.camera.scale = Math.max(0.1, state.camera.scale / 1.2);
+        requestRender();
+      });
+
+      let panX = 0;
+      let panY = 0;
+      ui.canvas.addEventListener('mousedown', (event) => {
+        state.pan.dragging = true;
+        panX = event.clientX;
+        panY = event.clientY;
+      });
+
+      window.addEventListener('mouseup', () => {
+        state.pan.dragging = false;
+      });
+
+      window.addEventListener('mousemove', (event) => {
+        if (!state.pan.dragging) {
+          return;
+        }
+        const dx = event.clientX - panX;
+        const dy = event.clientY - panY;
+        panX = event.clientX;
+        panY = event.clientY;
+        state.camera.x += dx;
+        state.camera.y += dy;
+        requestRender();
+      });
+
+      ui.canvas.addEventListener('wheel', (event) => {
+        event.preventDefault();
+        const delta = event.deltaY > 0 ? 0.9 : 1.12;
+        const rect = ui.canvas.getBoundingClientRect();
+        const px = (event.clientX - rect.left);
+        const py = (event.clientY - rect.top);
+        const before = {
+          wx: (px - state.camera.x) / state.camera.scale,
+          wy: (py - state.camera.y) / state.camera.scale,
+        };
+        state.camera.scale = Math.min(8, Math.max(0.05, state.camera.scale * delta));
+        state.camera.x = px - before.wx * state.camera.scale;
+        state.camera.y = py - before.wy * state.camera.scale;
+        requestRender();
+      }, { passive: false });
+
+      window.addEventListener('resize', ensureCanvasSize);
+    }
+
+    async function loadFromCursor(cursor) {
+      if (!state.runId) {
+        return;
+      }
+      const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/events`, {
+        from_event_id: cursor,
+        limit: 100,
+      });
+      appendEvents(payload.events || []);
+      if (payload.next_cursor != null) {
+        state.cursor = payload.next_cursor;
+      }
+    }
+
+    async function boot() {
+      ensureCanvasSize();
+      attachControls();
+      state.speed = Number(ui.speed.value) || 5;
+      await Promise.all([loadSimulationTemplates(), loadRuns(), loadSimRuns()]);
+      if (state.runs.length > 0) {
+        state.runId = ui.runSelect.value;
+        await loadTopology();
+        await fetchAndRenderSubgraph();
+        connectWebSocket();
+      }
+      requestRender();
+    }
+
+    boot().catch((err) => {
+      console.error(err);
+    });
+  </script>
+</body>
+</html>

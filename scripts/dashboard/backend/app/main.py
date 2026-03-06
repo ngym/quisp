@@ -375,7 +375,7 @@ def parse_args() -> argparse.Namespace:
         help="Allowed CORS origin. Can be repeated for multiple origins.",
     )
     parser.add_argument("--workspace-root", default=str(cwd), help="Workspace root for template discovery and simulation execution")
-    parser.add_argument("--quisp-binary", default=str(cwd / "quisp"), help="Path to quisp binary")
+    parser.add_argument("--quisp-binary", default=str(cwd / "quisp" / "quisp"), help="Path to quisp binary")
     parser.add_argument("--max-concurrent-runs", type=int, default=int(os.getenv("Q_DASH_MAX_CONCURRENT_RUNS", "2")))
     parser.add_argument("--run-timeout-seconds", type=float, default=float(os.getenv("Q_DASH_RUN_TIMEOUT_SECONDS", "7200")))
     parser.add_argument("--stop-timeout-seconds", type=float, default=float(os.getenv("Q_DASH_STOP_TIMEOUT_SECONDS", "10")))
@@ -384,13 +384,18 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    quisp_binary = Path(args.quisp_binary)
+    if not quisp_binary.exists():
+        raise RuntimeError(f"quisp binary does not exist: {quisp_binary}")
+    if not quisp_binary.is_file():
+        raise RuntimeError(f"quisp binary is not a file: {quisp_binary}")
     allow_origins = args.allow_origin if args.allow_origin else None
     run_server(
         log_dir=Path(args.log_dir),
         host=args.host,
         port=args.port,
         allow_origins=allow_origins,
-        quisp_binary=Path(args.quisp_binary),
+        quisp_binary=quisp_binary,
         workspace_root=Path(args.workspace_root),
         max_concurrent_runs=max(1, args.max_concurrent_runs),
         run_timeout_seconds=max(0.0, args.run_timeout_seconds),

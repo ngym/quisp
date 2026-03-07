@@ -414,6 +414,21 @@ void HardwareMonitor::finish() {
     std::cout << this_node->getFullName() << "<-->QuantumChannel{cost=" << link_cost << ";distance=" << dis << "km;fidelity=" << fidelity
               << ";bellpair_per_sec=" << tomography_runningtime_holder[qnic][partner_address].Bellpair_per_sec << ";}<-->" << partner_node->getFullName()
               << "; Fidelity=" << fidelity << "; Xerror=" << Xerr_rate << "; Zerror=" << Zerr_rate << "; Yerror=" << Yerr_rate << endl;
+
+    if (auto *event_logger = provider.getLogger()) {
+      std::ostringstream payload;
+      payload << "{"
+              << "\"node_id\": " << my_address
+              << ", \"partner_addr\": " << partner_address
+              << ", \"qnic_index\": " << qnic
+              << ", \"distance_km\": " << dis
+              << ", \"link_cost\": " << link_cost
+              << ", \"fidelity\": " << fidelity
+              << ", \"bellpair_per_sec\": " << tomography_runningtime_holder[qnic][partner_address].Bellpair_per_sec
+              << "}";
+      event_logger->logEvent("experiment_link_quality_sample", payload.str());
+      delete event_logger;
+    }
   }
   tomography_stats.close();
   tomography_dm.close();

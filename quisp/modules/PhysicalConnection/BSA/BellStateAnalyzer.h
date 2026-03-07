@@ -3,7 +3,7 @@
 #include <unordered_map>
 #include <omnetpp.h>
 
-#include "PhotonicQubit_m.h"
+#include "FlyingQubit_m.h"
 #include "backends/Backends.h"
 #include "backends/interfaces/IQubit.h"
 #include "messages/BSA_ipc_messages_m.h"
@@ -34,7 +34,7 @@ class BellStateAnalyzer : public omnetpp::cSimpleModule {
 
  private:
   void discardPhoton(PhotonRecord &photon);
-  PhotonRecord getPhotonRecordFromMessage(messages::PhotonicQubit *);
+  PhotonRecord getPhotonRecordFromMessage(messages::FlyingQubit *);
   void processPhotonRecords();
   physical::types::BSAClickResult processIndistinguishPhotons(PhotonRecord &left_photon, PhotonRecord &right_photon);
   physical::types::BSAClickResult determineClickResult(const std::string& outcome_pattern);

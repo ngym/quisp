@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <filesystem>
 #include <test_utils/TestUtils.h>
 
 #include <fstream>
@@ -18,16 +19,21 @@ namespace {
 class OrbitalDataParserTest : public ::testing::Test {
  protected:
   void SetUp() {
-    csv_to_generate.open("channels/test_csv.csv");
+    csv_path = std::filesystem::temp_directory_path() / "quisp_test_orbital_data.csv";
+    csv_to_generate.open(csv_path);
     csv_to_generate << "200,100000\n";
     csv_to_generate << "300,300000\n";
     csv_to_generate << "400,200000\n";
     csv_to_generate.close();
-    csv_parser = new OrbitalDataParser("channels/test_csv.csv");
+    csv_parser = new OrbitalDataParser(csv_path.string());
   }
-  void TearDown() { std::remove("channels/test_csv.csv"); }
+  void TearDown() {
+    delete csv_parser;
+    std::remove(csv_path.string().c_str());
+  }
 
-  OrbitalDataParser* csv_parser;
+  std::filesystem::path csv_path;
+  OrbitalDataParser* csv_parser = nullptr;
   std::ofstream csv_to_generate;
 };
 

@@ -25,7 +25,7 @@ void JsonLogger::setQNodeAddress(int addr) { qnode_address = addr; }
 
 void JsonLogger::logPacket(const std::string& event_type, omnetpp::cMessage const* const msg) {
   auto current_time = omnetpp::simTime();
-  _logger->info("\"simtime\": {}, \"event_type\": \"{}\", \"address\": \"{}\", {}", current_time, event_type, qnode_address, format(msg));
+  _logger->info("\"simtime\": {}, \"event_type\": \"{}\", \"address\": \"{}\", \"module_path\": \"{}\", {}", current_time, event_type, qnode_address, module_path, format(msg));
 }
 
 void JsonLogger::logQubitState(quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index, bool is_busy, bool is_allocated) {
@@ -78,6 +78,8 @@ std::string JsonLogger::format(omnetpp::cMessage const* const msg) {
     std::stringstream os;
     os << "\"msg_type\": \"ConnectionSetupRequest\"";
     os << ", \"application_id\": " << req->getApplicationId();
+    os << ", \"connection_session_id\": " << req->getConnection_session_id();
+    os << ", \"connection_attempt\": " << req->getConnection_attempt();
     os << ", \"actual_dest_addr\": " << req->getActual_destAddr();
     os << ", \"actual_src_addr\": " << req->getActual_srcAddr();
     os << ", \"num_measure\": " << req->getNum_measure();
@@ -88,6 +90,8 @@ std::string JsonLogger::format(omnetpp::cMessage const* const msg) {
     std::stringstream os;
     os << "\"msg_type\": \"RejectConnectionSetupRequest\"";
     os << ", \"application_id\": " << req->getApplicationId();
+    os << ", \"connection_session_id\": " << req->getConnection_session_id();
+    os << ", \"connection_attempt\": " << req->getConnection_attempt();
     os << ", \"actual_dest_addr\": " << req->getActual_destAddr();
     os << ", \"actual_src_addr\": " << req->getActual_srcAddr();
     os << ", \"num_required_bell_pairs\": " << req->getNumber_of_required_Bellpairs();
@@ -97,6 +101,8 @@ std::string JsonLogger::format(omnetpp::cMessage const* const msg) {
     std::stringstream os;
     os << "\"msg_type\": \"ConnectionSetupResponse\"";
     os << ", \"application_id\": " << req->getApplicationId();
+    os << ", \"connection_session_id\": " << req->getConnection_session_id();
+    os << ", \"connection_attempt\": " << req->getConnection_attempt();
     os << ", \"actual_dest_addr\": " << req->getActual_destAddr();
     os << ", \"actual_src_addr\": " << req->getActual_srcAddr();
     os << ", \"ruleset_id\": " << req->getRuleSet_id();

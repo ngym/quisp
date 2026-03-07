@@ -100,14 +100,9 @@ class FakeBackend : public IQuantumBackend {
     return it->second.get();
   }
 
-  IQubit* createShortLiveQubit() override { return getOrCreateShortLiveQubit(); }
+  IQubit* createFlyingQubit() override { return createFlyingQubitInternal(); }
 
-  IQubit* getShortLiveQubit() override {
-    if (short_live_ == nullptr) {
-      return createShortLiveQubit();
-    }
-    return short_live_.get();
-  }
+  IQubit* getFlyingQubit() override { return createFlyingQubitInternal(); }
 
   void returnToPool(IQubit*) override {}
   void deleteQubit(const IQubitId* id) override { qubits.erase(key(*id)); }
@@ -147,18 +142,17 @@ class FakeBackend : public IQuantumBackend {
     return inserted.first->second.get();
   }
 
-  IQubit* getOrCreateShortLiveQubit() {
-    if (short_live_ == nullptr) {
-      ++short_live_created_count;
-      short_live_ = std::make_unique<FakeQubit>(std::make_unique<QubitId>(-1, -1, -1, short_live_created_count));
-    }
-    return short_live_.get();
+  IQubit* createFlyingQubitInternal() {
+    ++flying_qubit_created_count;
+    auto id = std::make_unique<QubitId>(-1, -1, -1, flying_qubit_created_count);
+    auto k = key(*id);
+    auto inserted = qubits.emplace(k, std::make_unique<FakeQubit>(std::move(id)));
+    return inserted.first->second.get();
   }
 
   mutable omnetpp::SimTime sim_time;
   std::unordered_map<std::string, std::unique_ptr<IQubit>> qubits;
-  int short_live_created_count = 0;
-  std::unique_ptr<IQubit> short_live_;
+  int flying_qubit_created_count = 0;
 };
 
 QubitHandle handleFrom(int node, int idx, int type, int q) {
@@ -256,7 +250,7 @@ TEST(ErrorBasisBackendContractTest, MeasureNoiselessForcesPlusAndSupportsMeasure
 TEST(ErrorBasisBackendContractTest, GenerateEntanglementCallsNoiselessOps) {
   FakeBackend backend;
   auto* source = static_cast<FakeQubit*>(backend.createQubit(new QubitId(5, 0, 0, 1)));
-  auto* target = static_cast<FakeQubit*>(backend.createShortLiveQubit());
+  auto* target = static_cast<FakeQubit*>(backend.createFlyingQubit());
   ASSERT_NE(source, nullptr);
   ASSERT_NE(target, nullptr);
 
@@ -266,6 +260,36 @@ TEST(ErrorBasisBackendContractTest, GenerateEntanglementCallsNoiselessOps) {
   EXPECT_EQ(source->noiseless_h_count, 1);
   EXPECT_EQ(source->noiseless_cnot_count, 1);
   EXPECT_EQ(source->noiseless_cnot_targets.size(), 1);
+}
+
+TEST(ErrorBasisBackendContractTest, GenerateEntanglementResolvesFlyingTargetByIdentity) {
+  FakeBackend backend;
+  auto* source = static_cast<FakeQubit*>(backend.createQubit(new QubitId(5, 0, 0, 1)));
+  auto* first_target = static_cast<FakeQubit*>(backend.createFlyingQubit());
+  auto* second_target = static_cast<FakeQubit*>(backend.createFlyingQubit());
+  ASSERT_NE(source, nullptr);
+  ASSERT_NE(first_target, nullptr);
+  ASSERT_NE(second_target, nullptr);
+
+  PhysicalServiceFacade facade{&backend, "graph_state"};
+  auto result = facade.generateEntanglement(handleFrom(5, 0, 0, 1), handleFrom(-1, -1, -1, 2));
+  EXPECT_TRUE(result.success);
+  ASSERT_EQ(source->noiseless_cnot_targets.size(), 1);
+  EXPECT_EQ(source->noiseless_cnot_targets.front(), second_target);
+  EXPECT_NE(source->noiseless_cnot_targets.front(), first_target);
+}
+
+TEST(ErrorBasisBackendContractTest, GenerateEntanglementFailsForUnknownFlyingHandle) {
+  FakeBackend backend;
+  auto* source = static_cast<FakeQubit*>(backend.createQubit(new QubitId(5, 0, 0, 1)));
+  ASSERT_NE(source, nullptr);
+  backend.createFlyingQubit();
+
+  PhysicalServiceFacade facade{&backend, "graph_state"};
+  auto result = facade.generateEntanglement(handleFrom(5, 0, 0, 1), handleFrom(-1, -1, -1, 99));
+  EXPECT_FALSE(result.success);
+  EXPECT_FALSE(result.message.empty());
+  EXPECT_NE(result.message.find("target qubit not found"), std::string::npos);
 }
 
 TEST(ErrorBasisBackendContractTest, UnknownGateReturnsFailure) {

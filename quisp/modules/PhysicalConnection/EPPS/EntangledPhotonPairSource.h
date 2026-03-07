@@ -4,7 +4,7 @@
 #include <omnetpp.h>
 #include <utils/ComponentProvider.h>
 #include <vector>
-#include "PhotonicQubit_m.h"
+#include "FlyingQubit_m.h"
 #include "backends/Backends.h"
 #include "backends/interfaces/IQubit.h"
 #include "modules/PhysicalConnection/BSA/types.h"

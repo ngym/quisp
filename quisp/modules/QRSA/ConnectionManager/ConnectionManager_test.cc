@@ -96,6 +96,8 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
   using quisp::modules::ConnectionManager::releaseQnic;
   using quisp::modules::ConnectionManager::reserved_qnics;
   using quisp::modules::ConnectionManager::reserveQnic;
+  using quisp::modules::ConnectionManager::logExperimentSetupAccepted;
+  using quisp::modules::ConnectionManager::logExperimentSetupRejected;
   using quisp::modules::ConnectionManager::respondToRequest;
   using quisp::modules::ConnectionManager::respondToRequest_deprecated;
   using quisp::modules::ConnectionManager::storeRuleSet;
@@ -226,6 +228,65 @@ TEST(ConnectionManagerTest, Init) {
   sim->registerComponent(c);
   EXPECT_EQ(c->par("address").intValue(), 5);
   c->deleteModule();
+}
+
+TEST(ConnectionManagerTest, LogExperimentSetupAccepted_EmitsStructuredPayload) {
+  auto *sim = prepareSimulation();
+  auto logger = std::make_unique<ConnectionManagerEventLogger>();
+  auto *logger_ptr = logger.get();
+  auto *connection_manager = new ConnectionManagerTestTarget(nullptr, nullptr, std::move(logger));
+  sim->registerComponent(connection_manager);
+  connection_manager->callInitialize();
+
+  auto *response = new ConnectionSetupResponse();
+  response->setActual_srcAddr(1);
+  response->setActual_destAddr(7);
+  response->setConnection_session_id(33);
+  response->setConnection_attempt(2);
+  response->setRuleSet_id(901);
+
+  connection_manager->logExperimentSetupAccepted(response);
+
+  EXPECT_EQ(logger_ptr->log_event_count, 1);
+  EXPECT_EQ(logger_ptr->last_event_type, "experiment_request_setup_accepted");
+  auto payload = json::parse(logger_ptr->last_payload);
+  EXPECT_EQ(payload["node_id"], 5);
+  EXPECT_EQ(payload["src_addr"], 1);
+  EXPECT_EQ(payload["dst_addr"], 7);
+  EXPECT_EQ(payload["connection_session_id"], 33);
+  EXPECT_EQ(payload["connection_attempt"], 2);
+  EXPECT_EQ(payload["ruleset_id"], 901);
+
+  delete response;
+}
+
+TEST(ConnectionManagerTest, LogExperimentSetupRejected_EmitsStructuredPayload) {
+  auto *sim = prepareSimulation();
+  auto logger = std::make_unique<ConnectionManagerEventLogger>();
+  auto *logger_ptr = logger.get();
+  auto *connection_manager = new ConnectionManagerTestTarget(nullptr, nullptr, std::move(logger));
+  sim->registerComponent(connection_manager);
+  connection_manager->callInitialize();
+
+  auto *reject = new RejectConnectionSetupRequest();
+  reject->setActual_srcAddr(1);
+  reject->setActual_destAddr(7);
+  reject->setConnection_session_id(44);
+  reject->setConnection_attempt(3);
+
+  connection_manager->logExperimentSetupRejected(reject, "resource_exhaustion");
+
+  EXPECT_EQ(logger_ptr->log_event_count, 1);
+  EXPECT_EQ(logger_ptr->last_event_type, "experiment_request_setup_rejected");
+  auto payload = json::parse(logger_ptr->last_payload);
+  EXPECT_EQ(payload["node_id"], 5);
+  EXPECT_EQ(payload["src_addr"], 1);
+  EXPECT_EQ(payload["dst_addr"], 7);
+  EXPECT_EQ(payload["connection_session_id"], 44);
+  EXPECT_EQ(payload["connection_attempt"], 3);
+  EXPECT_EQ(payload["reason"], "resource_exhaustion");
+
+  delete reject;
 }
 
 TEST(ConnectionManagerTest, parsePurType) {

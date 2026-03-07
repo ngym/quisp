@@ -1,6 +1,6 @@
 #pragma once
 
-#include <PhotonicQubit_m.h>
+#include <FlyingQubit_m.h>
 #include <backends/Backends.h>
 #include <Eigen/Eigen>
 #include <unordered_set>

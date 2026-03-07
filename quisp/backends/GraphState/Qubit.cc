@@ -8,8 +8,8 @@
 
 namespace quisp::backends::graph_state {
 using types::CliffordOperator;
-GraphStateQubit::GraphStateQubit(const IQubitId *id, GraphStateBackend *const backend, bool is_short_live)
-    : memory_transition_matrix(MatrixXd::Zero(6, 6)), id(id), backend(backend), is_short_live(is_short_live) {
+GraphStateQubit::GraphStateQubit(const IQubitId *id, GraphStateBackend *const backend, bool is_flying)
+    : memory_transition_matrix(MatrixXd::Zero(6, 6)), id(id), backend(backend), is_flying(is_flying) {
   // initialize variables for graph state representation tracking
   vertex_operator = CliffordOperator::H;
 }
@@ -18,9 +18,9 @@ GraphStateQubit::~GraphStateQubit() {}
 
 const IQubitId *const GraphStateQubit::getId() const { return id; }
 
-void GraphStateQubit::relaseBackToPool() {
-  if (!is_short_live) {
-    throw std::runtime_error("cannot release non short-live qubit");
+void GraphStateQubit::releaseToPool() {
+  if (!is_flying) {
+    throw std::runtime_error("cannot release non flying qubit");
   }
   backend->returnToPool(this);
 }

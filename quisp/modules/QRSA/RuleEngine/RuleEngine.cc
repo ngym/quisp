@@ -43,9 +43,13 @@ RuleEngine::RuleEngine()
 }
 
 RuleEngine::~RuleEngine() {
-  for (int i = 0; i < number_of_qnics; i++) cancelAndDelete(emit_photon_timer_map[{QNIC_type::QNIC_E, i}]);
-  for (int i = 0; i < number_of_qnics_r; i++) cancelAndDelete(emit_photon_timer_map[{QNIC_type::QNIC_R, i}]);
-  for (int i = 0; i < number_of_qnics_rp; i++) cancelAndDelete(emit_photon_timer_map[{QNIC_type::QNIC_RP, i}]);
+  for (auto &[key, timer] : emit_photon_timer_map) {
+    if (timer != nullptr) {
+      cancelAndDelete(timer);
+      timer = nullptr;
+    }
+  }
+  emit_photon_timer_map.clear();
 }
 
 void RuleEngine::initialize() {

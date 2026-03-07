@@ -8,7 +8,7 @@
 
 #include <omnetpp.h>
 
-#include "PhotonicQubit_m.h"
+#include "FlyingQubit_m.h"
 #include "messages/classical_messages.h"
 #include "modules/PhysicalConnection/BSA/BellStateAnalyzer.h"
 #include "modules/PhysicalConnection/BSA/types.h"

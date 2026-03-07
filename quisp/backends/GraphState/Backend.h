@@ -32,9 +32,9 @@ class GraphStateBackend : public IQuantumBackend {
   ~GraphStateBackend();
   IQubit* createQubit(const IQubitId* id, std::unique_ptr<IConfiguration> conf) override;
   IQubit* createQubit(const IQubitId* id) override;
-  IQubit* createShortLiveQubit() override;
+  IQubit* createFlyingQubit() override;
   IQubit* getQubit(const IQubitId* id) override;
-  IQubit* getShortLiveQubit() override;
+  IQubit* getFlyingQubit() override;
   void returnToPool(IQubit*) override;
   void deleteQubit(const IQubitId* id) override;
   std::unique_ptr<IConfiguration> getDefaultConfiguration() const override;
@@ -48,7 +48,7 @@ class GraphStateBackend : public IQuantumBackend {
   const std::unique_ptr<IRandomNumberGenerator> rng;
   std::unique_ptr<StationaryQubitConfiguration> config;
   ICallback* callback = nullptr;
-  std::deque<IQubit*> short_live_qubit_pool;
-  int short_live_qubit_pool_size;  // this is used to generate qubit id for short live qubits in a pool; currenlty only photons.
+  std::deque<IQubit*> flying_qubit_pool;
+  int flying_qubit_pool_size;  // this is used to generate qubit id for short live qubits in a pool; currenlty only photons.
 };
 }  // namespace quisp::backends::graph_state

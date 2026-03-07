@@ -8,7 +8,7 @@ using quisp::modules::qubit_id::QubitId;
 
 namespace quisp::backends::graph_state {
 GraphStateBackend::GraphStateBackend(std::unique_ptr<IRandomNumberGenerator> rng, std::unique_ptr<StationaryQubitConfiguration> configuration)
-    : current_time(SimTime()), rng(std::move(rng)), short_live_qubit_pool_size(0) {
+    : current_time(SimTime()), rng(std::move(rng)), flying_qubit_pool_size(0) {
   config = std::move(configuration);
 }
 GraphStateBackend::GraphStateBackend(std::unique_ptr<IRandomNumberGenerator> rng, std::unique_ptr<StationaryQubitConfiguration> configuration, ICallback* cb)
@@ -21,8 +21,8 @@ GraphStateBackend::~GraphStateBackend() {
   }
 }
 
-IQubit* GraphStateBackend::createShortLiveQubit() {
-  auto* qubit_id = new QubitId(-1, -1, -1, ++short_live_qubit_pool_size);
+IQubit* GraphStateBackend::createFlyingQubit() {
+  auto* qubit_id = new QubitId(-1, -1, -1, ++flying_qubit_pool_size);
   auto original_qubit = std::make_unique<GraphStateQubit>(qubit_id, this, true);
   auto conf = getDefaultConfiguration();
   IConfiguration* raw_conf = conf.release();
@@ -62,18 +62,18 @@ IQubit* GraphStateBackend::getQubit(const IQubitId* id) {
   return qubit_iterator->second.get();
 }
 
-IQubit* GraphStateBackend::getShortLiveQubit() {
-  if (short_live_qubit_pool.empty()) {
-    return createShortLiveQubit();
+IQubit* GraphStateBackend::getFlyingQubit() {
+  if (flying_qubit_pool.empty()) {
+    return createFlyingQubit();
   }
-  auto* qubit = short_live_qubit_pool.front();
-  short_live_qubit_pool.pop_front();
+  auto* qubit = flying_qubit_pool.front();
+  flying_qubit_pool.pop_front();
   return qubit;
 }
 
 void GraphStateBackend::returnToPool(IQubit* pool_qubit) {
   pool_qubit->setFree();
-  short_live_qubit_pool.emplace_back(pool_qubit);
+  flying_qubit_pool.emplace_back(pool_qubit);
 }
 
 void GraphStateBackend::deleteQubit(const IQubitId* id) {

@@ -80,7 +80,7 @@ BackendContext PhysicalServiceFacade::makeContext() const {
 
   BackendContext context;
   context.seed = operation_sequence.fetch_add(1, std::memory_order_relaxed) + 1;
-  context.now = omnetpp::simTime();
+  context.now = sim != nullptr ? omnetpp::simTime() : omnetpp::SimTime();
   if (context_module != nullptr) {
     context.scenario_id = context_module->getFullPath();
   } else {

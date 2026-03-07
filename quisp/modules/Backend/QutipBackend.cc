@@ -369,8 +369,16 @@ std::string parseNoiseFromPayload(const PhysicalOperation& operation) {
   return "dephasing";
 }
 
-bool validateQubitHandle(const QubitHandle& qubit) {
+bool isStationaryQubitHandle(const QubitHandle& qubit) {
   return qubit.node_id >= 0 && qubit.qnic_index >= 0 && qubit.qnic_type >= 0 && qubit.qubit_index >= 0;
+}
+
+bool isFlyingQubitHandle(const QubitHandle& qubit) {
+  return qubit.node_id == -1 && qubit.qnic_index == -1 && qubit.qnic_type == -1 && qubit.qubit_index >= 0;
+}
+
+bool validateQubitHandle(const QubitHandle& qubit) {
+  return isStationaryQubitHandle(qubit) || isFlyingQubitHandle(qubit);
 }
 
 bool hasValidTargets(const std::vector<QubitHandle>& targets) {

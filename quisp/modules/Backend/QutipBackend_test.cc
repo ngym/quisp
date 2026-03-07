@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <filesystem>
 #include <gtest/gtest.h>
 
 #include <memory>
@@ -24,6 +25,11 @@ using quisp::modules::backend::QubitHandle;
 using quisp::modules::backend::QutipBackend;
 
 bool qutipRuntimeAvailable();
+void configureQutipPythonExecutableForTests();
+
+struct QutipTestEnvironmentInitializer {
+  QutipTestEnvironmentInitializer() { configureQutipPythonExecutableForTests(); }
+} qutip_test_environment_initializer;
 
 class NullQuantumBackend : public IQuantumBackend {
  public:
@@ -40,12 +46,12 @@ class NullQuantumBackend : public IQuantumBackend {
     return nullptr;
   }
 
-  IQubit* createShortLiveQubit() override { return nullptr; }
+  IQubit* createFlyingQubit() override { return nullptr; }
   IQubit* getQubit(const IQubitId* id) override {
     delete id;
     return nullptr;
   }
-  IQubit* getShortLiveQubit() override { return nullptr; }
+  IQubit* getFlyingQubit() override { return nullptr; }
   void returnToPool(IQubit*) override {}
   void deleteQubit(const IQubitId* id) override { delete id; }
   std::unique_ptr<IConfiguration> getDefaultConfiguration() const override { return std::make_unique<IConfiguration>(); }
@@ -188,6 +194,26 @@ TEST(QutipBackendContractTest, ApplyOperationRejectsInvalidControlHandle) {
   auto result = qutip_backend.applyOperation(defaultContext(), op);
   EXPECT_FALSE(result.success);
   EXPECT_NE(result.message.find("invalid control handle"), std::string::npos);
+}
+
+TEST(QutipBackendContractTest, GenerateEntanglementAcceptsFlyingQubitHandle) {
+  NullQuantumBackend backend;
+  QutipBackend qutip_backend{&backend, "qutip_density_matrix"};
+
+  auto result = qutip_backend.generateEntanglement(defaultContext(), QubitHandle{1, 0, 0, 7}, QubitHandle{-1, -1, -1, 1});
+  EXPECT_EQ(result.message.find("invalid qubit handle"), std::string::npos);
+}
+
+TEST(QutipBackendContractTest, ApplyOperationAcceptsFlyingQubitTargetForUnitary) {
+  NullQuantumBackend backend;
+  QutipBackend qutip_backend{&backend, "qutip_density_matrix"};
+
+  PhysicalOperation op;
+  op.kind = "unitary";
+  op.targets = {QubitHandle{-1, -1, -1, 1}};
+  op.payload = {{"gate", "H"}};
+  auto result = qutip_backend.applyOperation(defaultContext(), op);
+  EXPECT_EQ(result.message.find("invalid qubit handle"), std::string::npos);
 }
 
 TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
@@ -345,11 +371,42 @@ TEST(QutipBackendContractTest, ApplyOperationRejectsUnknownKind) {
 }
 
 bool qutipRuntimeAvailable() {
+  configureQutipPythonExecutableForTests();
   const char* python_executable_env = std::getenv("QUTIP_PYTHON_EXECUTABLE");
   const char* python_executable = python_executable_env != nullptr && std::string(python_executable_env).size() > 0 ? python_executable_env : "python3";
-  const std::string command = std::string(python_executable) + " -c \"import qutip, qutip_qip, qutip.qip\"";
+  const std::string command = std::string(python_executable) + " -c \"import qutip, qutip_qip, qutip.qip\" >/dev/null 2>&1";
   const int status = std::system(command.c_str());
   return status == 0;
+}
+
+void configureQutipPythonExecutableForTests() {
+  const char* configured = std::getenv("QUTIP_PYTHON_EXECUTABLE");
+  if (configured != nullptr && std::string(configured).size() > 0) {
+  } else {
+    const auto cwd = std::filesystem::current_path();
+    const std::vector<std::filesystem::path> candidates = {
+        cwd / ".venv-qutip/bin/python",
+        cwd / "../.venv-qutip/bin/python",
+    };
+    for (const auto& candidate : candidates) {
+      if (std::filesystem::exists(candidate)) {
+        setenv("QUTIP_PYTHON_EXECUTABLE", candidate.string().c_str(), 1);
+        break;
+      }
+    }
+  }
+
+  const char* python_warnings = std::getenv("PYTHONWARNINGS");
+  if (python_warnings == nullptr || std::string(python_warnings).empty()) {
+    setenv("PYTHONWARNINGS", "ignore", 1);
+  }
+
+  const char* matplotlib_config = std::getenv("MPLCONFIGDIR");
+  if (matplotlib_config == nullptr || std::string(matplotlib_config).empty()) {
+    const auto mpl_config_dir = std::filesystem::temp_directory_path() / "quisp-mplconfig";
+    std::filesystem::create_directories(mpl_config_dir);
+    setenv("MPLCONFIGDIR", mpl_config_dir.string().c_str(), 1);
+  }
 }
 
 TEST(QutipBackendContractTest, ApplyOperationFallsBackToLegacyForKnownKinds) {

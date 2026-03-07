@@ -26,7 +26,7 @@ using namespace quisp_test;
 using namespace Eigen;
 using namespace omnetpp;
 using quisp::backends::StationaryQubitConfiguration;
-using quisp::messages::PhotonicQubit;
+using quisp::messages::FlyingQubit;
 
 namespace {
 
@@ -257,7 +257,7 @@ TEST_F(StatQubitTest, StationaryQubitConfigurationOverwrite) {
 
 TEST_F(StatQubitTest, emissionFailedPhotonLostInBackend) {
   sim->setContext(qubit);
-  auto *msg = new PhotonicQubit();
+  auto *msg = new FlyingQubit();
   qubit->emission_success_probability = 0;
   EXPECT_EQ(qubit->toLensGate->messages.size(), 0);
   qubit->handleMessage(msg);
@@ -266,13 +266,13 @@ TEST_F(StatQubitTest, emissionFailedPhotonLostInBackend) {
   ASSERT_NE(new_msg, nullptr);
   EXPECT_NE(new_msg, msg);
 
-  auto *photon = dynamic_cast<PhotonicQubit *>(new_msg);
+  auto *photon = dynamic_cast<FlyingQubit *>(new_msg);
   ASSERT_NE(photon, nullptr);
 }
 
 TEST_F(StatQubitTest, emissionSuccess) {
   sim->setContext(qubit);
-  auto *msg = new PhotonicQubit();
+  auto *msg = new FlyingQubit();
   qubit->emission_success_probability = 1;
   EXPECT_EQ(qubit->toLensGate->messages.size(), 0);
   qubit->handleMessage(msg);
@@ -281,7 +281,7 @@ TEST_F(StatQubitTest, emissionSuccess) {
   ASSERT_NE(new_msg, nullptr);
   EXPECT_NE(new_msg, msg);
 
-  auto *photon = dynamic_cast<PhotonicQubit *>(new_msg);
+  auto *photon = dynamic_cast<FlyingQubit *>(new_msg);
   ASSERT_NE(photon, nullptr);
 }
 

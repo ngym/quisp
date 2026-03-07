@@ -385,6 +385,10 @@ void ConnectionManager::storeRuleSetForApplication(ConnectionSetupResponse *pk) 
     return;
   }
 
+  if (pk->getActual_destAddr() == my_address) {
+    logExperimentSetupAccepted(pk);
+  }
+
   InternalRuleSetForwarding_Application *pk_internal = new InternalRuleSetForwarding_Application("InternalRuleSetForwardingApplication");
   pk_internal->setDestAddr(pk->getDestAddr());
   pk_internal->setSrcAddr(pk->getDestAddr());  // Should be original Src here?
@@ -553,6 +557,7 @@ void ConnectionManager::initiator_reject_req_handler(RejectConnectionSetupReques
   int actual_dest = pk->getActual_destAddr();
   int outbound_qnic_address = routing_daemon->findQNicAddrByDestAddr(actual_dest);
 
+  logExperimentSetupRejected(pk, "resource_exhaustion");
   releaseQnic(outbound_qnic_address);
   scheduleRequestRetry(outbound_qnic_address);
 }
@@ -595,6 +600,38 @@ unsigned long ConnectionManager::createUniqueId() {
   size_t t = hash_fn(hash_seed);
   unsigned long ruleset_id = static_cast<long>(t);
   return ruleset_id;
+}
+
+void ConnectionManager::logExperimentSetupAccepted(ConnectionSetupResponse *pk) {
+  if (logger == nullptr) {
+    return;
+  }
+  std::ostringstream payload;
+  payload << "{"
+          << "\"node_id\": " << my_address
+          << ", \"src_addr\": " << pk->getActual_srcAddr()
+          << ", \"dst_addr\": " << pk->getActual_destAddr()
+          << ", \"connection_session_id\": " << pk->getConnection_session_id()
+          << ", \"connection_attempt\": " << pk->getConnection_attempt()
+          << ", \"ruleset_id\": " << pk->getRuleSet_id()
+          << "}";
+  logger->logEvent("experiment_request_setup_accepted", payload.str());
+}
+
+void ConnectionManager::logExperimentSetupRejected(RejectConnectionSetupRequest *pk, const char *reason) {
+  if (logger == nullptr) {
+    return;
+  }
+  std::ostringstream payload;
+  payload << "{"
+          << "\"node_id\": " << my_address
+          << ", \"src_addr\": " << pk->getActual_srcAddr()
+          << ", \"dst_addr\": " << pk->getActual_destAddr()
+          << ", \"connection_session_id\": " << pk->getConnection_session_id()
+          << ", \"connection_attempt\": " << pk->getConnection_attempt()
+          << ", \"reason\": \"" << (reason ? reason : "unknown") << "\""
+          << "}";
+  logger->logEvent("experiment_request_setup_rejected", payload.str());
 }
 
 void ConnectionManager::queueApplicationRequest(ConnectionSetupRequest *req) {

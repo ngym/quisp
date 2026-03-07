@@ -25,6 +25,7 @@ class LoggerModule : public omnetpp::cSimpleModule {
  protected:
   std::shared_ptr<spdlog::logger> spdlog_logger;
   LoggerType logger_type = LoggerType::Unknown;
+  void emitTopologySnapshot();
 
   static std::string trimQuotes(std::string s);
   static LoggerType toLoggerType(const std::string& s);

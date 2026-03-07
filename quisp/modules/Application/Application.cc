@@ -6,6 +6,7 @@
  */
 #include "Application.h"
 #include <random>
+#include <sstream>
 #include <vector>
 #include "utils/ComponentProvider.h"
 
@@ -83,6 +84,9 @@ void Application::handleMessage(cMessage *msg) {
   }
 
   if (auto *req = dynamic_cast<ConnectionSetupRequest *>(msg)) {
+    if (logger != nullptr) {
+      logger->logEvent("experiment_request_submitted", buildExperimentRequestPayload(req));
+    }
     logger->logPacket("handleMessage", msg);
     send(msg, "toRouter");
     return;
@@ -176,6 +180,20 @@ void Application::generateTraffic() {
     scheduleAt(send_time, pk);
     send_time = send_time + par("request_generation_interval").doubleValue();
   }
+}
+
+std::string Application::buildExperimentRequestPayload(const ConnectionSetupRequest *pk) const {
+  std::ostringstream payload;
+  payload << "{"
+          << "\"node_id\": " << my_address
+          << ", \"application_id\": " << pk->getApplicationId()
+          << ", \"src_addr\": " << pk->getActual_srcAddr()
+          << ", \"dst_addr\": " << pk->getActual_destAddr()
+          << ", \"connection_session_id\": " << pk->getConnection_session_id()
+          << ", \"connection_attempt\": " << pk->getConnection_attempt()
+          << ", \"requested_bell_pairs\": " << pk->getNum_measure()
+          << "}";
+  return payload.str();
 }
 
 }  // namespace modules

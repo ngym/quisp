@@ -34,7 +34,7 @@ class IQubit {
 
   virtual void setFree() = 0;
   virtual const IQubitId *const getId() const { throw std::runtime_error("getId is not implemented"); }
-  virtual void relaseBackToPool() { throw std::runtime_error("release back to pool is not implemented. Is this a short-live qubit?"); }
+  virtual void releaseToPool() { throw std::runtime_error("release back to pool is not implemented. Is this a flying qubit?"); }
 
   // single qubit operations
   virtual void gateX() { throw std::runtime_error("gateX not implemented"); }

@@ -37,12 +37,12 @@ using types::TwoQubitGateErrorModel;
 class GraphStateBackend;
 class GraphStateQubit : public IQubit {
  public:
-  GraphStateQubit(const IQubitId *id, GraphStateBackend *const backend, bool is_short_live);
+  GraphStateQubit(const IQubitId *id, GraphStateBackend *const backend, bool is_flying);
   ~GraphStateQubit();
   void configure(std::unique_ptr<StationaryQubitConfiguration> configuration);
   void setFree() override;
   const IQubitId *const getId() const override;
-  void relaseBackToPool() override;
+  void releaseToPool() override;
 
   void gateX() override;
   void gateZ() override;
@@ -111,7 +111,7 @@ class GraphStateQubit : public IQubit {
 
   const IQubitId *id;
   GraphStateBackend *const backend;
-  const bool is_short_live;
+  const bool is_flying;
 
   // for debugging
   std::string cliffordToString(CliffordOperator op);

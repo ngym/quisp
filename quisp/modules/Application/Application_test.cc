@@ -1,6 +1,7 @@
 #include "Application.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 #include <messages/classical_messages.h>
 #include <omnetpp.h>
 #include <test_utils/TestUtils.h>
@@ -13,6 +14,7 @@ using namespace quisp::utils;
 using namespace quisp::modules;
 using namespace quisp::messages;
 using namespace quisp_test;
+using json = nlohmann::json;
 
 class Strategy : public quisp_test::TestComponentProviderStrategy {
  public:
@@ -32,6 +34,8 @@ class AppTestTarget : public quisp::modules::Application {
   using quisp::modules::Application::id;
   using quisp::modules::Application::initialize;
   using quisp::modules::Application::par;
+  using quisp::modules::Application::buildExperimentRequestPayload;
+  using quisp::modules::Application::createConnectionSetupRequest;
 
   cGate *gate(const char *gatename, int index = -1) override {
     if (strcmp(gatename, "toRouter") != 0) {
@@ -156,6 +160,34 @@ TEST(AppTest, Init_NotConnected_ToRouter) {
 
   // Ensure the self-delete event is processed to avoid leaking module state into subsequent tests.
   sim->run();
+}
+
+TEST(AppTest, BuildExperimentRequestPayload_IncludesStructuredFields) {
+  auto *sim = prepareSimulation();
+  auto *mock_qnode = new TestQNode{123, 100, true};
+  auto *app = new AppTestTarget{mock_qnode};
+
+  setParDouble(app, "request_generation_interval", 5);
+  setParInt(app, "number_of_bellpair", 10);
+  setParBool(app, "has_specific_recipients", false);
+
+  sim->registerComponent(app);
+  app->callInitialize();
+
+  auto *req = app->createConnectionSetupRequest(456, 3);
+  req->setConnection_session_id(77);
+  req->setConnection_attempt(2);
+
+  auto payload = json::parse(app->buildExperimentRequestPayload(req));
+  EXPECT_EQ(payload["node_id"], 123);
+  EXPECT_EQ(payload["application_id"], 0);
+  EXPECT_EQ(payload["src_addr"], 123);
+  EXPECT_EQ(payload["dst_addr"], 456);
+  EXPECT_EQ(payload["connection_session_id"], 77);
+  EXPECT_EQ(payload["connection_attempt"], 2);
+  EXPECT_EQ(payload["requested_bell_pairs"], 3);
+
+  delete req;
 }
 
 TEST(AppTest, Specifying_Empty_As_Recipients) {

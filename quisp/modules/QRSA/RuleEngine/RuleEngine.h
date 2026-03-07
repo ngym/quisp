@@ -81,16 +81,16 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   friend runtime_callback::RuntimeCallback;
   RuleEngine();
   ~RuleEngine();
-  int parentAddress;  // Parent QNode's address
-  messages::EmitPhotonRequest *emt;
-  int number_of_qnics_all;  // qnic,qnic_r,_qnic_rp
-  int number_of_qnics;
-  int number_of_qnics_r;
-  int number_of_qnics_rp;
+  int parentAddress = 0;  // Parent QNode's address
+  messages::EmitPhotonRequest *emt = nullptr;
+  int number_of_qnics_all = 0;  // qnic,qnic_r,_qnic_rp
+  int number_of_qnics = 0;
+  int number_of_qnics_r = 0;
+  int number_of_qnics_rp = 0;
 
-  IHardwareMonitor *hardware_monitor;
-  IRoutingDaemon *routingdaemon;
-  IRealTimeController *realtime_controller;
+  IHardwareMonitor *hardware_monitor = nullptr;
+  IRoutingDaemon *routingdaemon = nullptr;
+  IRealTimeController *realtime_controller = nullptr;
   BellPairStore bell_pair_store;
 
   void freeResource(int qnic_index, int qubit_index, QNIC_type qnic_type);

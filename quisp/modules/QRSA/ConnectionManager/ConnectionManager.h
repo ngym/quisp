@@ -124,6 +124,8 @@ class ConnectionManager : public IConnectionManager, public Logger::LoggerBase {
   void intermediate_reject_req_handler(messages::RejectConnectionSetupRequest *pk);
 
   void rejectRequest(messages::ConnectionSetupRequest *req);
+  void logExperimentSetupAccepted(messages::ConnectionSetupResponse *pk);
+  void logExperimentSetupRejected(messages::RejectConnectionSetupRequest *pk, const char *reason);
 
   void reserveQnic(int qnic_address);
   void releaseQnic(int qnic_address);

@@ -198,10 +198,17 @@ OperationResult ErrorBasisBackend::generateEntanglement(const BackendContext& ct
   (void)ctx;
   auto* source = resolveQubit(source_qubit);
   auto* target = resolveQubit(target_qubit);
-  if (source == nullptr || target == nullptr) return {false};
-  source->noiselessH();
-  source->noiselessCNOT(target);
-  return {true};
+  if (source == nullptr) return failureResult("error-basis backend entanglement source qubit not found: " + keyFromHandle(source_qubit));
+  if (target == nullptr) return failureResult("error-basis backend entanglement target qubit not found: " + keyFromHandle(target_qubit));
+  try {
+    source->noiselessH();
+    source->noiselessCNOT(target);
+    return {true};
+  } catch (const std::exception& exc) {
+    return failureResult(std::string("error-basis backend entanglement failed: ") + exc.what());
+  } catch (...) {
+    return failureResult("error-basis backend entanglement failed");
+  }
 }
 
 OperationResult ErrorBasisBackend::applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
@@ -250,16 +257,6 @@ OperationResult ErrorBasisBackend::applyOperation(const BackendContext& ctx, con
 }
 
 backends::IQubit* ErrorBasisBackend::resolveQubit(QubitHandle qubit) {
-  if (qubit.node_id == -1 && qubit.qnic_index == -1 && qubit.qnic_type == -1) {
-    if (backend_ == nullptr) {
-      return nullptr;
-    }
-    try {
-      return backend_->getShortLiveQubit();
-    } catch (...) {
-      return nullptr;
-    }
-  }
   auto id = std::make_unique<qubit_id::QubitId>(qubit.node_id, qubit.qnic_index, qubit.qnic_type, qubit.qubit_index);
   try {
     return backend_->getQubit(id.get());

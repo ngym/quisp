@@ -10,7 +10,7 @@ class IQubit {
 
 namespace quisp::messages;
 
-message PhotonicQubit
+message FlyingQubit
 {
     string message_type = "qubit";
     IQubit *qubitRef;

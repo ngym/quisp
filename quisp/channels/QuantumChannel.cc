@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <string>
 
-#include "PhotonicQubit_m.h"
+#include "FlyingQubit_m.h"
 #include "backends/interfaces/IQubit.h"
 #include "modules/Backend/Backend.h"
 #include "modules/Backend/PhysicalServiceFacade.h"
@@ -114,7 +114,7 @@ void QuantumChannel::initialize() {
 }
 
 cChannel::Result QuantumChannel::processMessage(cMessage *msg, const SendOptions &options, simtime_t t) {
-  auto* photon = dynamic_cast<PhotonicQubit *>(msg);
+  auto* photon = dynamic_cast<FlyingQubit *>(msg);
   if (photon == nullptr) {
     throw new cRuntimeError("something other than photonic qubit is sent through quantum channel");
   }

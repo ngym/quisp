@@ -55,10 +55,10 @@ void BellStateAnalyzer::initialize() {
  * it will be entangled. We assume that we can distinguish between Psi+/- while
  * we cannot Phi+/- cannot be distinguished. Gate operations will be applied on the photons.
  *
- * @param msg must be of type PhotonicQubit message
+ * @param msg must be of type FlyingQubit message
  */
 void BellStateAnalyzer::handleMessage(cMessage *msg) {
-  auto photon = getPhotonRecordFromMessage(static_cast<PhotonicQubit *>(msg));
+  auto photon = getPhotonRecordFromMessage(static_cast<FlyingQubit *>(msg));
   delete msg;
 
   // clang-format off
@@ -130,7 +130,7 @@ void BellStateAnalyzer::processPhotonRecords() {
   send(batch_click_msg, "to_bsa_controller");
 }
 
-PhotonRecord BellStateAnalyzer::getPhotonRecordFromMessage(PhotonicQubit *photon_msg) {
+PhotonRecord BellStateAnalyzer::getPhotonRecordFromMessage(FlyingQubit *photon_msg) {
   PhotonRecord photon{.qubit_ref = photon_msg->getQubitRefForUpdate(),
                       .arrival_time = photon_msg->getArrivalTime(),
                       .from_port = (photon_msg->arrivedOn("quantum_port$i", 0)) ? PortNumber::First : PortNumber::Second,
@@ -212,6 +212,6 @@ void BellStateAnalyzer::finish() {
   }
 }
 
-void BellStateAnalyzer::discardPhoton(PhotonRecord &photon) { photon.qubit_ref->relaseBackToPool(); };
+void BellStateAnalyzer::discardPhoton(PhotonRecord &photon) { photon.qubit_ref->releaseToPool(); };
 
 }  // namespace quisp::modules

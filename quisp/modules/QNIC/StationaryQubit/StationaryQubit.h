@@ -6,9 +6,10 @@
  */
 #pragma once
 
-#include <PhotonicQubit_m.h>
+#include <FlyingQubit_m.h>
 #include <backends/Backends.h>
 #include <modules/common_types.h>
+#include <modules/Logger/LoggerBase.h>
 #include <utils/ComponentProvider.h>
 #include "IStationaryQubit.h"
 #include "QubitId.h"
@@ -30,7 +31,7 @@ using quisp::modules::common::IBackendQubit;
 using quisp::modules::common::IConfiguration;
 using quisp::modules::common::IQuantumBackend;
 
-class StationaryQubit : public IStationaryQubit {
+class StationaryQubit : public IStationaryQubit, protected Logger::LoggerBase {
  protected:
   IBackendQubit *qubit_ref;
 
@@ -73,8 +74,9 @@ class StationaryQubit : public IStationaryQubit {
   void initialize() override;
   void finish() override;
   void handleMessage(omnetpp::cMessage *msg) override;
-  messages::PhotonicQubit *generateEntangledPhoton();
+  messages::FlyingQubit *generateEntangledPhoton();
   void setBusy();
+  std::string buildPhysicalEventPayload(const char* phase, int pulse = -1, bool photon_lost = false) const;
 
   /**
    * get the default backend configuration from the Bcakend module.

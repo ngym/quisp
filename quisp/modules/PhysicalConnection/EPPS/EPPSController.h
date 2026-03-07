@@ -4,7 +4,7 @@
  */
 #pragma once
 
-#include <PhotonicQubit_m.h>
+#include <FlyingQubit_m.h>
 #include <messages/classical_messages.h>
 #include <omnetpp.h>
 #include <vector>

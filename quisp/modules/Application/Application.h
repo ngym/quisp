@@ -8,6 +8,8 @@
 #ifndef MODULES_APPLICATION_H_
 #define MODULES_APPLICATION_H_
 
+#include <string>
+
 #include "IApplication.h"
 #include "modules/Logger/LoggerBase.h"
 #include "utils/ComponentProvider.h"
@@ -42,6 +44,7 @@ class Application : public IApplication, public Logger::LoggerBase {
 
   void createEndNodeWeightMap();
   void generateTraffic();
+  std::string buildExperimentRequestPayload(const messages::ConnectionSetupRequest *pk) const;
 
   messages::ConnectionSetupRequest *createConnectionSetupRequest(int dest_addr, int num_of_required_resources);
   utils::ComponentProvider provider;

@@ -3,6 +3,11 @@
 
 ### pyenv virtualenv
 .python-version
+.venv-qutip/
+scripts/dashboard/runs/
+scripts/dashboard/dashboard_audit.log*
+quisp/ES_linear_five_MM_network
+quisp/ES_linear_five_MM_network_dm
 
 ### quisp specific
 /doc/html/
@@ -629,5 +634,3 @@ FodyWeavers.xsd
 # JetBrains Rider
 .idea/
 *.sln.iml
-
-

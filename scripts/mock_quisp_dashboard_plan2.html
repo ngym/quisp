@@ -1,0 +1,1232 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuISP Dashboard Mock - Plan 2 (Large Scale)</title>
+  <style>
+    :root {
+      --bg: #050816;
+      --panel: #0f1730;
+      --panel-2: #151f43;
+      --text: #e9f0ff;
+      --sub: #98a9d8;
+      --line: #2c4270;
+      --accent: #54d7ff;
+      --accent-2: #80ff86;
+      --warn: #ffd06b;
+      --bad: #ff7382;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Space Grotesk", "Noto Sans JP", "Segoe UI", sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 0% 0%, rgba(85, 160, 255, 0.15), transparent 44%), radial-gradient(circle at 100% 10%, rgba(128, 255, 134, 0.12), transparent 35%), var(--bg);
+      padding: 14px;
+    }
+    .shell { max-width: 1680px; margin: 0 auto; display: grid; gap: 12px; }
+    .topbar {
+      background: linear-gradient(90deg, #0f1f48, #162851);
+      border: 1px solid #2a4072;
+      border-radius: 14px;
+      padding: 12px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 22px;
+      letter-spacing: 0.01em;
+    }
+    .pill {
+      font-size: 11px;
+      border-radius: 999px;
+      border: 1px solid #2d497f;
+      background: rgba(4, 9, 24, 0.8);
+      color: #8ed7ff;
+      padding: 2px 10px;
+    }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .btn {
+      border: 1px solid #2d4772;
+      border-radius: 9px;
+      background: #111a33;
+      color: #d5e4ff;
+      padding: 7px 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .btn button {
+      all: unset;
+      cursor: inherit;
+    }
+    .small {
+      color: var(--sub);
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 290px minmax(0, 1fr);
+      gap: 12px;
+      align-items: start;
+    }
+    .panel {
+      background: linear-gradient(170deg, rgba(14, 24, 45, 0.95), rgba(11, 20, 38, 0.96));
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .panel-title {
+      margin: 0 0 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: #d2e2ff;
+    }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .kpi {
+      border-radius: 10px;
+      background: linear-gradient(180deg, #1f2f54, #182445);
+      border: 1px solid #2f4772;
+      padding: 10px;
+    }
+    .kpi .label { color: #adc0e6; font-size: 12px; margin-bottom: 6px; }
+    .kpi .value { font-size: 28px; line-height: 1; }
+    .kpi .delta { margin-top: 6px; color: #9bd38b; font-size: 12px; }
+    .kpi .delta.down { color: var(--bad); }
+
+    .tabs {
+      display: inline-flex;
+      gap: 6px;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .tab {
+      border: 1px solid #2d4772;
+      border-radius: 999px;
+      font-size: 12px;
+      padding: 4px 10px;
+      color: #c4d7ff;
+      background: #101a32;
+      cursor: pointer;
+    }
+    .tab.active { background: var(--accent); color: #041025; border-color: #6bd5f3; }
+
+    .big {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 12px;
+      margin-bottom: 12px;
+      min-height: 360px;
+    }
+    .canvas-wrap {
+      position: relative;
+      border: 1px solid #2a4470;
+      border-radius: 10px;
+      background: #0b1530;
+      overflow: hidden;
+      min-height: 360px;
+    }
+    #topologyCanvas { width: 100%; height: 100%; display: block; }
+    .overlay-note {
+      position: absolute;
+      right: 8px;
+      bottom: 8px;
+      background: rgba(4, 10, 26, 0.8);
+      border: 1px solid #2f4f84;
+      color: #a5b6da;
+      font-size: 11px;
+      padding: 6px 8px;
+      border-radius: 8px;
+    }
+    .range-wrap {
+      background: #0d1835;
+      border: 1px solid #2b4675;
+      border-radius: 10px;
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      font-size: 11px;
+    }
+    .range-wrap label { color: #b9c8ea; display: flex; flex-direction: column; gap: 4px; }
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+    .legend {
+      margin-top: 6px;
+      display: grid;
+      gap: 4px;
+      color: #b6c8ee;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+    .legend strong { color: #e7f2ff; }
+    .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+    .chart-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 1fr;
+    }
+    .chart-box {
+      border: 1px solid #2b4370;
+      border-radius: 10px;
+      background: #111a38;
+      padding: 8px;
+      min-height: 140px;
+    }
+    .chart-box canvas {
+      width: 100%;
+      height: 130px;
+      display: block;
+      background: #0c1430;
+      border: 1px solid #2d4672;
+      border-radius: 8px;
+    }
+    .bottom {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 340px;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .virtual-list {
+      position: relative;
+      border: 1px solid #2d4570;
+      border-radius: 10px;
+      height: 220px;
+      overflow: auto;
+      background: #0a1230;
+      font-size: 12px;
+    }
+    .virtual-scroll-rail {
+      position: relative;
+      height: 100%;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+    .virtual-inner {
+      position: relative;
+      width: 100%;
+    }
+    .virtual-row {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 24px;
+      display: grid;
+      grid-template-columns: 90px 78px 1fr 2.3fr;
+      gap: 6px;
+      align-items: center;
+      padding: 0 8px;
+      color: #d8e5ff;
+      border-bottom: 1px solid #1f355e;
+      background: #0b1736;
+    }
+    .virtual-row:nth-child(even) { background: #111c3f; }
+    .row-badge {
+      font-size: 11px;
+      border-radius: 999px;
+      padding: 2px 6px;
+      width: fit-content;
+    }
+    .ok { color: #041022; background: #82ff6f; }
+    .warn { color: #041022; background: #ffd06b; }
+    .err { color: #041022; background: #ff7382; }
+    .sidebar h3 { margin: 0 0 6px; font-size: 14px; }
+    .group { margin: 12px 0; }
+    .group h4 { margin: 0 0 6px; font-size: 12px; color: #bdd1f7; }
+    .group .line { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: #d6e4ff; }
+    .muted { color: var(--sub); font-size: 11px; }
+    @media (max-width: 1300px) {
+      .layout, .big, .bottom { grid-template-columns: 1fr; }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px) {
+      .kpis { grid-template-columns: 1fr; }
+      body { padding: 8px; }
+      .toolbar { width: 100%; justify-content: flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="topbar panel">
+      <div class="brand">
+        QuISP Dashboard Mock <span class="pill">案2（10kノード向け）</span>
+      </div>
+      <div class="toolbar">
+        <button class="btn" id="playBtn"><button>▶ 再生</button></button>
+        <button class="btn" id="pauseBtn" disabled><button>⏸ 停止</button></button>
+        <button class="btn" id="resetBtn"><button>↺ リセット</button></button>
+        <label class="small">速度
+          <input id="speed" type="range" min="1" max="8" value="4" />
+        </label>
+        <span class="small" id="speedLabel">1.5x</span>
+        <span class="small">フレーム <strong id="frameLabel">0</strong> / <strong id="frameMax">0</strong></span>
+      </div>
+    </section>
+
+    <div class="layout">
+      <aside class="panel sidebar">
+        <h3>大規模実験コントロール</h3>
+        <div class="group">
+          <h4>Run / 比較</h4>
+          <div class="line">
+            <label><input type="checkbox" checked /> run_2026_large_01 (基準)</label>
+            <label><input type="checkbox" /> run_2026_large_02 (比較)</label>
+            <label><input type="checkbox" /> run_2026_large_03（条件差分）</label>
+          </div>
+        </div>
+        <div class="group">
+          <h4>可視化粒度</h4>
+          <div class="line">
+            <label><input type="radio" name="granularity" checked /> ノード全件</label>
+            <label><input type="radio" name="granularity" /> クラスタ表示のみ</label>
+            <label><input type="radio" name="granularity" /> 異常中心のみ</label>
+          </div>
+        </div>
+        <div class="group">
+          <h4>トップロジ情報</h4>
+          <div class="line">
+            <label><input id="drawEdges" type="checkbox" checked /> エッジ上位サンプル描画（性能最優先）</label>
+            <label><input id="useCluster" type="checkbox" /> クラスタ半径で集約</label>
+          </div>
+          <div class="line">
+            <label>ノードサイズ（ピクセル）
+              <input id="nodeScale" type="range" min="1" max="4" step="1" value="2" />
+            </label>
+            <label>ズーム
+              <input id="zoom" type="range" min="6" max="32" step="1" value="14" />
+            </label>
+          </div>
+        </div>
+        <div class="group">
+          <h4>部分表示（サブネット）</h4>
+          <div class="line">
+            <label>ノードID範囲（1始まり）
+              <span class="small">
+                <input id="nodeFrom" type="number" min="1" max="10000" value="1" />
+                〜
+                <input id="nodeTo" type="number" min="1" max="10000" value="10000" />
+              </span>
+            </label>
+            <label><input id="useSpatialFilter" type="checkbox" /> 空間範囲で抽出
+              <span class="small">x: <input id="xMin" type="range" min="0" max="100" value="0" /> <strong id="xMinLabel">0</strong>% 〜 <input id="xMax" type="range" min="0" max="100" value="100" /> <strong id="xMaxLabel">100</strong>%</span>
+            </label>
+            <label><input id="useSpatialFilterY" type="checkbox" /> Y方向も空間絞り込み
+              <span class="small">y: <input id="yMin" type="range" min="0" max="100" value="0" /> <strong id="yMinLabel">0</strong>% 〜 <input id="yMax" type="range" min="0" max="100" value="100" /> <strong id="yMaxLabel">100</strong>%</span>
+            </label>
+            <label><input id="useHopFilter" type="checkbox" /> k-hop サブグラフ（ID範囲と空間条件との交差）</label>
+            <label>中心ノードID
+              <input id="hopCenter" type="number" min="1" max="10000" value="1" />
+            </label>
+            <label>k = <strong id="hopDepthLabel">2</strong>
+              <input id="hopDepth" type="range" min="1" max="6" value="2" />
+            </label>
+            <button class="btn" id="applyFiltersBtn"><button>サブネット再計算</button></button>
+          </div>
+        </div>
+        <p class="muted">※ この版は大規模向けのモック。計測表示・イベントは集約しつつ再生可能。実データはAPI側で時系列バッファを区間取得すると想定。</p>
+      </aside>
+
+      <main class="panel">
+        <section class="kpis">
+          <div class="kpi"><div class="label">生成成功率</div><div class="value" id="kpiSuccess">93.2%</div><div class="delta">+0.8% (5分間)</div></div>
+          <div class="kpi"><div class="label">平均Fidelity</div><div class="value" id="kpiFidelity">0.921</div><div class="delta">+0.013</div></div>
+          <div class="kpi"><div class="label">再送率</div><div class="value" id="kpiRetry">4.8%</div><div class="delta down">+0.6%</div></div>
+          <div class="kpi"><div class="label">QBER</div><div class="value" id="kpiQber">0.021</div><div class="delta down">+0.002</div></div>
+          <div class="kpi"><div class="label">平均遅延</div><div class="value" id="kpiDelay">14.3 ms</div><div class="delta">-0.9 ms</div></div>
+          <div class="kpi"><div class="label">リンク障害</div><div class="value" id="kpiLoss">1.7%</div><div class="delta">安定</div></div>
+        </section>
+
+        <div class="kpi" style="margin-bottom:12px;">
+          <div class="panel-title">
+            <span>イベントフレーム + 時系列リプレイ（再生可）</span>
+          </div>
+          <div class="tabs">
+            <span class="tab active">時間圧縮表示</span>
+            <span class="tab">ノードイベントヒート</span>
+            <span class="tab">リンク品質</span>
+          </div>
+          <div class="chart-grid">
+            <div class="chart-box">
+              <canvas id="mainChart" width="1200" height="150"></canvas>
+            </div>
+            <div class="chart-box">
+              <canvas id="histChart" width="1200" height="150"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div class="big">
+          <div class="canvas-wrap">
+            <canvas id="topologyCanvas" width="1200" height="520"></canvas>
+            <div class="overlay-note">
+              <div>ノード: <strong id="visibleNodeLabel">0</strong> / <strong id="allNodeLabel">10000</strong></div>
+              <div>エッジ描画: <strong id="visibleEdgeLabel">0</strong></div>
+              <div>FPS(推定): <strong id="fpsLabel">--</strong></div>
+            </div>
+          </div>
+          <aside class="range-wrap">
+            <div class="panel-title">再生コントロール</div>
+            <label>時刻シーク
+              <input id="seek" type="range" min="0" max="0" value="0" />
+            </label>
+            <label>表示窓（時間）= <strong id="windowLabel">400</strong> s
+              <input id="windowRange" type="range" min="80" max="1200" step="20" value="400" />
+            </label>
+            <label><input id="animateTopology" type="checkbox" checked /> ノード位置を揺らしてトレンド可視化</label>
+            <div class="legend">
+              <div><span class="dot" style="background:#6ee2ff;"></span><strong>ノード:</strong> フィデリティ低下で青→赤へ</div>
+              <div><span class="dot" style="background:#7cff6a;"></span><strong>再送:</strong> 黄色</div>
+              <div><span class="dot" style="background:#ff7382;"></span><strong>障害:</strong> 赤</div>
+              <div><span class="dot" style="background:#9eb7e8;"></span><strong>クラスタ:</strong> グレー</div>
+            </div>
+          </aside>
+        </div>
+
+        <div class="bottom">
+          <article class="panel">
+            <div class="panel-title"><span>時系列KPI（再生同期）</span><span class="muted" id="kpiTimeLabel">t = 0</span></div>
+            <div class="virtual-scroll-rail">
+              <div class="virtual-list">
+                <div id="eventInner" class="virtual-inner"></div>
+              </div>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-title"><span>サマリ</span></div>
+            <p class="muted">10000ノード規模では「全点レンダリング」ではなく、表示可能性を優先する設定にしてあります。</p>
+            <pre id="summary" style="white-space: pre-wrap; font-size:12px; margin:0; color:#d3e2ff;">
+平均クラスタサイズ: 48
+フレームあたり描画候補: 10,000ノード / 15,000エッジ候補
+可視エッジ最適化: 品質上位70%のみ
+イベント仮想スクロール: 5,000件を可変窓表示
+            </pre>
+          </article>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const NODE_COUNT = 10000;
+    const MAX_TIMES = 4800;
+    const EDGE_PER_NODE = 3;
+    const EVENT_ROWS = 5000;
+    const ROW_H = 24;
+    const fpsWindow = [];
+
+    const state = {
+      isPlaying: false,
+      frame: 0,
+      speed: 4,
+      totalFrames: MAX_TIMES,
+      window: 400,
+      animateTopology: true,
+      drawEdges: true,
+      useCluster: false,
+      nodeScale: 2,
+      zoom: 14,
+      lastTs: 0,
+      lastFpsTs: 0,
+      raf: null,
+      visibleNodeIds: null,
+      visibleMask: null,
+      filter: {
+        nodeFrom: 0,
+        nodeTo: NODE_COUNT - 1,
+        useSpatial: false,
+        xMin: 0,
+        xMax: 100,
+        useSpatialY: false,
+        yMin: 0,
+        yMax: 100,
+        useHop: false,
+        hopCenter: 0,
+        hopDepth: 2
+      }
+    };
+
+    const canvas = document.getElementById("topologyCanvas");
+    const g = canvas.getContext("2d");
+    const mainChart = document.getElementById("mainChart").getContext("2d");
+    const histChart = document.getElementById("histChart").getContext("2d");
+    const summary = document.getElementById("summary");
+    const eventInner = document.getElementById("eventInner");
+    const eventList = document.querySelector(".virtual-list");
+    const topbar = {
+      playBtn: document.getElementById("playBtn"),
+      pauseBtn: document.getElementById("pauseBtn"),
+      resetBtn: document.getElementById("resetBtn"),
+      speed: document.getElementById("speed"),
+      speedLabel: document.getElementById("speedLabel"),
+      seek: document.getElementById("seek"),
+      windowRange: document.getElementById("windowRange"),
+      windowLabel: document.getElementById("windowLabel"),
+      animateTopology: document.getElementById("animateTopology"),
+      drawEdges: document.getElementById("drawEdges"),
+      useCluster: document.getElementById("useCluster"),
+      nodeScale: document.getElementById("nodeScale"),
+      zoom: document.getElementById("zoom"),
+      frameLabel: document.getElementById("frameLabel"),
+      frameMax: document.getElementById("frameMax"),
+      fpsLabel: document.getElementById("fpsLabel"),
+      kpiTimeLabel: document.getElementById("kpiTimeLabel"),
+      visibleNodeLabel: document.getElementById("visibleNodeLabel"),
+      allNodeLabel: document.getElementById("allNodeLabel"),
+      visibleEdgeLabel: document.getElementById("visibleEdgeLabel"),
+      kpiSuccess: document.getElementById("kpiSuccess"),
+      kpiFidelity: document.getElementById("kpiFidelity"),
+      kpiRetry: document.getElementById("kpiRetry"),
+      kpiQber: document.getElementById("kpiQber"),
+      kpiDelay: document.getElementById("kpiDelay"),
+      kpiLoss: document.getElementById("kpiLoss"),
+      applyFiltersBtn: document.getElementById("applyFiltersBtn"),
+      nodeFrom: document.getElementById("nodeFrom"),
+      nodeTo: document.getElementById("nodeTo"),
+      useSpatialFilter: document.getElementById("useSpatialFilter"),
+      spatialXMin: document.getElementById("xMin"),
+      spatialXMax: document.getElementById("xMax"),
+      spatialYMin: document.getElementById("yMin"),
+      spatialYMax: document.getElementById("yMax"),
+      spatialXMinLabel: document.getElementById("xMinLabel"),
+      spatialXMaxLabel: document.getElementById("xMaxLabel"),
+      spatialYMinLabel: document.getElementById("yMinLabel"),
+      spatialYMaxLabel: document.getElementById("yMaxLabel"),
+      useSpatialFilterY: document.getElementById("useSpatialFilterY"),
+      useHopFilter: document.getElementById("useHopFilter"),
+      hopCenter: document.getElementById("hopCenter"),
+      hopDepth: document.getElementById("hopDepth"),
+      hopDepthLabel: document.getElementById("hopDepthLabel")
+    };
+
+    function fmt(v, d = 3) { return Number(v).toFixed(d); }
+    function hash(seed) {
+      seed = (seed ^ 61) ^ (seed >> 16);
+      seed = seed + (seed << 3);
+      seed = seed ^ (seed >> 4);
+      seed = seed * 0x27d4eb2d;
+      return (seed ^ (seed >> 15)) >>> 0;
+    }
+    function rand(seed) {
+      return (hash(seed) % 1000) / 1000;
+    }
+
+    const nodes = new Array(NODE_COUNT);
+    const edges = [];
+    const adjacency = new Array(NODE_COUNT);
+    const metrics = {
+      success: new Float32Array(MAX_TIMES),
+      fidelity: new Float32Array(MAX_TIMES),
+      qber: new Float32Array(MAX_TIMES),
+      delay: new Float32Array(MAX_TIMES),
+      retry: new Float32Array(MAX_TIMES),
+      loss: new Float32Array(MAX_TIMES)
+    };
+    const events = [];
+
+    function buildNetwork() {
+      for (let i = 0; i < NODE_COUNT; i++) {
+        const a = rand(i + 11);
+        const b = rand(i + 91);
+        const c = rand(i + 33);
+        adjacency[i] = [];
+        nodes[i] = {
+          id: i,
+          x: 0.12 * canvas.clientWidth + a * (canvas.clientWidth * 0.76),
+          y: 0.12 * canvas.clientHeight + b * (canvas.clientHeight * 0.76),
+          q: 0.75 + (c * 0.25),
+          active: true,
+          baseX: 0.12 * canvas.clientWidth + a * (canvas.clientWidth * 0.76),
+          baseY: 0.12 * canvas.clientHeight + b * (canvas.clientHeight * 0.76),
+          jitter: (i % 100) * 0.0007
+        };
+      }
+
+      for (let i = 0; i < NODE_COUNT; i++) {
+        for (let j = 0; j < EDGE_PER_NODE; j++) {
+          const t = (i * 17 + j * 31) % NODE_COUNT;
+          const to = (t + (i * j + 7) * 73) % NODE_COUNT;
+          if (to !== i) {
+            const weight = rand(i + j + 3) * 0.15 + 0.85;
+            edges.push([i, to, weight]);
+            adjacency[i].push(to);
+            if (!adjacency[to]) adjacency[to] = [];
+            adjacency[to].push(i);
+          }
+        }
+      }
+
+      let baseTime = Date.now() / 1000;
+      const types = ["OK", "OK", "OK", "WARN", "ERR", "RETRY"];
+      for (let i = 0; i < EVENT_ROWS; i++) {
+        const t = Math.floor(i * (MAX_TIMES / EVENT_ROWS));
+        const node = i * 7 % NODE_COUNT;
+        const typ = types[i % types.length];
+        events.push({
+          frame: t,
+          time: new Date(baseTime * 1000 + i * 100).toISOString().slice(11, 19),
+          type: typ,
+          nodeIndex: node,
+          node: `Node-${(node + 1).toString().padStart(5, "0")}`,
+          msg: typ === "ERR" ? "リンク再確立失敗" : typ === "WARN" ? "量子ビット待ち時間超過" : "状態遷移完了"
+        });
+      }
+
+      for (let i = 0; i < MAX_TIMES; i++) {
+        const noise = Math.sin(i / 29) * 0.005;
+        metrics.success[i] = 0.90 + 0.05 * Math.sin(i / 120) + noise + Math.sin(i / 40) * 0.003;
+        metrics.fidelity[i] = 0.91 + 0.06 * Math.sin(i / 95) + noise * 0.5;
+        metrics.qber[i] = 0.02 + 0.01 * Math.abs(Math.sin(i / 70)) * 0.4 + (i % 17) / 2000;
+        metrics.delay[i] = 10 + 8 * Math.sin(i / 45) + ((i % 17) / 2);
+        metrics.retry[i] = 3.5 + 2.5 * Math.abs(Math.cos(i / 31)) + (i % 9) / 3;
+        metrics.loss[i] = 0.8 + Math.max(0, Math.sin(i / 210)) * 1.2;
+      }
+      topbar.frameMax.textContent = MAX_TIMES - 1;
+      topbar.seek.max = String(MAX_TIMES - 1);
+      topbar.frameLabel.textContent = "0";
+      topbar.allNodeLabel.textContent = NODE_COUNT.toLocaleString();
+    }
+
+    function resizeCanvas() {
+      const ratio = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = Math.floor(rect.width * ratio);
+      canvas.height = Math.floor(rect.height * ratio);
+      g.setTransform(ratio, 0, 0, ratio, 0, 0);
+      g.scale(1, 1);
+      nodes.forEach((n, idx) => {
+        const px = 0.12 * rect.width + rand(idx + 11) * (rect.width * 0.76);
+        const py = 0.12 * rect.height + rand(idx + 91) * (rect.height * 0.76);
+        n.baseX = px;
+        n.baseY = py;
+        n.x = px;
+        n.y = py;
+      });
+    }
+
+    function qualityToColor(v) {
+      const low = Math.min(1, Math.max(0.75, v));
+      const b = Math.floor(255 * low);
+      const g = Math.floor(120 + 90 * low);
+      const r = Math.floor(255 * (1 - low));
+      return `rgb(${r},${g},${b})`;
+    }
+
+    function clamp(n, min, max) {
+      return Math.max(min, Math.min(max, n));
+    }
+
+    function parseNodeRangeInput() {
+      const from = clamp(Number(topbar.nodeFrom.value || 1), 1, NODE_COUNT) - 1;
+      const to = clamp(Number(topbar.nodeTo.value || NODE_COUNT), 1, NODE_COUNT) - 1;
+      state.filter.nodeFrom = Math.min(from, to);
+      state.filter.nodeTo = Math.max(from, to);
+      topbar.nodeFrom.value = String(state.filter.nodeFrom + 1);
+      topbar.nodeTo.value = String(state.filter.nodeTo + 1);
+    }
+
+    function refreshFilters() {
+      parseNodeRangeInput();
+      state.filter.useSpatial = topbar.useSpatialFilter.checked;
+      let xMin = clamp(Number(topbar.spatialXMin.value), 0, 100);
+      let xMax = clamp(Number(topbar.spatialXMax.value), 0, 100);
+      if (xMin > xMax) {
+        const t = xMin;
+        xMin = xMax;
+        xMax = t;
+      }
+      state.filter.xMin = xMin;
+      state.filter.xMax = xMax;
+      state.filter.useSpatialY = topbar.useSpatialFilterY.checked;
+      let yMin = clamp(Number(topbar.spatialYMin.value), 0, 100);
+      let yMax = clamp(Number(topbar.spatialYMax.value), 0, 100);
+      if (yMin > yMax) {
+        const t = yMin;
+        yMin = yMax;
+        yMax = t;
+      }
+      state.filter.yMin = yMin;
+      state.filter.yMax = yMax;
+      state.filter.useHop = topbar.useHopFilter.checked;
+      state.filter.hopCenter = clamp(Number(topbar.hopCenter.value || 1), 1, NODE_COUNT) - 1;
+      state.filter.hopDepth = Number(topbar.hopDepth.value);
+
+      topbar.hopDepthLabel.textContent = String(state.filter.hopDepth);
+      topbar.spatialXMinLabel.textContent = state.filter.xMin;
+      topbar.spatialXMaxLabel.textContent = state.filter.xMax;
+      topbar.spatialYMinLabel.textContent = state.filter.yMin;
+      topbar.spatialYMaxLabel.textContent = state.filter.yMax;
+      topbar.hopCenter.value = String(state.filter.hopCenter + 1);
+
+      const width = canvas.clientWidth || 1;
+      const height = canvas.clientHeight || 1;
+      const base = [];
+      for (let i = 0; i < NODE_COUNT; i++) {
+        if (i < state.filter.nodeFrom || i > state.filter.nodeTo) continue;
+        const n = nodes[i];
+        if (!n) continue;
+        const px = (n.baseX / width) * 100;
+        const py = (n.baseY / height) * 100;
+        if (state.filter.useSpatial) {
+          if (px < state.filter.xMin || px > state.filter.xMax) continue;
+        }
+        if (state.filter.useSpatialY) {
+          if (py < state.filter.yMin || py > state.filter.yMax) continue;
+        }
+        base.push(i);
+      }
+
+      if (!state.filter.useHop || base.length === 0) {
+        state.visibleNodeIds = base;
+        state.visibleMask = new Uint8Array(NODE_COUNT);
+        for (let i = 0; i < state.visibleNodeIds.length; i++) {
+          state.visibleMask[state.visibleNodeIds[i]] = 1;
+        }
+        updateFilterSummary(base.length, 0);
+        render(state.frame);
+        return;
+      }
+
+      const center = state.filter.hopCenter;
+      if (!nodes[center]) {
+        state.visibleNodeIds = [];
+        state.visibleMask = new Uint8Array(NODE_COUNT);
+        updateFilterSummary(0, 0);
+        render(state.frame);
+        return;
+      }
+
+      const withinBase = new Uint8Array(NODE_COUNT);
+      for (let i = 0; i < base.length; i++) withinBase[base[i]] = 1;
+      const queue = [center];
+      const visited = new Int16Array(NODE_COUNT).fill(-1);
+      const out = [];
+      let expanded = 0;
+      visited[center] = 0;
+      while (queue.length > 0) {
+        const current = queue.shift();
+        expanded += 1;
+        const d = visited[current];
+        if (withinBase[current] && d <= state.filter.hopDepth) out.push(current);
+        if (d >= state.filter.hopDepth) continue;
+        const neighbors = adjacency[current] || [];
+        for (let j = 0; j < neighbors.length; j++) {
+          const nb = neighbors[j];
+          if (visited[nb] === -1 && nb >= state.filter.nodeFrom && nb <= state.filter.nodeTo) {
+            visited[nb] = d + 1;
+            queue.push(nb);
+          }
+        }
+      }
+
+      const compactOut = [];
+      for (let i = 0; i < out.length; i++) {
+        const idx = out[i];
+        if (!state.filter.useSpatial || !nodes[idx]) compactOut.push(idx);
+        else if (state.filter.useSpatial && state.filter.useSpatialY) {
+          const px = (nodes[idx].baseX / width) * 100;
+          const py = (nodes[idx].baseY / height) * 100;
+          if (px >= state.filter.xMin && px <= state.filter.xMax && py >= state.filter.yMin && py <= state.filter.yMax) compactOut.push(idx);
+        } else if (state.filter.useSpatial) {
+          const px = (nodes[idx].baseX / width) * 100;
+          if (px >= state.filter.xMin && px <= state.filter.xMax) compactOut.push(idx);
+        } else if (state.filter.useSpatialY) {
+          const py = (nodes[idx].baseY / height) * 100;
+          if (py >= state.filter.yMin && py <= state.filter.yMax) compactOut.push(idx);
+        } else {
+          compactOut.push(idx);
+        }
+      }
+
+      state.visibleNodeIds = compactOut.sort((a, b) => a - b);
+      state.visibleMask = new Uint8Array(NODE_COUNT);
+      for (let i = 0; i < state.visibleNodeIds.length; i++) {
+        state.visibleMask[state.visibleNodeIds[i]] = 1;
+      }
+      updateFilterSummary(state.visibleNodeIds.length, expanded);
+      render(state.frame);
+    }
+
+    function updateFilterSummary(visibleCount, traversed) {
+      summary.textContent = `平均クラスタサイズ: 48
+フレームあたり描画候補: ${visibleCount.toLocaleString()}ノード / 約${Math.min(15000, Math.max(0, visibleCount * 1.5)).toLocaleString()}エッジ候補
+可視エッジ最適化: 品質上位70%のみ
+イベント仮想スクロール: 5,000件を可変窓表示
+フィルタ条件: ID ${state.filter.nodeFrom + 1}〜${state.filter.nodeTo + 1}${state.filter.useSpatial ? `, X=${state.filter.xMin}-${state.filter.xMax}%${state.filter.useSpatialY ? `, Y=${state.filter.yMin}-${state.filter.yMax}%` : ""} ${state.filter.useHop ? `, hop=${state.filter.hopDepth}` : ""}`;
+探索到達ノード(内部): ${traversed}`;
+    }
+
+    function drawTopology(frame) {
+      const w = canvas.clientWidth;
+      const h = canvas.clientHeight;
+      const dpr = window.devicePixelRatio || 1;
+      const visibleNodeIds = state.visibleNodeIds || [];
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.clearRect(0, 0, w * dpr, h * dpr);
+      g.scale(dpr, dpr);
+
+      g.fillStyle = "#09112a";
+      g.fillRect(0, 0, w, h);
+      g.strokeStyle = "#203764";
+      g.lineWidth = 0.5;
+      g.beginPath();
+      g.moveTo(10, 10);
+      g.lineTo(w - 10, 10);
+      g.lineTo(w - 10, h - 10);
+      g.lineTo(10, h - 10);
+      g.closePath();
+      g.stroke();
+
+      const clusterMode = topbar.useCluster.checked;
+      const drawNodeSize = Number(topbar.nodeScale.value);
+      const zoom = Number(topbar.zoom.value) / 14;
+      const maxEdgeCount = clusterMode ? 7000 : 15000;
+      let visibleEdges = 0;
+      let visibleNodes = 0;
+      const visibleMask = new Uint8Array(NODE_COUNT);
+      for (let i = 0; i < visibleNodeIds.length; i++) visibleMask[visibleNodeIds[i]] = 1;
+
+      if (state.drawEdges && topbar.drawEdges.checked) {
+        g.beginPath();
+        let ecount = 0;
+        const stride = Math.max(1, Math.floor(Math.max(1, edges.length / maxEdgeCount)));
+        for (let i = 0; i < edges.length; i += stride) {
+          const [a, b, wgt] = edges[i];
+          const na = nodes[a];
+          const nb = nodes[b];
+          if (!na || !nb) continue;
+          if (!visibleMask[a] || !visibleMask[b]) continue;
+          const quality = (na.q + nb.q) / 2;
+          const d1 = na.q < 0.84 ? 1 : 0;
+          const dynamic = ((frame + i * 0.03) % 120) / 120;
+          const active = quality > 0.8 && quality > (0.78 + dynamic * 0.05);
+          if (!active && d1 > 0) continue;
+          g.strokeStyle = `rgba(95, 166, 255, ${0.15 + wgt * 0.4})`;
+          g.lineWidth = 0.7 * (quality * 0.8);
+          g.moveTo(na.x, na.y);
+          g.lineTo(nb.x, nb.y);
+          ecount++;
+          if (ecount > maxEdgeCount) break;
+        }
+        g.stroke();
+        visibleEdges = Math.min(ecount, maxEdgeCount);
+      }
+
+      if (clusterMode) {
+        const bucket = Math.floor(Math.sqrt(NODE_COUNT / 3));
+        const gridSize = Math.max(20, bucket);
+        const cell = Math.max(1, Math.floor(w / gridSize));
+        const map = new Map();
+        visibleNodeIds.forEach((nodeId) => {
+          const n = nodes[nodeId];
+          if (!n) return;
+          const jitter = state.animateTopology ? Math.sin((frame + nodeId * n.jitter) * 0.1) * 0.35 : 0;
+          n.x = n.baseX + jitter;
+          n.y = n.baseY + jitter * 0.7;
+          const cx = Math.floor(n.x / cell);
+          const cy = Math.floor(n.y / cell);
+          const key = `${cx}:${cy}`;
+          const entry = map.get(key) || {x:0, y:0, c:0};
+          entry.x += n.x;
+          entry.y += n.y;
+          entry.c += 1;
+          map.set(key, entry);
+        });
+        for (const [, v] of map) {
+          const x = v.x / v.c;
+          const y = v.y / v.c;
+          const r = Math.max(2, Math.sqrt(v.c) * 0.2);
+          const a = Math.min(1, v.c / 80);
+          g.fillStyle = `rgba(155, 170, 205, ${0.1 + a * 0.75})`;
+          g.beginPath();
+          g.arc(x, y, r + 1.5, 0, Math.PI * 2);
+          g.fill();
+        }
+      } else {
+        for (let i = 0; i < visibleNodeIds.length; i++) {
+          const n = nodes[visibleNodeIds[i]];
+          if (!n) continue;
+          const jitter = state.animateTopology ? Math.sin((frame + n.id * n.jitter) * 0.1) * 0.35 : 0;
+          n.x = n.baseX + jitter;
+          n.y = n.baseY + jitter * 0.7;
+          const r = drawNodeSize;
+          const c = qualityToColor(n.q + Math.sin((frame + i * 0.7) * 0.002) * 0.01);
+          g.fillStyle = c;
+          g.beginPath();
+          g.arc(n.x, n.y, r * zoom, 0, Math.PI * 2);
+          g.fill();
+          visibleNodes++;
+        }
+      }
+
+      topbar.visibleNodeLabel.textContent = visibleNodes.toLocaleString();
+      topbar.visibleEdgeLabel.textContent = visibleEdges.toLocaleString();
+    }
+
+    function sampleSeries(arr, frame, window) {
+      const start = Math.max(0, frame - window);
+      const slice = arr.slice(start, frame + 1);
+      const maxPoints = 220;
+      if (slice.length <= maxPoints) return slice;
+      const stride = Math.ceil(slice.length / maxPoints);
+      const out = [];
+      for (let i = 0; i < slice.length; i += stride) out.push(slice[i]);
+      return out;
+    }
+
+    function drawLineChart(ctx, seriesA, seriesB, opts = {}) {
+      const { colorA = "#54d7ff", colorB = "#ffd06b", min = 0, max = 1, threshold = null, showCursor = true, frame = 0, window = 200 } = opts;
+      const w = ctx.canvas.width;
+      const h = ctx.canvas.height;
+      const pad = 20;
+      const width = w - pad * 2;
+      const height = h - pad * 2;
+
+      const a = sampleSeries(seriesA, frame, window);
+      const b = sampleSeries(seriesB, frame, window);
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#0c1430";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "#2a4772";
+      ctx.beginPath();
+      ctx.moveTo(pad, pad);
+      ctx.lineTo(pad, h - pad);
+      ctx.lineTo(w - pad, h - pad);
+      ctx.stroke();
+
+      if (threshold !== null) {
+        const yT = h - pad - (threshold - min) / (max - min) * height;
+        ctx.strokeStyle = "#ffbe5a";
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pad, yT);
+        ctx.lineTo(w - pad, yT);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      const drawSeries = (arr, color) => {
+        if (!arr.length) return;
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < arr.length; i++) {
+          const x = pad + (i / Math.max(1, (arr.length - 1))) * width;
+          const v = arr[i];
+          const y = h - pad - (v - min) / (max - min) * height;
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      };
+
+      drawSeries(a, colorA);
+      if (b !== seriesA) drawSeries(b, colorB);
+
+      if (showCursor) {
+        const x = pad + width;
+        ctx.strokeStyle = "#9fc5ff";
+        ctx.setLineDash([2, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x, pad);
+        ctx.lineTo(x, h - pad);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    function drawHist() {
+      const w = histChart.canvas.width;
+      const h = histChart.canvas.height;
+      const pad = 18;
+      const cx = w / 2;
+      const cy = h / 2;
+      const maxR = Math.min(cx - pad, cy - pad);
+      const bins = 14;
+      const vals = [];
+      for (let i = 0; i < bins; i++) vals.push(0);
+      const start = Math.max(0, state.frame - state.window);
+      const end = state.frame;
+      const window = metrics.delay.subarray(start, end + 1);
+      for (let i = 0; i < window.length; i++) {
+        const v = window[i];
+        const idx = Math.min(bins - 1, Math.floor((v - 10) / (25 - 10) * bins));
+        if (idx >= 0) vals[idx]++;
+      }
+
+      histChart.clearRect(0, 0, w, h);
+      histChart.fillStyle = "#0c1430";
+      histChart.fillRect(0, 0, w, h);
+
+      const maxVal = Math.max(1, ...vals);
+      for (let i = 0; i < vals.length; i++) {
+        const x = pad + (i / bins) * (w - pad * 2);
+        const bw = Math.floor((w - pad * 2) / bins) - 4;
+        const bh = (vals[i] / maxVal) * (h - pad * 2);
+        histChart.fillStyle = i % 2 === 0 ? "#54d7ff" : "#80ff86";
+        histChart.fillRect(x, h - pad - bh, Math.max(2, bw), bh);
+      }
+      histChart.fillStyle = "#abc4ff";
+      histChart.font = "12px sans-serif";
+      histChart.fillText(`Delay distribution (${start}-${end})`, 10, 14);
+      histChart.beginPath();
+      histChart.arc(cx, cy, maxR * 0.02, 0, Math.PI * 2);
+      histChart.fillStyle = "#d0defd";
+      histChart.fill();
+    }
+
+    function buildRows() {
+      const rowCount = events.length;
+      eventInner.style.height = `${rowCount * ROW_H}px`;
+      const visibleCount = Math.ceil(eventList.clientHeight / ROW_H) + 2;
+      let start = Math.min(Math.max(0, Math.floor(eventList.scrollTop / ROW_H)), Math.max(0, rowCount - visibleCount));
+      const end = Math.min(rowCount, start + visibleCount);
+      const fragment = document.createDocumentFragment();
+      for (let i = start; i < end; i++) {
+        const e = events[i];
+        const row = document.createElement("div");
+        row.className = "virtual-row";
+        row.style.top = `${i * ROW_H}px`;
+        const b = e.type === "OK" ? "ok" : e.type === "WARN" || e.type === "RETRY" ? "warn" : "err";
+        row.innerHTML = `<div>${e.time}</div><div><span class="row-badge ${b}">${e.type}</span></div><div>${e.node}</div><div>${e.msg}</div>`;
+        fragment.appendChild(row);
+      }
+      eventInner.replaceChildren(fragment);
+    }
+
+    function syncLogToFrame() {
+      const frame = state.frame;
+      const visible = events.filter((ev) => {
+        const visibleByFilter = state.visibleMask ? state.visibleMask[ev.nodeIndex] === 1 : true;
+        return ev.frame <= frame && visibleByFilter;
+      });
+      const total = visible.length;
+      eventInner.style.height = `${Math.max(total, 1) * ROW_H}px`;
+      eventList.scrollTop = Math.max(0, eventList.scrollTop);
+      const visibleCount = Math.ceil(eventList.clientHeight / ROW_H) + 2;
+      const start = Math.max(0, total - visibleCount);
+      const end = total;
+      const fragment = document.createDocumentFragment();
+      for (let i = start; i < end; i++) {
+        const e = visible[i];
+        const row = document.createElement("div");
+        row.className = "virtual-row";
+        row.style.top = `${(i - start) * ROW_H}px`;
+        const b = e.type === "OK" ? "ok" : e.type === "WARN" || e.type === "RETRY" ? "warn" : "err";
+        row.innerHTML = `<div>${e.time}</div><div><span class="row-badge ${b}">${e.type}</span></div><div>${e.node}</div><div>${e.msg}</div>`;
+        fragment.appendChild(row);
+      }
+      eventInner.replaceChildren(fragment);
+      eventInner.style.height = `${total * ROW_H}px`;
+      eventInner.dataset.total = String(total);
+    }
+
+    function updateKpis(frame) {
+      const idx = Math.min(frame, MAX_TIMES - 1);
+      const smooth = Math.max(0, idx - 1);
+      topbar.kpiSuccess.textContent = `${fmt(100 * metrics.success[idx], 1)}%`;
+      topbar.kpiFidelity.textContent = fmt(metrics.fidelity[idx], 3);
+      topbar.kpiQber.textContent = fmt(metrics.qber[idx], 3);
+      topbar.kpiDelay.textContent = `${fmt(metrics.delay[idx], 1)} ms`;
+      topbar.kpiRetry.textContent = `${fmt(metrics.retry[idx], 1)}%`;
+      topbar.kpiLoss.textContent = `${fmt(metrics.loss[idx], 1)}%`;
+      topbar.kpiTimeLabel.textContent = `t = ${idx}`;
+      topbar.frameLabel.textContent = String(idx);
+    }
+
+    function render(frame) {
+      drawTopology(frame);
+      drawLineChart(mainChart, metrics.fidelity, metrics.success, {
+        colorA: "#54d7ff",
+        colorB: "#80ff86",
+        min: 0.86,
+        max: 1.0,
+        threshold: 0.92,
+        frame,
+        window: state.window,
+        showCursor: true
+      });
+      drawLineChart(histChart, metrics.delay, metrics.delay, {
+        colorA: "#ffd06b",
+        min: 9,
+        max: 25,
+        frame,
+        window: state.window,
+        showCursor: false
+      });
+      drawHist();
+      updateKpis(frame);
+      syncLogToFrame();
+      topbar.seek.value = String(frame);
+      topbar.visibleNodeLabel.textContent = String(state.visibleNodeIds ? state.visibleNodeIds.length : NODE_COUNT);
+      topbar.frameLabel.textContent = String(frame);
+    }
+
+    function computeFps(ts) {
+      if (state.lastFpsTs) {
+        const dt = ts - state.lastFpsTs;
+        fpsWindow.push(dt);
+        if (fpsWindow.length > 24) fpsWindow.shift();
+        const mean = fpsWindow.reduce((a, b) => a + b, 0) / fpsWindow.length;
+        const fps = 1000 / Math.max(1, mean);
+        topbar.fpsLabel.textContent = fps.toFixed(0);
+      }
+      state.lastFpsTs = ts;
+    }
+
+    function animate(ts) {
+      if (!state.isPlaying) return;
+      computeFps(ts);
+      const delay = 1000 / Math.max(1, state.speed * 3);
+      if (!state.lastTs) state.lastTs = ts;
+      if (ts - state.lastTs >= delay) {
+        state.frame = Math.min(MAX_TIMES - 1, state.frame + 1);
+        if (state.frame >= MAX_TIMES - 1) {
+          state.frame = MAX_TIMES - 1;
+          pausePlayback();
+        } else {
+          state.lastTs = ts;
+        }
+        render(state.frame);
+      }
+      state.raf = requestAnimationFrame(animate);
+    }
+
+    function startPlayback() {
+      if (state.isPlaying) return;
+      state.isPlaying = true;
+      state.lastTs = 0;
+      topbar.playBtn.disabled = true;
+      topbar.pauseBtn.disabled = false;
+      state.raf = requestAnimationFrame(animate);
+    }
+
+    function pausePlayback() {
+      state.isPlaying = false;
+      if (state.raf) cancelAnimationFrame(state.raf);
+      state.raf = null;
+      topbar.playBtn.disabled = false;
+      topbar.pauseBtn.disabled = true;
+    }
+
+    function resetPlayback() {
+      pausePlayback();
+      state.frame = 0;
+      render(0);
+    }
+
+    function onSpeedChange() {
+      const speeds = ["0.5x", "0.8x", "1.0x", "1.3x", "1.7x", "2.3x", "3.0x", "4.2x"];
+      topbar.speedLabel.textContent = speeds[Math.max(0, Math.min(7, state.speed - 1))];
+      state.speed = Number(topbar.speed.value);
+      if (state.isPlaying) {
+        pausePlayback();
+        startPlayback();
+      }
+    }
+
+    function onWindowChange() {
+      state.window = Number(topbar.windowRange.value);
+      topbar.windowLabel.textContent = String(state.window);
+      render(state.frame);
+    }
+
+    function wireEvents() {
+      window.addEventListener("resize", () => {
+        resizeCanvas();
+        render(state.frame);
+      });
+      topbar.playBtn.addEventListener("click", () => {
+        if (state.frame >= MAX_TIMES - 1) resetPlayback();
+        startPlayback();
+      });
+      topbar.pauseBtn.addEventListener("click", pausePlayback);
+      topbar.resetBtn.addEventListener("click", resetPlayback);
+      topbar.speed.addEventListener("input", () => {
+        state.speed = Number(topbar.speed.value);
+        onSpeedChange();
+      });
+      topbar.seek.addEventListener("input", (evt) => {
+        pausePlayback();
+        state.frame = Math.max(0, Math.min(MAX_TIMES - 1, Number(evt.target.value)));
+        render(state.frame);
+      });
+      topbar.windowRange.addEventListener("input", onWindowChange);
+      topbar.animateTopology.addEventListener("change", () => render(state.frame));
+      topbar.drawEdges.addEventListener("change", () => render(state.frame));
+      topbar.useCluster.addEventListener("change", () => render(state.frame));
+      topbar.nodeScale.addEventListener("input", () => render(state.frame));
+      topbar.zoom.addEventListener("input", () => render(state.frame));
+      topbar.applyFiltersBtn.addEventListener("click", () => {
+        refreshFilters();
+      });
+      topbar.nodeFrom.addEventListener("change", refreshFilters);
+      topbar.nodeTo.addEventListener("change", refreshFilters);
+      topbar.spatialXMin.addEventListener("input", () => {
+        topbar.spatialXMinLabel.textContent = topbar.spatialXMin.value;
+      });
+      topbar.spatialXMax.addEventListener("input", () => {
+        topbar.spatialXMaxLabel.textContent = topbar.spatialXMax.value;
+      });
+      topbar.spatialYMin.addEventListener("input", () => {
+        topbar.spatialYMinLabel.textContent = topbar.spatialYMin.value;
+      });
+      topbar.spatialYMax.addEventListener("input", () => {
+        topbar.spatialYMaxLabel.textContent = topbar.spatialYMax.value;
+      });
+      topbar.hopDepth.addEventListener("input", () => {
+        topbar.hopDepthLabel.textContent = topbar.hopDepth.value;
+      });
+      topbar.useSpatialFilter.addEventListener("change", () => {
+        topbar.spatialXMin.disabled = !topbar.useSpatialFilter.checked;
+        topbar.spatialXMax.disabled = !topbar.useSpatialFilter.checked;
+      });
+      topbar.useSpatialFilterY.addEventListener("change", () => {
+        topbar.spatialYMin.disabled = !topbar.useSpatialFilterY.checked;
+        topbar.spatialYMax.disabled = !topbar.useSpatialFilterY.checked;
+      });
+      topbar.useHopFilter.addEventListener("change", () => {
+        topbar.hopCenter.disabled = !topbar.useHopFilter.checked;
+        topbar.hopDepth.disabled = !topbar.useHopFilter.checked;
+      });
+      topbar.useSpatialFilter.dispatchEvent(new Event("change"));
+      topbar.useSpatialFilterY.dispatchEvent(new Event("change"));
+      topbar.useHopFilter.dispatchEvent(new Event("change"));
+    }
+
+    buildNetwork();
+    resizeCanvas();
+    refreshFilters();
+    wireEvents();
+    onSpeedChange();
+    onWindowChange();
+    state.drawEdges = true;
+    render(0);
+  </script>
+</body>
+</html>

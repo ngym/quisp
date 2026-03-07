@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuISP Dashboard Mock</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #141c31;
+      --panel-2: #1b2640;
+      --text: #eaf2ff;
+      --muted: #9ab0d9;
+      --accent: #52d8ff;
+      --accent-2: #7cff6a;
+      --warn: #ffbe5a;
+      --danger: #ff6f78;
+      --line: #2d3b63;
+      --good: #4ade80;
+      --bad: #fb7185;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Inter", "Noto Sans JP", "Segoe UI", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 0%, #1a2850 0%, transparent 45%),
+        radial-gradient(circle at 90% 20%, #1b2d55 0%, transparent 50%),
+        var(--bg);
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    .shell {
+      max-width: 1450px;
+      margin: 0 auto;
+      display: grid;
+      gap: 14px;
+    }
+
+    .topbar {
+      background: linear-gradient(90deg, rgba(82, 216, 255, 0.2), rgba(124, 255, 106, 0.12));
+      border: 1px solid #243a78;
+      border-radius: 16px;
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .title {
+      font-family: "Space Grotesk", "Noto Sans JP", "Arial", sans-serif;
+      font-size: 22px;
+      letter-spacing: 0.02em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .pill {
+      background: rgba(8, 14, 29, 0.6);
+      border: 1px solid #31467d;
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 4px 11px;
+      font-size: 12px;
+    }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid #30436f;
+      color: #d6e3ff;
+      background: #101933;
+      border-radius: 10px;
+      padding: 7px 12px;
+      cursor: default;
+      font-size: 13px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(20, 28, 49, 0.92), rgba(18, 25, 46, 0.92));
+      border: 1px solid #2a3c67;
+      border-radius: 14px;
+      padding: 14px;
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.22);
+    }
+
+    .panel-title {
+      font-weight: 700;
+      letter-spacing: 0.01em;
+      margin: 0 0 10px;
+      color: #d7e4ff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+    }
+    .section-subtitle { color: var(--muted); font-size: 12px; margin-bottom: 12px; }
+
+    .sidebar h3 { margin-top: 0; margin-bottom: 12px; color: #dbe8ff; }
+    .group { margin-bottom: 14px; }
+    .group h4 { margin: 0 0 8px; font-size: 13px; color: #b9cefc; }
+    .choice {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: #dae7ff;
+    }
+    label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .main {
+      display: grid;
+      gap: 14px;
+    }
+
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .kpi {
+      background: linear-gradient(135deg, rgba(21, 34, 61, 0.95), rgba(18, 29, 52, 0.95));
+      border: 1px solid #304677;
+      border-radius: 12px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 98px;
+    }
+    .kpi .label { color: #b8caeb; font-size: 12px; }
+    .kpi .value { font-family: "Space Grotesk", "Noto Sans JP", sans-serif; font-size: 28px; line-height: 1; }
+    .kpi .delta {
+      font-size: 12px;
+      color: var(--good);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .kpi .delta.down { color: var(--bad); }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 14px;
+    }
+    .timeline-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 8px;
+      max-height: 270px;
+      overflow: auto;
+    }
+    .timeline-list li {
+      border: 1px solid #304474;
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #111a33;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+    .timeline-list time { color: #9ab0d9; font-size: 12px; }
+    .badge {
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: #041022;
+      font-weight: 700;
+    }
+    .ok { background: #7cff6a; }
+    .warn { background: #ffbe5a; }
+    .bad { background: #ff6f78; }
+
+    .small-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .small-grid canvas {
+      width: 100%;
+      border-radius: 10px;
+      background: #101a36;
+      border: 1px solid #2a3f6e;
+    }
+
+    .node-wrap {
+      position: relative;
+      width: 100%;
+      height: 250px;
+      border-radius: 12px;
+      background: radial-gradient(circle at 50% 0%, rgba(82, 216, 255, 0.25), transparent 65%), #101a36;
+      border: 1px solid #2a3f6e;
+      overflow: hidden;
+    }
+    #topology {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .bottom-row {
+      display: grid;
+      gap: 14px;
+      grid-template-columns: 2fr 1fr;
+    }
+    .tabs {
+      display: inline-flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .tab {
+      border: 1px solid #2e4572;
+      color: #cad9f7;
+      background: #101a32;
+      border-radius: 9px;
+      font-size: 12px;
+      padding: 5px 10px;
+      cursor: default;
+    }
+    .tab.active { color: #041020; background: var(--accent); border-color: #6dd9ff; }
+    .table-wrap { overflow: auto; max-height: 260px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th, td {
+      border-bottom: 1px solid #2b3f6b;
+      padding: 7px 8px;
+      text-align: left;
+      color: #d5e2ff;
+    }
+    th { color: #abc0eb; font-weight: 600; position: sticky; top: 0; background: #121f3a; }
+    .spark {
+      display: flex;
+      align-items: flex-end;
+      gap: 6px;
+      height: 54px;
+      margin-top: 8px;
+    }
+    .spark i {
+      width: 12px;
+      border-radius: 4px 4px 0 0;
+      background: linear-gradient(180deg, var(--accent), #2e9fd4);
+      display: block;
+    }
+    .muted { color: #9eb3da; }
+    .footer-note {
+      color: #a4b7dd;
+      font-size: 12px;
+    }
+
+    @media (max-width: 1100px) {
+      .layout { grid-template-columns: 1fr; }
+      .kpis { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .two-col, .bottom-row { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      .kpis { grid-template-columns: 1fr; }
+      body { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <section class="topbar card">
+      <div class="title">QuISP 可視化モックダッシュボード <span class="pill">HTML Mock</span></div>
+      <div class="toolbar">
+        <span class="btn">Run: sim_2026_0306_A</span>
+        <span class="btn">比較: sim_2026_0306_B</span>
+        <span class="btn">ライブ更新: オフ (再生可能タイムライン)</span>
+      </div>
+    </section>
+
+    <div class="layout">
+      <aside class="card sidebar">
+        <h3>実験条件</h3>
+        <div class="group">
+          <h4>Run / 条件</h4>
+          <div class="choice">
+            <label><input type="checkbox" checked /> sim_2026_0306_A (基準)</label>
+            <label><input type="checkbox" checked /> sim_2026_0306_B (比較)</label>
+            <label><input type="checkbox" /> sim_2026_0306_C (予備)</label>
+          </div>
+        </div>
+        <div class="group">
+          <h4>ノード &amp; ペア</h4>
+          <div class="choice">
+            <label><input type="checkbox" checked /> Node-A</label>
+            <label><input type="checkbox" checked /> Node-B</label>
+            <label><input type="checkbox" /> Node-C</label>
+            <label><input type="checkbox" checked /> Pair (A-B)</label>
+            <label><input type="checkbox" /> Pair (B-C)</label>
+          </div>
+        </div>
+        <div class="group">
+          <h4>可視化指標</h4>
+          <div class="choice">
+            <label><input type="radio" name="metric" checked /> Fidelity</label>
+            <label><input type="radio" name="metric" /> QBER</label>
+            <label><input type="radio" name="metric" /> 生成成功率</label>
+            <label><input type="radio" name="metric" /> 再送率</label>
+          </div>
+        </div>
+        <p class="footer-note">※ 本体は実データ接続前提のダミーUI。実データは *.vec / *.sca / JSON イベントログから差し替え。</p>
+      </aside>
+
+      <main class="main">
+        <section class="kpis">
+          <div class="kpi">
+            <div class="label">成功率</div>
+            <div class="value">92.1%</div>
+            <div class="delta">▲ 1.2% (+0.8pp)</div>
+          </div>
+          <div class="kpi">
+            <div class="label">平均Fidelity</div>
+            <div class="value">0.934</div>
+            <div class="delta">▲ 0.011</div>
+          </div>
+          <div class="kpi">
+            <div class="label">QBER</div>
+            <div class="value">0.018</div>
+            <div class="delta down">▼ -0.002 (低下)</div>
+          </div>
+          <div class="kpi">
+            <div class="label">再送率</div>
+            <div class="value">4.3%</div>
+            <div class="delta down">▲ +0.4%（要注意）</div>
+          </div>
+          <div class="kpi">
+            <div class="label">平均遅延</div>
+            <div class="value">12.4 ms</div>
+            <div class="delta">▼ -1.1 ms</div>
+          </div>
+          <div class="kpi">
+            <div class="label">リンク失敗率</div>
+            <div class="value">1.1%</div>
+            <div class="delta">安定</div>
+          </div>
+        </section>
+
+        <section class="card two-col">
+          <article>
+            <div class="panel-title">
+              <span>イベントタイムライン</span>
+              <span class="muted">時系列1000〜1050</span>
+            </div>
+            <canvas id="timeline" width="900" height="250"></canvas>
+            <div class="spark" id="timeSpark"></div>
+            <ul class="timeline-list">
+              <li><span><strong>01:12:10</strong> ペア (A, B) 生成成功</span><time>Δ - 0.21 s</time><span class="badge ok">OK</span></li>
+              <li><span><strong>01:12:13</strong> 量子メモリ回復イベント</span><time>Δ 0.35 s</time><span class="badge warn">WARN</span></li>
+              <li><span><strong>01:12:15</strong> BSA測定タイムアウト</span><time>Δ 0.52 s</time><span class="badge bad">ERR</span></li>
+              <li><span><strong>01:12:18</strong> 再送要求発生</span><time>Δ 0.11 s</time><span class="badge warn">WARN</span></li>
+              <li><span><strong>01:12:22</strong> ペア (A, B) 再送完了</span><time>Δ 0.17 s</time><span class="badge ok">OK</span></li>
+            </ul>
+          </article>
+          <aside class="small-grid">
+            <div>
+              <div class="panel-title">
+                <span>ネットワークトポロジ</span><span class="muted">品質でリンク色分け</span>
+              </div>
+              <div class="node-wrap">
+                <svg id="topology" viewBox="0 0 420 230" preserveAspectRatio="xMidYMid meet">
+                  <g stroke="#2e416f" stroke-width="2">
+                    <line x1="70" y1="190" x2="210" y2="70" />
+                    <line x1="210" y1="70" x2="350" y2="180" />
+                    <line x1="70" y1="190" x2="350" y2="180" />
+                    <line x1="210" y1="70" x2="210" y2="190" />
+                  </g>
+                  <g>
+                    <line x1="210" y1="70" x2="210" y2="190" stroke="#7cff6a" stroke-width="4" />
+                  </g>
+                  <g id="edges"></g>
+                  <g fill="#f2f7ff">
+                    <circle cx="70" cy="190" r="20" fill="#24365f" />
+                    <text x="70" y="195" text-anchor="middle" font-size="12" fill="#b7cbff">Node A</text>
+                    <circle cx="210" cy="70" r="20" fill="#24365f" />
+                    <text x="210" y="75" text-anchor="middle" font-size="12" fill="#b7cbff">Node B</text>
+                    <circle cx="350" cy="180" r="20" fill="#24365f" />
+                    <text x="350" y="185" text-anchor="middle" font-size="12" fill="#b7cbff">Node C</text>
+                  </g>
+                  <g font-size="12" fill="#d6e4ff">
+                    <text x="20" y="170">0.96</text>
+                    <text x="285" y="40">0.87</text>
+                    <text x="255" y="205">0.91</text>
+                    <text x="205" y="140">0.99</text>
+                  </g>
+                </svg>
+              </div>
+            </div>
+            <div>
+              <div class="panel-title">遅延分布</div>
+              <canvas id="distChart" width="380" height="110"></canvas>
+            </div>
+          </aside>
+        </section>
+
+        <section class="bottom-row">
+          <article class="card">
+            <div class="panel-title">
+              <span>比較ビュー</span>
+              <span class="tabs">
+                <span class="tab active">分布</span>
+                <span class="tab">ヒートマップ</span>
+                <span class="tab">Run Overlay</span>
+              </span>
+            </div>
+            <canvas id="fidelity" width="900" height="240"></canvas>
+          </article>
+          <article class="card">
+            <div class="panel-title">
+              <span>異常イベントログ</span>
+              <span class="muted">最新20件を表示</span>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr><th>時刻</th><th>種別</th><th>ノード</th><th>詳細</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>01:12:15</td><td>TIMEOUT</td><td>BSA</td><td>計測待ち時間超過</td></tr>
+                  <tr><td>01:12:04</td><td>SWAP_FAIL</td><td>Node-B</td><td>量子ビット退避失敗</td></tr>
+                  <tr><td>01:11:53</td><td>LOSS</td><td>Link A-C</td><td>チャネル損失増加</td></tr>
+                  <tr><td>01:11:44</td><td>RETRY</td><td>Node-A</td><td>再送 3回目完了</td></tr>
+                  <tr><td>01:11:40</td><td>OK</td><td>Node-C</td><td>エンタングルメント確立</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const dataA = [0.90, 0.88, 0.93, 0.97, 0.95, 0.96, 0.92, 0.95, 0.97, 0.99, 0.98, 0.96, 0.94, 0.93, 0.95, 0.96, 0.97, 0.98, 0.96, 0.95, 0.94];
+    const dataB = [0.86, 0.87, 0.89, 0.91, 0.90, 0.91, 0.89, 0.90, 0.92, 0.93, 0.94, 0.93, 0.94, 0.93, 0.91, 0.92, 0.94, 0.96, 0.95, 0.94];
+    const timeline = [12, 9, 16, 8, 10, 14, 13, 11, 15, 7, 8, 12, 9, 5, 13, 16, 14, 9, 11, 12];
+    const qberA = [0.020, 0.019, 0.017, 0.021, 0.018, 0.016, 0.015, 0.017, 0.014, 0.013, 0.015, 0.016, 0.017, 0.018, 0.019, 0.017, 0.016, 0.015, 0.013, 0.014];
+    const qberB = [0.026, 0.024, 0.023, 0.028, 0.027, 0.024, 0.024, 0.025, 0.025, 0.023, 0.021, 0.020, 0.022, 0.024, 0.025, 0.024, 0.023, 0.024, 0.022, 0.021];
+
+    function drawLineChart(id, seriesA, seriesB, options) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+      const pad = 24;
+      const xStep = (w - pad * 2) / (seriesA.length - 1);
+      const all = seriesA.concat(seriesB);
+      const min = options.min ?? Math.min(...all);
+      const max = options.max ?? Math.max(...all);
+      const scaleY = (v) => h - pad - ((v - min) / (max - min || 1)) * (h - pad * 2);
+
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#101a36";
+      ctx.fillRect(0, 0, w, h);
+      ctx.strokeStyle = "#304472";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(pad, pad);
+      ctx.lineTo(pad, h - pad);
+      ctx.lineTo(w - pad, h - pad);
+      ctx.stroke();
+
+      if (options.horizontal) {
+        const mid = scaleY(options.threshold);
+        ctx.strokeStyle = "#ffbe5a";
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pad, mid);
+        ctx.lineTo(w - pad, mid);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      const render = (arr, color, label, offsetX) => {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        arr.forEach((v, i) => {
+          const x = pad + xStep * i + offsetX;
+          const y = scaleY(v);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      };
+
+      render(seriesA, options.colorA, options.labelA || "A", 0);
+      render(seriesB, options.colorB, options.labelB || "B", 0);
+
+      for (let i = 0; i < Math.min(seriesA.length, 5); i++) {
+        const idx = Math.floor(i * (seriesA.length - 1) / 4);
+        const x = pad + xStep * idx;
+        const y0 = h - pad;
+        ctx.strokeStyle = "#2e456d";
+        ctx.setLineDash([2, 2]);
+        ctx.beginPath();
+        ctx.moveTo(x, pad);
+        ctx.lineTo(x, y0);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      // simple legend
+      ctx.fillStyle = options.colorA;
+      ctx.fillRect(pad + 5, 8, 12, 6);
+      ctx.fillStyle = "#d8e4ff";
+      ctx.font = "12px sans-serif";
+      ctx.fillText(options.labelA || "A", pad + 20, 14);
+      ctx.fillStyle = options.colorB;
+      ctx.fillRect(pad + 58, 8, 12, 6);
+      ctx.fillStyle = "#d8e4ff";
+      ctx.fillText(options.labelB || "B", pad + 73, 14);
+    }
+
+    function drawSpark(id, arr) {
+      const host = document.getElementById(id);
+      host.innerHTML = "";
+      const max = Math.max(...arr);
+      arr.forEach(v => {
+        const h = Math.max(6, Math.round((v / max) * 54));
+        const bar = document.createElement("i");
+        bar.style.height = `${h}px`;
+        bar.style.width = "14px";
+        host.appendChild(bar);
+      });
+    }
+
+    function drawBars(id, arr) {
+      const canvas = document.getElementById(id);
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width, h = canvas.height;
+      const pad = 24;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#101a36";
+      ctx.fillRect(0, 0, w, h);
+      ctx.fillStyle = "#304677";
+      const bw = (w - pad * 2) / arr.length;
+      const max = Math.max(...arr);
+      arr.forEach((v, i) => {
+        const x = pad + i * bw;
+        const y = h - pad - (v / max) * (h - pad * 1.8);
+        const barW = Math.max(6, bw * 0.75);
+        ctx.fillRect(x, y, barW, h - pad - y);
+      });
+      // baseline
+      ctx.strokeStyle = "#304472";
+      ctx.beginPath();
+      ctx.moveTo(pad, h - pad);
+      ctx.lineTo(w - pad, h - pad);
+      ctx.stroke();
+    }
+
+    drawLineChart("timeline", timeline, qberB, {colorA: "#52d8ff", colorB: "#ffbe5a", labelA: "delay (ms/100)", labelB: "qber x1000"});
+    drawLineChart("distChart", dataA, dataB, {min: 0, max: 20, colorA: "#7cff6a", colorB: "#ffbe5a", labelA: "A", labelB: "B"});
+    drawLineChart("fidelity", dataA, dataB, {min: 0.82, max: 1.00, colorA: "#52d8ff", colorB: "#ff6f78", labelA: "Run A", labelB: "Run B", horizontal: true, threshold: 0.93});
+    drawSpark("timeSpark", timeline);
+  </script>
+</body>
+</html>

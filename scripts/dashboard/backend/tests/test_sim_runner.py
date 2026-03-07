@@ -27,7 +27,7 @@ def _dummy_record(run_id: str) -> SimRunRecord:
     )
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_sim_store_register_and_list(tmp_path):
     store = SimulationRunStore(max_concurrent_runs=2)
     first = _dummy_record("run_001")
@@ -37,7 +37,7 @@ async def test_sim_store_register_and_list(tmp_path):
     assert len(listed) == 1
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_simulation_runner_rejects_when_over_max_concurrency(tmp_path):
     run_store = RunStore(log_dir=tmp_path)
     sim_store = SimulationRunStore(max_concurrent_runs=1)
@@ -94,7 +94,7 @@ class _StubProcess:
         return int(self.returncode if self.returncode is not None else self._return_code)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_simulation_runner_start_and_stop_transition(tmp_path, monkeypatch):
     run_store = RunStore(log_dir=tmp_path)
     sim_store = SimulationRunStore(max_concurrent_runs=2)
@@ -139,7 +139,7 @@ async def test_simulation_runner_start_and_stop_transition(tmp_path, monkeypatch
     assert final_record.exit_code in (0, None)
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_simulation_runner_failure_marks_failed(tmp_path, monkeypatch):
     run_store = RunStore(log_dir=tmp_path)
     sim_store = SimulationRunStore(max_concurrent_runs=1)
@@ -177,3 +177,68 @@ async def test_simulation_runner_failure_marks_failed(tmp_path, monkeypatch):
     records = await sim_store.list_runs()
     assert len(records) == 1
     assert records[0].status == SimRunStatus.FAILED
+
+
+@pytest.mark.anyio
+async def test_simulation_runner_build_command_uses_derived_config_and_ned_path(tmp_path, monkeypatch):
+    modules_dir = tmp_path / "quisp" / "modules"
+    channels_dir = tmp_path / "quisp" / "channels"
+    networks_dir = tmp_path / "quisp" / "networks"
+    modules_dir.mkdir(parents=True)
+    channels_dir.mkdir(parents=True)
+    networks_dir.mkdir(parents=True)
+
+    run_store = RunStore(log_dir=tmp_path)
+    sim_store = SimulationRunStore(max_concurrent_runs=2)
+    captured: dict[str, list[str]] = {}
+    quisp_binary = tmp_path / "bin" / "quisp"
+    quisp_binary.parent.mkdir(parents=True)
+    quisp_binary.write_text("", encoding="utf-8")
+    runner = SimulationRunner(
+        run_store=run_store,
+        sim_store=sim_store,
+        quisp_binary=quisp_binary,
+        execution_dir=tmp_path,
+        log_dir=tmp_path / "runs",
+        workspace_root=tmp_path,
+        max_concurrent_runs=2,
+    )
+
+    template_file = tmp_path / "template.ini"
+    template_file.write_text("[Config General]\\n")
+
+    wait_event = asyncio.Event()
+    process = _StubProcess(run_event=wait_event)
+
+    async def _fake_create_subprocess_exec(*args, **_kwargs) -> _StubProcess:  # pragma: no cover - monkeypatch target
+        captured["command"] = list(map(str, args))
+        return process
+
+    def _fake_build_run_ini(*_args, **kwargs):
+        return (pathlib.Path(kwargs["output_path"]), "Dashboard_General")
+
+    monkeypatch.setattr(simulation_runner_module.asyncio, "create_subprocess_exec", _fake_create_subprocess_exec)
+    monkeypatch.setattr(simulation_runner_module, "get_template_path", lambda *_args, **_kwargs: template_file)
+    monkeypatch.setattr(simulation_runner_module, "build_run_ini", _fake_build_run_ini)
+
+    request = SimRunStartRequest(
+        template_id="template.ini",
+        config_name="General",
+        num_runs=2,
+        seed_set=123,
+    )
+    record = await runner.start_run(request=request)
+    assert record.status == SimRunStatus.RUNNING
+
+    command = captured.get("command")
+    assert command is not None
+    assert command[0] == str(quisp_binary)
+    assert "-n" in command
+    expected_ned = ":".join([str(modules_dir), str(channels_dir), str(networks_dir)])
+    assert command[command.index("-n") + 1] == expected_ned
+    assert "-c" in command
+    assert "Dashboard_General" in command
+    assert "-r" in command and command[command.index("-r") + 1] == "2"
+    assert "--seed-set" in command and command[command.index("--seed-set") + 1] == "123"
+
+    await runner.stop_run(record.run_id, timeout_seconds=0.1)

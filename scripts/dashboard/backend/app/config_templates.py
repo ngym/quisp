@@ -60,6 +60,13 @@ def _template_search_roots(project_root: Path) -> list[Path]:
     ]
 
 
+def _dashboard_default_workdir(project_root: Path) -> Path:
+    candidate = (project_root / "quisp").resolve()
+    if candidate.exists():
+        return candidate
+    return project_root.resolve()
+
+
 def _iter_template_files(project_root: Path) -> list[Path]:
     roots = _template_search_roots(project_root)
     files: list[Path] = []
@@ -90,6 +97,7 @@ def _build_description(path: Path, content: str) -> Optional[str]:
 
 def list_templates(*, project_root: Optional[Path] = None) -> list[SimTemplate]:
     root = project_root or _project_root(Path(__file__))
+    default_workdir = _dashboard_default_workdir(root)
     templates: list[SimTemplate] = []
     for path in _iter_template_files(root):
         content = _read_template(path)
@@ -101,7 +109,7 @@ def list_templates(*, project_root: Optional[Path] = None) -> list[SimTemplate]:
                 path=str(path.resolve()),
                 available_configs=available,
                 description=_build_description(path, content),
-                default_workdir=str((path.parent).resolve()),
+                default_workdir=str(default_workdir),
                 last_modified=_iso_mtime(path),
             )
         )
@@ -133,9 +141,10 @@ def get_template_path(template_id: str, *, project_root: Optional[Path] = None) 
 
 def template_with_configs(template_id: str, *, project_root: Optional[Path] = None) -> Dict[str, List[str] | Path]:
     template_path = get_template_path(template_id, project_root=project_root)
+    root = project_root or _project_root(Path(__file__))
     text = _read_template(template_path)
     return {
         "path": template_path,
         "config_names": _extract_config_names(text),
-        "default_workdir": str(template_path.parent.resolve()),
+        "default_workdir": str(_dashboard_default_workdir(root)),
     }

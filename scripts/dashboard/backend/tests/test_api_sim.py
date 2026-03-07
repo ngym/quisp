@@ -111,7 +111,7 @@ def test_api_sim_templates_and_start_and_stop(tmp_path, monkeypatch):
     _install_fake_template(monkeypatch, template_file, template_id=template_id, configs=["General"])
     _install_fake_runner(monkeypatch)
 
-    app = main.create_app(log_dir=tmp_path)
+    app = main.create_app(log_dir=tmp_path, workspace_root=tmp_path)
     client = TestClient(app)
 
     list_resp = client.get("/api/sim/templates")
@@ -149,6 +149,47 @@ def test_api_sim_templates_and_start_and_stop(tmp_path, monkeypatch):
     assert log_resp.json()["run_id"] == run_id
 
 
+def test_api_sim_start_links_to_viewer_run_id(tmp_path, monkeypatch):
+    template_id = "network.ini"
+    template_file = tmp_path / template_id
+    template_file.write_text("[Config General]\n", encoding="utf-8")
+
+    _install_fake_template(monkeypatch, template_file, template_id=template_id, configs=["General"])
+    _install_fake_runner(monkeypatch)
+
+    app = main.create_app(log_dir=tmp_path, workspace_root=tmp_path)
+    client = TestClient(app)
+
+    start_resp = client.post(
+        "/api/sim/runs",
+        json={
+            "template_id": template_id,
+            "config_name": "General",
+            "num_runs": 1,
+            "sim_time_limit": 10,
+        },
+    )
+    assert start_resp.status_code == 200
+    body = start_resp.json()
+    run_id = body["run_id"]
+    dashboard_run_id = body["dashboard_run_id"]
+    assert run_id == dashboard_run_id
+
+    sim_run_resp = client.get(f"/api/sim/runs/{run_id}")
+    assert sim_run_resp.status_code == 200
+    assert sim_run_resp.json()["dashboard_run_id"] == dashboard_run_id
+
+    topo_resp = client.get(f"/api/runs/{dashboard_run_id}/topology")
+    assert topo_resp.status_code == 200
+    topo_json = topo_resp.json()
+    assert "nodes" in topo_json
+    assert "edges" in topo_json
+
+    viewer_list_resp = client.get("/api/runs")
+    assert viewer_list_resp.status_code == 200
+    assert any(item["run_id"] == dashboard_run_id for item in viewer_list_resp.json())
+
+
 def test_api_sim_templates_and_start_rejects_invalid_config(tmp_path, monkeypatch):
     template_id = "network.ini"
     template_file = tmp_path / template_id
@@ -157,7 +198,7 @@ def test_api_sim_templates_and_start_rejects_invalid_config(tmp_path, monkeypatc
     _install_fake_template(monkeypatch, template_file, template_id=template_id, configs=["General"])
     _install_fake_runner(monkeypatch)
 
-    app = main.create_app(log_dir=tmp_path)
+    app = main.create_app(log_dir=tmp_path, workspace_root=tmp_path)
     client = TestClient(app)
     start_resp = client.post(
         "/api/sim/runs",
@@ -177,7 +218,38 @@ def test_api_sim_stop_unknown_run(tmp_path, monkeypatch):
     _install_fake_template(monkeypatch, template_file, template_id=template_id, configs=["General"])
     _install_fake_runner(monkeypatch)
 
-    app = main.create_app(log_dir=tmp_path)
+    app = main.create_app(log_dir=tmp_path, workspace_root=tmp_path)
     client = TestClient(app)
     stop_resp = client.post("/api/sim/runs/not_exists/stop")
     assert stop_resp.status_code == 404
+
+
+def test_api_sim_start_rejects_workspace_outside_run_dir(tmp_path, monkeypatch):
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    inside = workspace_root / "template.ini"
+    inside.write_text("[Config General]\n", encoding="utf-8")
+
+    outside = workspace_root.parent / "outside-workdir"
+    outside.mkdir(exist_ok=True)
+
+    _install_fake_template(
+        monkeypatch,
+        inside,
+        template_id="template.ini",
+        configs=["General"],
+    )
+    _install_fake_runner(monkeypatch)
+
+    app = main.create_app(log_dir=tmp_path, workspace_root=workspace_root)
+    client = TestClient(app)
+
+    start_resp = client.post(
+        "/api/sim/runs",
+        json={
+            "template_id": "template.ini",
+            "config_name": "General",
+            "workdir": str(outside),
+        },
+    )
+    assert start_resp.status_code == 400

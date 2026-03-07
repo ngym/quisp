@@ -13,17 +13,53 @@ class ParsedLine:
     raw_log_line: RawLogLine
 
 
+def _try_parse_json_object(text: str) -> Dict[str, Any] | None:
+    try:
+        payload = json.loads(text)
+    except Exception:
+        return None
+    if isinstance(payload, dict):
+        return payload
+    return None
+
+
+def _extract_prefixed_payload(text: str) -> Dict[str, Any] | None:
+    direct = _try_parse_json_object(text)
+    if direct is not None:
+        return direct
+
+    candidate_indices = [index for index in (
+        text.find('"simtime"'),
+        text.find('"event_type"'),
+        text.find('"timestamp"'),
+        text.find('"ts"'),
+    ) if index != -1]
+    if not candidate_indices:
+        return None
+
+    wrapped = _try_parse_json_object("{" + text[min(candidate_indices):] + "}")
+    if wrapped is not None:
+        return wrapped
+
+    first_brace = text.find("{")
+    if first_brace != -1:
+        embedded = _try_parse_json_object(text[first_brace:])
+        if embedded is not None:
+            return embedded
+    return None
+
+
 def parse_raw_line(raw_line: str) -> RawLogLine:
     text = raw_line.strip()
     if not text:
         return RawLogLine(raw=raw_line, parse_error="empty_line")
 
-    try:
-        payload: Dict[str, Any] = json.loads(text)
-    except Exception as exc:  # pragma: no cover - defensive for malformed logs
-        return RawLogLine(raw=raw_line, parse_error=f"invalid_json: {exc}")
-
-    if not isinstance(payload, dict):
+    payload = _extract_prefixed_payload(text)
+    if payload is None:  # pragma: no cover - defensive for malformed logs
+        try:
+            json.loads(text)
+        except Exception as exc:
+            return RawLogLine(raw=raw_line, parse_error=f"invalid_json: {exc}")
         return RawLogLine(raw=raw_line, parse_error="non_object_payload")
 
     return RawLogLine(raw=raw_line, parsed=payload)

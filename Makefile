@@ -1,6 +1,15 @@
 QUISP_MAKEFILE = "./quisp/Makefile"
 NPROC ?= $(shell nproc)
-.PHONY: all tidy format ci makefile-exe makefile-lib checkmakefile googletest clean test coverage coverage-report help quispr run-unit-test run-sim-test
+QUTIP_VENV ?= $(CURDIR)/.venv-qutip
+QUTIP_PYTHON ?= $(QUTIP_VENV)/bin/python
+DASHBOARD_HOST ?= 127.0.0.1
+DASHBOARD_PORT ?= 8765
+DASHBOARD_LOG_DIR ?= $(CURDIR)/scripts/dashboard/runs
+DASHBOARD_AUDIT_LOG ?= $(CURDIR)/scripts/dashboard/dashboard_audit.log
+DASHBOARD_WORKSPACE_ROOT ?= $(CURDIR)
+DASHBOARD_QUISP_BINARY ?= $(CURDIR)/quisp/quisp
+
+.PHONY: all tidy format ci makefile-exe makefile-lib checkmakefile googletest clean test coverage coverage-report help quispr run-unit-test run-sim-test qutip-env qutip-check dashboard-backend
 
 all: makefile-exe
 	$(MAKE) -C quisp -j$(NPROC)
@@ -9,16 +18,34 @@ run-module-test: lib-debug
 	cd module_tests && ./runtest
 
 run-unit-test: makefile-lib googletest
-	$(MAKE) -C quisp run-unit-test -j$(NPROC)
+	QUTIP_PYTHON_EXECUTABLE=$(QUTIP_PYTHON) $(MAKE) -C quisp run-unit-test -j$(NPROC)
 
 run-sim-test: exe
 	pip install -r requirements.txt
 	pytest ./simulation_tests -n auto
 
+qutip-env:
+	python3 -m venv $(QUTIP_VENV)
+	$(QUTIP_PYTHON) -m pip install --upgrade pip
+	$(QUTIP_PYTHON) -m pip install -r requirements-qutip.txt
+
+qutip-check:
+	$(QUTIP_PYTHON) -c "import qutip, qutip_qip, qutip.qip; print(qutip.__version__)"
+
 test: run-unit-test run-module-test run-sim-test
 
 exe: makefile-exe
 	$(MAKE) -C quisp -j$(NPROC)
+
+dashboard-backend: exe
+	QUTIP_PYTHON_EXECUTABLE=$(QUTIP_PYTHON) \
+	DASHBOARD_HOST=$(DASHBOARD_HOST) \
+	DASHBOARD_PORT=$(DASHBOARD_PORT) \
+	DASHBOARD_LOG_DIR=$(DASHBOARD_LOG_DIR) \
+	DASHBOARD_AUDIT_LOG=$(DASHBOARD_AUDIT_LOG) \
+	DASHBOARD_WORKSPACE_ROOT=$(DASHBOARD_WORKSPACE_ROOT) \
+	DASHBOARD_QUISP_BINARY=$(DASHBOARD_QUISP_BINARY) \
+	./scripts/dashboard/run_backend.sh
 
 lib: makefile-lib
 	$(MAKE) -C quisp -j$(NPROC)
@@ -109,6 +136,9 @@ help:
 	echo 'Available targets:'; \
 	echo '  exe                 build the executable quisp/quisp'; \
 	echo '  lib                 build the library quisp/libquisp{_dbg}.{dylib,so}'; \
+	echo '  qutip-env           create .venv-qutip and install qutip dependencies'; \
+	echo '  qutip-check         verify that .venv-qutip can import qutip and qutip_qip'; \
+	echo '  dashboard-backend   start dashboard backend with repo-local qutip python'; \
 	echo '  clean               remove objcet files, executables and libraries'; \
 	echo '  distclean           remove everything includes submoduled components'; \
 	echo '  test       			build and run all tests'; \

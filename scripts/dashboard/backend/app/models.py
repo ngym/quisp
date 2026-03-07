@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Any, Dict, Optional, Union
 import json
 import math
-from pydantic import BaseModel, Field, root_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 def _first_non_empty(*values: Any) -> Optional[str]:
@@ -66,6 +66,15 @@ def parse_event_payload(raw_payload: Any) -> tuple[Dict[str, Any], Dict[str, Any
                 return {"value": loaded}, {"event_payload_was_json_list": True}
             return {"event_payload_value": loaded}, {"event_payload_scalar": True}
         except json.JSONDecodeError as exc:
+            maybe_object = text
+            if not text.startswith("{") and not text.startswith("[") and '":' in text:
+                maybe_object = "{" + text + "}"
+                try:
+                    loaded = json.loads(maybe_object)
+                    if isinstance(loaded, dict):
+                        return dict(loaded), {"event_payload_wrapped_object": True}
+                except json.JSONDecodeError:
+                    pass
             return {"raw_message": text}, {"event_payload_parse_error": str(exc)}
     if raw_payload is None:
         return {}, {}
@@ -287,16 +296,21 @@ class SimTemplate(BaseModel):
 
 
 class SimRunStartRequest(BaseModel):
-    template_id: str
-    config_name: str
+    template_id: Optional[str] = None
+    config_name: Optional[str] = None
     run_name: Optional[str] = None
     workdir: Optional[str] = None
     num_runs: int = Field(default=1, ge=1, le=10000)
     seed_set: Optional[int] = Field(default=None, ge=0, le=999999999)
     sim_time_limit: Optional[float] = Field(default=None, ge=0)
+    experiment_profile_id: Optional[str] = None
+    parameter_values: Dict[str, Any] = Field(default_factory=dict)
+    requested_metrics: list[str] = Field(default_factory=list)
+    tags: Dict[str, str] = Field(default_factory=dict)
     overrides: Union[dict[str, Any], list[OverridePair], list[dict[str, Any]], None] = Field(default_factory=dict)
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def _normalize_overrides(cls, values: Dict[str, Any]) -> Dict[str, Any]:
         raw = values.get("overrides", {})
         if raw is None:
@@ -321,16 +335,42 @@ class SimRunStartRequest(BaseModel):
 
         raise TypeError("overrides must be a mapping or list of {key,value}")
 
+    @model_validator(mode="after")
+    def _validate_launcher_target(self) -> "SimRunStartRequest":
+        template_id = self.template_id
+        config_name = self.config_name
+        profile_id = self.experiment_profile_id
+        if profile_id:
+            return self
+        if template_id and config_name:
+            return self
+        raise ValueError("template_id/config_name or experiment_profile_id is required")
+
 
 class SimRunStartResponse(BaseModel):
     run_id: str
     status: SimRunStatus
     log_path: str
     dashboard_run_id: str
+    display_name: Optional[str] = None
+    experiment_profile_id: Optional[str] = None
+
+
+class SimRunArchiveRequest(BaseModel):
+    run_ids: list[str] = Field(default_factory=list)
+    completed_only: bool = False
+    archived: bool = True
+
+
+class SimRunDeleteRequest(BaseModel):
+    run_ids: list[str] = Field(default_factory=list)
+    delete_all_archived: bool = False
 
 
 class SimRunInfo(BaseModel):
     run_id: str
+    display_name: Optional[str] = None
+    experiment_display_name: Optional[str] = None
     status: SimRunStatus
     status_message: Optional[str]
     template_id: str
@@ -353,6 +393,12 @@ class SimRunInfo(BaseModel):
     output_lines: int
     timeout: Optional[float] = None
     event_count: Optional[int] = None
+    experiment_profile_id: Optional[str] = None
+    parameter_values: Dict[str, Any] = Field(default_factory=dict)
+    requested_metrics: list[str] = Field(default_factory=list)
+    tags: Dict[str, str] = Field(default_factory=dict)
+    experiment_summary_available: bool = False
+    archived: bool = False
 
 
 class SimRunMetrics(BaseModel):

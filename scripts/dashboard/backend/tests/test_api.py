@@ -47,6 +47,39 @@ def _write_run(tmp_path: Path) -> str:
     return run_id
 
 
+def _write_connection_run(tmp_path: Path) -> str:
+    run_id = "connection_run.log"
+    payload = [
+        {
+            "simtime": 0.1,
+            "event_type": "handleMessage",
+            "address": "1",
+            "msg_type": "ConnectionSetupRequest",
+            "actual_dest_addr": 3,
+            "actual_src_addr": 1,
+            "num_measure": 1000,
+            "num_required_bell_pairs": 0,
+        },
+        {
+            "simtime": 0.2,
+            "event_type": "handleMessage",
+            "address": "1",
+            "msg_type": "ConnectionSetupRequest",
+            "actual_dest_addr": 3,
+            "actual_src_addr": 1,
+            "num_measure": 1000,
+            "num_required_bell_pairs": 0,
+        },
+    ]
+
+    log_path = tmp_path / run_id
+    with log_path.open("w", encoding="utf-8") as f:
+        for row in payload:
+            f.write(json.dumps(row))
+            f.write("\n")
+    return run_id
+
+
 def test_api_returns_runs_and_topology(tmp_path: Path) -> None:
     run_id = _write_run(tmp_path)
     app = create_app(log_dir=tmp_path)
@@ -83,3 +116,35 @@ def test_api_returns_runs_and_topology(tmp_path: Path) -> None:
     root_metrics = client.get("/metrics")
     assert root_metrics.status_code == 200
     assert root_metrics.json()["runs_discovered"] >= 1
+
+
+def test_api_infers_topology_from_connection_requests(tmp_path: Path) -> None:
+    run_id = _write_connection_run(tmp_path)
+    app = create_app(log_dir=tmp_path)
+    client = TestClient(app)
+
+    topo = client.get(f"/api/runs/{run_id}/topology", params={"max_nodes": 10})
+    assert topo.status_code == 200
+    topo_json = topo.json()
+    assert {"1", "3"} == {node["id"] for node in topo_json["nodes"]}
+    assert ("1", "3") in {(edge["src"], edge["dst"]) for edge in topo_json["edges"]}
+
+    events = client.get(f"/api/runs/{run_id}/events", params={"limit": 5})
+    assert events.status_code == 200
+    assert events.json()["events"][0]["payload"]["actual_dest_addr"] == 3
+
+
+def test_api_ignores_nested_non_run_logs(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run_123"
+    run_dir.mkdir()
+    (run_dir / "stdout.log").write_text("stdout only\n", encoding="utf-8")
+    (run_dir / "stderr.log").write_text("stderr only\n", encoding="utf-8")
+    (run_dir / "run.jsonl").write_text('{"simtime":0.1,"event_type":"noop"}\n', encoding="utf-8")
+
+    app = create_app(log_dir=tmp_path)
+    client = TestClient(app)
+
+    runs_response = client.get("/api/runs")
+    assert runs_response.status_code == 200
+    run_ids = {run["run_id"] for run in runs_response.json()}
+    assert run_ids == {"run_123"}

@@ -6,6 +6,8 @@ from .models import (  # noqa: F401
     SimRunStatus,
     SimRunStartRequest,
     SimRunStartResponse,
+    SimRunArchiveRequest,
+    SimRunDeleteRequest,
     SimRunInfo,
     SimRunMetrics,
     SimTemplate,

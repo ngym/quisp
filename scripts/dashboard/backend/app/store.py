@@ -69,6 +69,13 @@ class RunStore:
         self.metrics = Metrics()
 
     # --- Discovery -----------------------------------------------------------
+    def _is_supported_run_file(self, path: Path) -> bool:
+        if not path.is_file():
+            return False
+        if path.parent != self.log_dir:
+            return path.name == "run.jsonl"
+        return path.suffix.lower() in {".log", ".jsonl", ".ndjson"}
+
     def _run_id_for_path(self, path: Path) -> str:
         if path.name == "run.jsonl" and path.parent != self.log_dir:
             return path.parent.name
@@ -79,9 +86,7 @@ class RunStore:
             return {}
         discovered = {}
         for entry in sorted(self.log_dir.rglob("*"), key=lambda p: p.as_posix()):
-            if not entry.is_file():
-                continue
-            if entry.suffix.lower() not in {".log", ".jsonl", ".ndjson"}:
+            if not self._is_supported_run_file(entry):
                 continue
             run_id = self._run_id_for_path(entry)
             if not run_id:
@@ -119,6 +124,15 @@ class RunStore:
         if state is None:
             return 0
         return len(state.indexes)
+
+    def get_latest_cursor(self, run_id: str) -> int:
+        state = self._runs.get(run_id)
+        if state is None or not state.indexes:
+            return 0
+        return state.indexes[-1].cursor
+
+    def forget_run(self, run_id: str) -> None:
+        self._runs.pop(run_id, None)
 
     async def discover_runs(self) -> Dict[str, RunState]:
         discovered = self._discover_run_paths()
@@ -232,6 +246,56 @@ class RunStore:
     def _find_start_by_time(self, state: RunState, from_time: float) -> int:
         times = [entry.sim_time for entry in state.indexes]
         return bisect.bisect_left(times, from_time)
+
+    def find_cursor_at_or_before_sim_time(self, run_id: str, sim_time: float) -> int:
+        state = self._run_state(run_id)
+        if not state.indexes:
+            return 0
+        times = [entry.sim_time for entry in state.indexes]
+        position = bisect.bisect_right(times, sim_time) - 1
+        if position < 0:
+            return 0
+        return state.indexes[position].cursor
+
+    def get_events_between_cursors(
+        self,
+        run_id: str,
+        start_cursor: int,
+        end_cursor: int,
+        types: Optional[Sequence[str]] = None,
+    ) -> List[DashboardEvent]:
+        state = self._run_state(run_id)
+        if not state.indexes or end_cursor < start_cursor:
+            return []
+        type_filter = {t.strip().lower() for t in types or set() if isinstance(t, str) and t.strip()}
+        targets: List[EventIndex] = []
+        safe_start = max(0, start_cursor)
+        safe_end = min(end_cursor, state.indexes[-1].cursor)
+        for entry in state.indexes[safe_start:safe_end + 1]:
+            if type_filter and entry.event_type.lower() not in type_filter:
+                continue
+            targets.append(entry)
+        return self._read_events_at_indexes(state, targets)
+
+    async def get_event_timeline(
+        self,
+        run_id: str,
+        types: Optional[Sequence[str]] = None,
+    ) -> List[Dict[str, Any]]:
+        state = await self.refresh_run(run_id)
+        type_filter = {t.strip().lower() for t in types or set() if isinstance(t, str) and t.strip()}
+        points: List[Dict[str, Any]] = []
+        for entry in state.indexes:
+            if type_filter and entry.event_type.lower() not in type_filter:
+                continue
+            points.append(
+                {
+                    "cursor": entry.cursor,
+                    "sim_time": entry.sim_time,
+                    "event_type": entry.event_type,
+                }
+            )
+        return points
 
     async def get_events(
         self,
@@ -469,6 +533,9 @@ class RunStore:
 
         etype = event.event_type.lower()
 
+        for node_field in ("node_id", "partner_addr", "address"):
+            ensure_node(payload.get(node_field))
+
         # Explicit topology export in event payload
         if etype in {"topology", "topology_snapshot", "topology_update", "network_topology"}:
             nodes_payload = payload.get("nodes")
@@ -503,6 +570,7 @@ class RunStore:
             ("source", "destination"),
             ("from", "to"),
             ("u", "v"),
+            ("actual_src_addr", "actual_dest_addr"),
             ("node_id", "partner_addr"),
         ]
         for src_key, dst_key in pair_fields:

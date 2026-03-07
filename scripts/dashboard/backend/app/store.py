@@ -10,7 +10,7 @@ import time
 
 from .layout import normalize_snapshot
 from .log_reader import parse_log_event
-from .models import DashboardEvent, FrameWindow, RunInfo, parse_coordinate
+from .models import DashboardEvent, FrameWindow, RunInfo, TopologyEdge, parse_coordinate
 
 
 @dataclass
@@ -167,7 +167,14 @@ class RunStore:
 
     # --- Parsing / scan -----------------------------------------------------
     async def refresh_run(self, run_id: str) -> RunState:
-        state = self._run_state(run_id)
+        state = self._runs.get(run_id)
+        if state is None:
+            discovered_path = self._discover_run_paths().get(run_id)
+            if discovered_path is None:
+                raise KeyError(f"unknown run_id {run_id}")
+            state = RunState(run_id=run_id, path=discovered_path)
+            self._runs[run_id] = state
+            self.metrics.runs_discovered = len(self._runs)
         path = state.path
         if not path.exists():
             return state
@@ -285,14 +292,18 @@ class RunStore:
         state = await self.refresh_run(run_id)
         type_filter = {t.strip().lower() for t in types or set() if isinstance(t, str) and t.strip()}
         points: List[Dict[str, Any]] = []
-        for entry in state.indexes:
-            if type_filter and entry.event_type.lower() not in type_filter:
+        events = self._read_events_at_indexes(state, state.indexes)
+        for event in events:
+            if type_filter and event.event_type.lower() not in type_filter:
                 continue
+            payload = event.payload if isinstance(event.payload, dict) else {}
             points.append(
                 {
-                    "cursor": entry.cursor,
-                    "sim_time": entry.sim_time,
-                    "event_type": entry.event_type,
+                    "cursor": event.cursor,
+                    "sim_time": event.sim_time,
+                    "event_type": event.event_type,
+                    "protocol_family": payload.get("protocol_family"),
+                    "delivery_port": payload.get("delivery_port"),
                 }
             )
         return points
@@ -350,7 +361,8 @@ class RunStore:
     async def get_topology(self, run_id: str, max_nodes: Optional[int] = None) -> Dict[str, Any]:
         state = await self.refresh_run(run_id)
         nodes_meta = {k: dict(v) for k, v in state.topology.nodes.items()}
-        edge_pairs = list(state.topology.edges.keys())
+        edge_meta = {k: dict(v) for k, v in state.topology.edges.items()}
+        edge_pairs = list(edge_meta.keys())
 
         if max_nodes is not None and max_nodes > 0:
             # keep stable deterministic subset with higher degree first
@@ -361,6 +373,7 @@ class RunStore:
             ordered_nodes = sorted(nodes_meta.keys(), key=lambda n: (-degree.get(n, 0), str(n)))
             kept = set(ordered_nodes[:max_nodes])
             edge_pairs = [(src, dst) for src, dst in edge_pairs if src in kept and dst in kept]
+            edge_meta = {key: edge_meta[key] for key in edge_pairs if key in edge_meta}
             nodes_meta = {n: nodes_meta[n] for n in kept if n in nodes_meta}
 
         explicit_positions = {
@@ -369,7 +382,8 @@ class RunStore:
             if (node_x := parse_coordinate(meta.get("x"))) is not None
             and (node_y := parse_coordinate(meta.get("y"))) is not None
         }
-        node_list, edge_list = normalize_snapshot(nodes_meta, edge_pairs, explicit_positions, seed=hash(run_id) & 0xFFFF)
+        node_list, _ = normalize_snapshot(nodes_meta, edge_pairs, explicit_positions, seed=hash(run_id) & 0xFFFF)
+        edge_list = self._materialize_topology_edges(edge_pairs, edge_meta)
 
         self.metrics.last_topology_nodes = len(node_list)
         self.metrics.last_topology_edges = len(edge_list)
@@ -447,6 +461,11 @@ class RunStore:
             selected = set(sorted(selected, key=lambda n: (-degree.get(n, 0), str(n)))[:max_nodes])
 
         nodes_meta = {node: dict(all_nodes[node]) for node in selected if node in all_nodes}
+        edge_meta = {
+            (src, dst): dict(state.topology.edges[(src, dst)])
+            for (src, dst) in state.topology.edges
+            if src in selected and dst in selected
+        }
         edge_pairs = [
             (src, dst)
             for (src, dst) in state.topology.edges
@@ -458,7 +477,8 @@ class RunStore:
             if (node_x := parse_coordinate(meta.get("x"))) is not None
             and (node_y := parse_coordinate(meta.get("y"))) is not None
         }
-        node_list, edge_list = normalize_snapshot(nodes_meta, edge_pairs, explicit_positions, seed=hash((run_id, node_regex, focus, hops)) & 0xFFFF)
+        node_list, _ = normalize_snapshot(nodes_meta, edge_pairs, explicit_positions, seed=hash((run_id, node_regex, focus, hops)) & 0xFFFF)
+        edge_list = self._materialize_topology_edges(edge_pairs, edge_meta)
 
         self.metrics.last_subgraph_nodes = len(node_list)
         self.metrics.last_subgraph_edges = len(edge_list)
@@ -491,6 +511,60 @@ class RunStore:
             if x is not None and y is not None:
                 return x, y
         return None
+
+    def _merge_topology_node_payload(
+        self,
+        meta: Dict[str, Any],
+        item: Dict[str, Any],
+        *,
+        node_id: str,
+        sim_time: float,
+    ) -> None:
+        meta["last_seen"] = sim_time
+        nested_meta = item.get("meta")
+        if isinstance(nested_meta, dict):
+            for key, value in nested_meta.items():
+                if key in {"x", "y", "label"} or value is None:
+                    continue
+                meta[key] = value
+
+        for key, value in item.items():
+            if key in {"id", "node", "name", "x", "y", "pos_x", "pos_y", "px", "py", "cx", "cy", "meta"}:
+                continue
+            if value is None:
+                continue
+            if key == "label":
+                meta["label"] = str(value or node_id)
+                continue
+            meta[key] = value
+
+        meta.setdefault("label", node_id)
+
+    def _materialize_topology_edges(
+        self,
+        edge_pairs: Sequence[Tuple[str, str]],
+        edge_meta: Dict[Tuple[str, str], Dict[str, Any]],
+    ) -> List[TopologyEdge]:
+        edges: List[TopologyEdge] = []
+        seen: Set[Tuple[str, str]] = set()
+        for src, dst in edge_pairs:
+            key = (src, dst)
+            if key in seen:
+                continue
+            seen.add(key)
+            meta = dict(edge_meta.get(key, {}))
+            kind_raw = meta.pop("kind", None)
+            weight_raw = meta.pop("weight", None)
+            edges.append(
+                TopologyEdge(
+                    src=src,
+                    dst=dst,
+                    kind=str(kind_raw) if kind_raw is not None and str(kind_raw).strip() else None,
+                    weight=parse_coordinate(weight_raw),
+                    meta=meta,
+                )
+            )
+        return edges
 
     def _update_topology(self, state: RunState, event: DashboardEvent) -> None:
         payload = event.payload if isinstance(event.payload, dict) else {}
@@ -526,7 +600,9 @@ class RunStore:
             key = (src_id, dst_id)
             edge_meta = state.topology.edges.setdefault(key, {})
             if kind is not None:
-                edge_meta["kind"] = kind
+                kind_text = str(kind)
+                if kind_text == "topology" or str(edge_meta.get("kind") or "").strip().lower() != "topology":
+                    edge_meta["kind"] = kind_text
             if weight is not None:
                 edge_meta["weight"] = weight
             edge_meta["updated_sim_time"] = max(edge_meta.get("updated_sim_time", 0.0), event.sim_time)
@@ -546,7 +622,7 @@ class RunStore:
                         if node_id is None:
                             continue
                         meta = state.topology.nodes.setdefault(node_id, {"label": str(item.get("label", node_id)), "last_seen": event.sim_time})
-                        meta["label"] = str(item.get("label", node_id))
+                        self._merge_topology_node_payload(meta, item, node_id=node_id, sim_time=event.sim_time)
                         node_coord = self._extract_coordinates(item)
                         if node_coord:
                             meta["x"] = node_coord[0]

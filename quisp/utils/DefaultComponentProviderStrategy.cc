@@ -90,8 +90,8 @@ IQuantumBackend *DefaultComponentProviderStrategy::getQuantumBackend() {
 }
 
 ILogger *DefaultComponentProviderStrategy::getLogger() {
-  auto *qnode = getQNode();
-  auto *mod = qnode->findModuleByPath("logger");
+  auto *node = getNode();
+  auto *mod = node->findModuleByPath("logger");
   if (mod == nullptr) {
     throw cRuntimeError("LoggerModule not found");
   }

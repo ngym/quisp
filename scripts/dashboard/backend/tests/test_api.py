@@ -15,13 +15,13 @@ def _write_run(tmp_path: Path) -> str:
             "event_type": "topology",
             "event_payload": {
                 "nodes": [
-                    {"id": "n1", "x": 10, "y": 20},
-                    {"id": "n2", "x": 14, "y": 24},
-                    {"id": "n3", "x": 20, "y": 8},
+                    {"id": "n1", "label": "EndNode1[0]", "module": "Linear_five_MM_network.EndNode1[0]", "x": 10, "y": 20},
+                    {"id": "n2", "label": "Repeater2[0]", "module": "Linear_five_MM_network.Repeater2[0]", "x": 14, "y": 24},
+                    {"id": "n3", "label": "EndNode3[0]", "module": "Linear_five_MM_network.EndNode3[0]", "x": 20, "y": 8},
                 ],
                 "edges": [
-                    ["n1", "n2"],
-                    ["n2", "n3"],
+                    {"src": "n1", "dst": "n2", "kind": "topology"},
+                    {"src": "n2", "dst": "n3", "kind": "topology"},
                 ],
             },
         },
@@ -95,6 +95,13 @@ def test_api_returns_runs_and_topology(tmp_path: Path) -> None:
     topo_json = topo.json()
     assert len(topo_json["nodes"]) >= 3
     assert len(topo_json["edges"]) >= 2
+    nodes_by_id = {node["id"]: node for node in topo_json["nodes"]}
+    assert nodes_by_id["n1"]["meta"]["module"] == "Linear_five_MM_network.EndNode1[0]"
+    assert nodes_by_id["n2"]["meta"]["module"] == "Linear_five_MM_network.Repeater2[0]"
+    assert ("n1", "n2", "topology") in {
+        (edge["src"], edge["dst"], edge.get("kind"))
+        for edge in topo_json["edges"]
+    }
 
     subgraph = client.get(
         f"/api/runs/{run_id}/subgraph",

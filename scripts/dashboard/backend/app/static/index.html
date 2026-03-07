@@ -722,8 +722,15 @@
           </label>
           <label class="inline-select">class
             <select id="monitorClass">
-              <option value="">all</option>
-              <option value="requests">requests</option>
+              <option value="core">core</option>
+              <option value="all">all</option>
+              <option value="connection_setup">connection_setup</option>
+              <option value="ruleset_forwarding">ruleset_forwarding</option>
+              <option value="swapping">swapping</option>
+              <option value="purification">purification</option>
+              <option value="link_generation">link_generation</option>
+              <option value="routing">routing</option>
+              <option value="tomography">tomography</option>
               <option value="bellpairs">bellpairs</option>
               <option value="flying">flying</option>
               <option value="loss">loss</option>
@@ -740,12 +747,20 @@
           <button id="nextKeyMomentBtn" class="btn small">次の key moment</button>
           <label class="inline-select">class
             <select id="replayClass">
-              <option value="">all</option>
-              <option value="requests">requests</option>
+              <option value="default">default</option>
+              <option value="all">all</option>
+              <option value="classical">classical</option>
+              <option value="connection_setup">connection_setup</option>
+              <option value="ruleset_forwarding">ruleset_forwarding</option>
+              <option value="swapping">swapping</option>
+              <option value="purification">purification</option>
+              <option value="link_generation">link_generation</option>
+              <option value="routing">routing</option>
+              <option value="tomography">tomography</option>
               <option value="bellpairs">bellpairs</option>
               <option value="flying">flying</option>
               <option value="loss">loss</option>
-              <option value="link_quality">link_quality</option>
+              <option value="node_state">node_state</option>
             </select>
           </label>
         </div>
@@ -880,8 +895,8 @@
       speed: 5,
       monitorWindowS: 1,
       monitorLookbackS: 15,
-      monitorClasses: [],
-      replayClasses: [],
+      monitorClasses: ['core'],
+      replayClasses: ['default'],
       replayEventsPerSecond: 120,
       replaySimSecondsPerSecond: 1,
       replayStatus: 'idle',
@@ -1085,6 +1100,53 @@
     };
 
     const ctx = ui.canvas.getContext('2d');
+    const TOPOLOGY_ICON_NODE_LIMIT = 600;
+    const TOPOLOGY_ICON_MIN_SCALE = 0.18;
+    const TOPOLOGY_NODE_ICON_SVGS = Object.freeze({
+      generic: `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+          <defs>
+            <linearGradient id="node-generic-fill" x1="12" y1="10" x2="52" y2="54" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#87ecff" />
+              <stop offset="100%" stop-color="#4ea4ff" />
+            </linearGradient>
+          </defs>
+          <polygon points="18,8 46,8 56,32 46,56 18,56 8,32" fill="url(#node-generic-fill)" stroke="#dff7ff" stroke-width="3" stroke-linejoin="round" />
+          <circle cx="32" cy="32" r="10" fill="#091731" stroke="#e8f6ff" stroke-width="3" />
+          <circle cx="32" cy="32" r="3.5" fill="#aef4ff" />
+        </svg>
+      `,
+      end_node: `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+          <defs>
+            <linearGradient id="node-end-fill" x1="10" y1="10" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#9cf6cb" />
+              <stop offset="100%" stop-color="#4cd6ff" />
+            </linearGradient>
+          </defs>
+          <rect x="12" y="11" width="40" height="32" rx="8" fill="url(#node-end-fill)" stroke="#efffff" stroke-width="3" />
+          <rect x="18" y="17" width="28" height="18" rx="4" fill="#08152d" stroke="#dff7ff" stroke-width="2.5" />
+          <path d="M24 49h16" stroke="#dff7ff" stroke-width="3.5" stroke-linecap="round" />
+          <path d="M32 43v8" stroke="#dff7ff" stroke-width="3" stroke-linecap="round" />
+          <circle cx="32" cy="26" r="3.5" fill="#89ffcc" />
+        </svg>
+      `,
+      repeater: `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+          <defs>
+            <linearGradient id="node-repeater-fill" x1="14" y1="8" x2="50" y2="56" gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stop-color="#ffd77d" />
+              <stop offset="100%" stop-color="#ff8ca8" />
+            </linearGradient>
+          </defs>
+          <rect x="28" y="10" width="8" height="44" rx="4" fill="#eaf5ff" opacity="0.95" />
+          <path d="M32 8l17 17-17 17-17-17z" fill="url(#node-repeater-fill)" stroke="#fff3df" stroke-width="3" stroke-linejoin="round" />
+          <path d="M22 32h20" stroke="#08152d" stroke-width="3.5" stroke-linecap="round" />
+          <path d="M28 26l6 6-6 6" fill="none" stroke="#08152d" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+      `,
+    });
+    const topologyIconCache = new Map();
 
     function logUiAction(action, detail = {}) {
       const entry = {
@@ -1847,6 +1909,77 @@
       return normalized.length ? normalized.join(',') : null;
     }
 
+    function monitorClassFilterParam(values) {
+      const normalized = Array.isArray(values)
+        ? values.map((value) => String(value || '').trim().toLowerCase()).filter(Boolean)
+        : [];
+      if (!normalized.length || normalized.includes('all')) {
+        return null;
+      }
+      if (normalized.includes('core')) {
+        return [
+          'connection_setup',
+          'ruleset_forwarding',
+          'swapping',
+          'purification',
+          'link_generation',
+          'bellpairs',
+          'flying',
+          'loss',
+          'link_quality',
+        ].join(',');
+      }
+      return normalized.join(',');
+    }
+
+    function replayFilterMode() {
+      const values = Array.isArray(state.replayClasses) ? state.replayClasses : [];
+      const first = String(values[0] || 'default').trim().toLowerCase();
+      return first || 'default';
+    }
+
+    function replayFilterMatch(eventTypeRaw, payloadRaw) {
+      const eventType = String(eventTypeRaw || '').trim().toLowerCase();
+      const payload = payloadRaw && typeof payloadRaw === 'object' ? payloadRaw : {};
+      const protocolFamily = String(payload.protocol_family || '').trim().toLowerCase();
+      const mode = replayFilterMode();
+      const isClassical = eventType === 'classical_packet_hop' || eventType === 'classical_packet_deliver_local';
+      const isBellpair = eventType === 'bellpairgenerated' || eventType === 'bellpairerased';
+      const isFlying = eventType === 'flying_qubit_generated' || eventType === 'flying_qubit_emit' || eventType === 'flying_qubit_sent';
+      const isLoss = eventType === 'flying_qubit_loss';
+      const isNodeState = eventType === 'qubitstatechange';
+
+      if (eventType === 'topology_snapshot') {
+        return false;
+      }
+      if (mode === 'all') {
+        return isClassical || isBellpair || isFlying || isLoss || isNodeState;
+      }
+      if (mode === 'default') {
+        return isBellpair
+          || isFlying
+          || isLoss
+          || isNodeState
+          || (isClassical && protocolFamily !== 'routing' && protocolFamily !== 'tomography');
+      }
+      if (mode === 'classical') return isClassical;
+      if (mode === 'bellpairs') return isBellpair;
+      if (mode === 'flying') return isFlying;
+      if (mode === 'loss') return isLoss;
+      if (mode === 'node_state') return isNodeState;
+      return isClassical && protocolFamily === mode;
+    }
+
+    function timelinePointMatchesReplayFilter(point) {
+      return replayFilterMatch(point && point.event_type, {
+        protocol_family: point && point.protocol_family,
+      });
+    }
+
+    function eventMatchesReplayFilter(event) {
+      return replayFilterMatch(event && event.event_type, event && event.payload);
+    }
+
     function currentVisibleEventDensity() {
       if (state.mode === 'results') {
         return state.activitySummary && state.activitySummary.visible_event_density
@@ -2018,7 +2151,7 @@
       if (focusText) params.focus = focusText;
       const regex = ui.nodeRegex.value.trim();
       if (regex) params.node_regex = regex;
-      const classFilter = classFilterParam(state.monitorClasses);
+      const classFilter = monitorClassFilterParam(state.monitorClasses);
       if (classFilter) {
         params.classes = classFilter;
       }
@@ -2101,7 +2234,7 @@
 
     function replayTimelinePointsFiltered() {
       const points = Array.isArray(state.replayTimelinePoints) ? state.replayTimelinePoints : [];
-      return points.filter((point) => !isReplayMetaEvent(point && point.event_type));
+      return points.filter((point) => !isReplayMetaEvent(point && point.event_type) && timelinePointMatchesReplayFilter(point));
     }
 
     function buildReplayClusters(points = replayTimelinePointsFiltered()) {
@@ -2441,9 +2574,10 @@
       const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/events`, {
         from_event_id: cluster.start_cursor,
         limit: Math.max(cluster.count, 1),
-        types: classFilterParam(state.replayClasses),
       }, { action: options.action || 'ui.render_replay_cluster' });
-      const events = Array.isArray(payload.events) ? payload.events.filter((event) => sameSimTime(event.sim_time, cluster.sim_time)) : [];
+      const events = Array.isArray(payload.events)
+        ? payload.events.filter((event) => sameSimTime(event.sim_time, cluster.sim_time) && eventMatchesReplayFilter(event))
+        : [];
       if (!events.length) {
         throw new Error(`cluster fetch returned no replayable events @ cursor ${cluster.start_cursor}`);
       }
@@ -3130,9 +3264,12 @@
       const payload = event && typeof event.payload === 'object' && event.payload ? event.payload : {};
       const eventType = String(event && event.event_type || '').toLowerCase();
       const msgType = String(payload.msg_type || '').toLowerCase();
+      const protocolFamily = String(payload.protocol_family || '').trim().toLowerCase();
       const src = normalizeNodeRef(
+        payload.src_node_id ??
         payload.actual_src_addr ??
         payload.actual_srcAddr ??
+        payload.src_addr ??
         payload.src ??
         payload.source ??
         payload.from ??
@@ -3140,17 +3277,44 @@
         event.source
       );
       const dst = normalizeNodeRef(
+        payload.dst_node_id ??
         payload.actual_dest_addr ??
         payload.actual_destAddr ??
+        payload.dst_addr ??
         payload.dst_node_id ??
         payload.dst ??
         payload.destination ??
         payload.to ??
         payload.partner_addr
       );
+      const classicalKind = dst && dst !== src ? 'classical_edge' : 'node_pulse';
+
+      if (eventType === 'classical_packet_hop') {
+        return {
+          color: classicalProtocolColor(protocolFamily),
+          kind: 'classical_edge',
+          label: classicalProtocolLabel(protocolFamily),
+          src,
+          dst,
+          protocolFamily,
+        };
+      }
+      if (eventType === 'classical_packet_deliver_local') {
+        return {
+          color: classicalProtocolColor(protocolFamily),
+          kind: 'classical_local',
+          label: classicalProtocolLabel(protocolFamily, 'Local'),
+          src: normalizeNodeRef(payload.node_id ?? src ?? payload.final_dest_addr ?? event.source),
+          dst: '',
+          protocolFamily,
+        };
+      }
 
       if (eventType === 'bellpairgenerated') {
         return { color: '#7dffad', kind: 'bell_pair', label: 'BellPair+', src, dst };
+      }
+      if (eventType === 'topology_snapshot') {
+        return { color: '#7fb7ff', kind: 'metadata_only', label: 'Topology', src, dst };
       }
       if (eventType === 'bellpairerased') {
         return { color: '#ff7f96', kind: 'bell_pair', label: 'BellPair-', src, dst };
@@ -3170,22 +3334,40 @@
       if (eventType === 'qubitstatechange') {
         return { color: '#ffd96e', kind: 'node_pulse', label: 'QubitState', src, dst };
       }
+      if (eventType === 'experiment_request_submitted') {
+        return { color: '#52d6ff', kind: 'summary_only', label: 'Req Submit', src, dst };
+      }
+      if (eventType === 'experiment_request_setup_accepted') {
+        return { color: '#4bf0a7', kind: 'summary_only', label: 'Setup OK', src, dst };
+      }
+      if (eventType === 'experiment_request_setup_rejected') {
+        return { color: '#ff9f6b', kind: 'summary_only', label: 'Setup Reject', src, dst };
+      }
+      if (eventType === 'experiment_link_quality_sample') {
+        return { color: '#ffb36b', kind: 'summary_only', label: 'Link Quality', src, dst };
+      }
+      if (eventType === 'handlemessage') {
+        return { color: '#7fb7ff', kind: 'summary_only', label: 'Packet', src, dst };
+      }
+      if (eventType === 'handleincomingcontrolmessage') {
+        return { color: '#7fb7ff', kind: 'summary_only', label: 'Control', src, dst };
+      }
       if (msgType === 'connectionsetuprequest') {
-        return { color: '#52d6ff', kind: 'message', label: 'ConnSetupReq', src, dst };
+        return { color: '#52d6ff', kind: 'summary_only', label: 'ConnSetupReq', src, dst };
       }
       if (msgType === 'connectionsetupresponse') {
-        return { color: '#4bf0a7', kind: 'message', label: 'ConnSetupRes', src, dst };
+        return { color: '#4bf0a7', kind: 'summary_only', label: 'ConnSetupRes', src, dst };
       }
       if (msgType === 'rejectconnectionsetuprequest') {
-        return { color: '#ff9f6b', kind: 'message', label: 'ConnReject', src, dst };
+        return { color: '#ff9f6b', kind: 'summary_only', label: 'ConnReject', src, dst };
       }
       if (eventType.includes('error') || eventType.includes('bad')) {
-        return { color: '#ff7788', kind: 'message', label: event.event_type || 'error', src, dst };
+        return { color: '#ff7788', kind: classicalKind, label: event.event_type || 'error', src, dst };
       }
       if (eventType.includes('retry') || eventType.includes('warn')) {
-        return { color: '#ffd06b', kind: 'message', label: event.event_type || 'warn', src, dst };
+        return { color: '#ffd06b', kind: classicalKind, label: event.event_type || 'warn', src, dst };
       }
-      return { color: '#52d6ff', kind: 'message', label: event.event_type || 'event', src, dst };
+      return { color: '#52d6ff', kind: classicalKind, label: event.event_type || 'event', src, dst };
     }
 
     function colorForType(type) {
@@ -3194,12 +3376,45 @@
 
     function activityClassColor(activityClass) {
       return {
-        requests: '#52d6ff',
+        connection_setup: '#52d6ff',
+        ruleset_forwarding: '#3ddcc8',
+        swapping: '#8f8cff',
+        purification: '#ff8fd1',
+        link_generation: '#ffd96e',
         bellpairs: '#7dffad',
         flying: '#ffd96e',
         loss: '#ff7f96',
         link_quality: '#ffb36b',
+        routing: '#8ca6ff',
+        tomography: '#ffc36b',
+        unknown: '#7fb7ff',
       }[String(activityClass || '').trim()] || '#7a8db8';
+    }
+
+    function classicalProtocolColor(protocolFamily) {
+      return {
+        connection_setup: '#52d6ff',
+        ruleset_forwarding: '#3ddcc8',
+        swapping: '#8f8cff',
+        purification: '#ff8fd1',
+        link_generation: '#ffd96e',
+        tomography: '#ffb36b',
+        routing: '#8ca6ff',
+        unknown: '#7fb7ff',
+      }[String(protocolFamily || '').trim().toLowerCase()] || '#7fb7ff';
+    }
+
+    function classicalProtocolLabel(protocolFamily, fallback = 'Packet') {
+      return {
+        connection_setup: 'Conn',
+        ruleset_forwarding: 'RuleSet',
+        swapping: 'Swap',
+        purification: 'Purify',
+        link_generation: 'LinkGen',
+        tomography: 'Tomography',
+        routing: 'Routing',
+        unknown: fallback,
+      }[String(protocolFamily || '').trim().toLowerCase()] || fallback;
     }
 
     function normalizeNodeRef(value) {
@@ -3222,12 +3437,45 @@
     function topologyNeighbors(nodeId) {
       const target = String(nodeId || '').trim();
       if (!target) return [];
+      const topologyEdges = state.topology.edges || [];
+      const physicalEdges = topologyEdges.filter((edge) => {
+        const edgeKind = String(edge && (edge.kind ?? (edge.meta && edge.meta.kind) ?? '')).trim().toLowerCase();
+        return edgeKind === 'topology';
+      });
+      const edgesForRouting = physicalEdges.length ? physicalEdges : topologyEdges;
       const neighbors = new Set();
-      for (const edge of state.topology.edges || []) {
+      for (const edge of edgesForRouting) {
         if (String(edge.src) === target && edge.dst != null) neighbors.add(String(edge.dst));
         if (String(edge.dst) === target && edge.src != null) neighbors.add(String(edge.src));
       }
       return Array.from(neighbors);
+    }
+
+    function shortestTopologyPath(srcId, dstId) {
+      const start = String(srcId || '').trim();
+      const goal = String(dstId || '').trim();
+      if (!start || !goal) return [];
+      if (start === goal) return [start];
+
+      const queue = [[start]];
+      const visited = new Set([start]);
+      while (queue.length) {
+        const path = queue.shift();
+        const current = path[path.length - 1];
+        const neighbors = topologyNeighbors(current);
+        for (const neighbor of neighbors) {
+          if (visited.has(neighbor)) {
+            continue;
+          }
+          const nextPath = path.concat(neighbor);
+          if (neighbor === goal) {
+            return nextPath;
+          }
+          visited.add(neighbor);
+          queue.push(nextPath);
+        }
+      }
+      return [start, goal];
     }
 
     function inferFlyingDestination(src, event) {
@@ -3259,10 +3507,16 @@
 
     function inferEventEndpoints(event) {
       const visual = eventVisualStyle(event);
+      if (visual.kind === 'summary_only' || visual.kind === 'metadata_only') {
+        return null;
+      }
       const src = visual.src;
       const dst = visual.dst;
       if (!src) {
         return null;
+      }
+      if (visual.kind === 'classical_local') {
+        return { src, dst: '', kind: 'node_pulse' };
       }
       if (visual.kind.startsWith('flying_edge')) {
         const inferredDst = dst || inferFlyingDestination(src, event);
@@ -3333,18 +3587,50 @@
           }
           const laneKey = animationLaneKey(visual.kind, endpoints);
           const durationMs = visual.kind === 'bell_pair' ? 1500 : 950;
-          const animation = {
-            id: state.nextAnimationId++,
-            src: endpoints.src,
-            dst: endpoints.dst,
+          const baseAnimation = {
             color: visual.color,
             label: visual.label,
             kind: endpoints.kind || visual.kind,
             phase: visual.phase || '',
-            startedAt,
-            durationMs,
             laneIndex: 0,
             laneCount: 1,
+          };
+          const route = baseAnimation.kind === 'classical_edge'
+            ? shortestTopologyPath(endpoints.src, endpoints.dst)
+            : [];
+
+          if (baseAnimation.kind === 'classical_edge' && route.length > 2) {
+            const hopCount = route.length - 1;
+            const segmentDurationMs = Math.max(240, durationMs / hopCount);
+            const segmentOffsetMs = Math.min(120, segmentDurationMs * 0.7);
+            for (let hopIndex = 0; hopIndex < hopCount; hopIndex += 1) {
+              const animation = {
+                id: state.nextAnimationId++,
+                src: route[hopIndex],
+                dst: route[hopIndex + 1],
+                startedAt: startedAt + hopIndex * segmentOffsetMs,
+                durationMs: segmentDurationMs,
+                segmentIndex: hopIndex,
+                segmentCount: hopCount,
+                ...baseAnimation,
+              };
+              prepared.push(animation);
+              const segmentLaneKey = animationLaneKey(animation.kind, animation);
+              if (!laneGroups.has(segmentLaneKey)) {
+                laneGroups.set(segmentLaneKey, []);
+              }
+              laneGroups.get(segmentLaneKey).push(animation);
+            }
+            continue;
+          }
+
+          const animation = {
+            id: state.nextAnimationId++,
+            src: endpoints.src,
+            dst: endpoints.dst,
+            startedAt,
+            durationMs,
+            ...baseAnimation,
           };
           prepared.push(animation);
           if (!laneGroups.has(laneKey)) {
@@ -3562,6 +3848,115 @@
       ctx.restore();
     }
 
+    function topologyIconDataUrl(svgText) {
+      return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgText)}`;
+    }
+
+    function ensureTopologyIconAsset(iconKey) {
+      if (!iconKey || !TOPOLOGY_NODE_ICON_SVGS[iconKey]) {
+        return null;
+      }
+      if (topologyIconCache.has(iconKey)) {
+        return topologyIconCache.get(iconKey);
+      }
+      const image = new Image();
+      const entry = { image, loaded: false, failed: false };
+      image.onload = () => {
+        entry.loaded = true;
+        requestRender();
+      };
+      image.onerror = () => {
+        entry.failed = true;
+      };
+      image.src = topologyIconDataUrl(TOPOLOGY_NODE_ICON_SVGS[iconKey]);
+      topologyIconCache.set(iconKey, entry);
+      return entry;
+    }
+
+    function normalizeNodeIconToken(value) {
+      return String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+    }
+
+    function topologyNodeIconKey(node) {
+      const meta = node && node.meta && typeof node.meta === 'object' ? node.meta : {};
+      const tokens = [
+        normalizeNodeIconToken(meta.module),
+        normalizeNodeIconToken(meta.module_path),
+        normalizeNodeIconToken(meta.type),
+        normalizeNodeIconToken(node && node.label),
+        normalizeNodeIconToken(meta.label),
+      ].filter(Boolean);
+      if (tokens.some((token) => token.includes('endnode'))) {
+        return 'end_node';
+      }
+      if (tokens.some((token) => token.includes('repeater') || token.includes('router') || token.includes('relay'))) {
+        return 'repeater';
+      }
+      return 'generic';
+    }
+
+    function shouldRenderTopologyIcons(nodeCount) {
+      return nodeCount > 0 && nodeCount <= TOPOLOGY_ICON_NODE_LIMIT && state.camera.scale >= TOPOLOGY_ICON_MIN_SCALE;
+    }
+
+    function topologyNodeIconSize(nodeCount) {
+      if (nodeCount <= 12) return 26;
+      if (nodeCount <= 48) return 22;
+      return 18;
+    }
+
+    function topologyNodeCircleRadius() {
+      return Math.max(2.4, Math.min(6, 4 * Math.log2(state.maxNodes ? Math.sqrt(state.maxNodes) / 20 : 1) + 1));
+    }
+
+    function drawTopologyNodeFallback(x, y, node) {
+      const radius = topologyNodeCircleRadius();
+      ctx.beginPath();
+      ctx.fillStyle = edgeColorByLoad(node);
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      return radius;
+    }
+
+    function drawTopologyNodeIcon(x, y, node, nodeCount) {
+      const asset = ensureTopologyIconAsset(topologyNodeIconKey(node));
+      if (!asset || asset.failed || !asset.loaded) {
+        return false;
+      }
+      const size = topologyNodeIconSize(nodeCount);
+      ctx.save();
+      ctx.fillStyle = colorWithAlpha(edgeColorByLoad(node), 0.16);
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.42, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.drawImage(asset.image, x - size / 2, y - size / 2, size, size);
+      ctx.restore();
+      return true;
+    }
+
+    function drawTopologyNodeGlyph(node, x, y, nodeCount) {
+      if (shouldRenderTopologyIcons(nodeCount) && drawTopologyNodeIcon(x, y, node, nodeCount)) {
+        return topologyNodeIconSize(nodeCount) * 0.42;
+      }
+      return drawTopologyNodeFallback(x, y, node);
+    }
+
+    function primeTopologyNodeIcons(nodes) {
+      const list = Array.isArray(nodes) ? nodes : [];
+      if (!list.length || list.length > TOPOLOGY_ICON_NODE_LIMIT) {
+        return;
+      }
+      const seen = new Set();
+      for (const node of list) {
+        const iconKey = topologyNodeIconKey(node);
+        if (seen.has(iconKey)) {
+          continue;
+        }
+        seen.add(iconKey);
+        ensureTopologyIconAsset(iconKey);
+      }
+    }
+
     function fitCameraToTopology() {
       const nodes = state.topology.nodes || [];
       if (!nodes.length) {
@@ -3692,6 +4087,8 @@
       if (state.mode === 'monitor' && state.activitySnapshot) {
         const nodeHeatMap = new Map((state.activitySnapshot.view_node_activity || []).map((item) => [String(item.id), item]));
         const edgeHeatMap = new Map((state.activitySnapshot.view_edge_activity || []).map((item) => [`${item.src}::${item.dst}`, item]));
+        const useNodeIcons = shouldRenderTopologyIcons(nodes.length);
+        const jitterBase = state.animNodeJitter ? (Math.sin(performance.now() / 300) * 0.8) : 0;
 
         if (state.edgesVisible) {
           for (const edge of edges) {
@@ -3726,23 +4123,20 @@
           }
           visibleNodes += 1;
           const heat = nodeHeatMap.get(String(node.id));
-          const baseColor = '#9fc5ff';
-          const radius = 4.4;
-          ctx.beginPath();
-          ctx.fillStyle = baseColor;
-          ctx.arc(sx, sy, radius, 0, Math.PI * 2);
-          ctx.fill();
+          const rawJitter = jitterBase + (hashString(node.id) % 5) * 0.03;
+          const jitter = useNodeIcons ? rawJitter * 0.35 : rawJitter;
+          const radius = drawTopologyNodeGlyph(node, sx + jitter, sy + jitter, nodes.length);
           if (heat && Number(heat.total_count || 0) > 0) {
             const color = activityClassColor(heat.dominant_class);
             ctx.strokeStyle = colorWithAlpha(color, 0.2 + Math.min(0.7, Number(heat.intensity || 0) * 0.7));
             ctx.lineWidth = 2 + Number(heat.intensity || 0) * 5;
             ctx.beginPath();
-            ctx.arc(sx, sy, radius + 6 + Number(heat.intensity || 0) * 7, 0, Math.PI * 2);
+            ctx.arc(sx + jitter, sy + jitter, radius + 6 + Number(heat.intensity || 0) * 7, 0, Math.PI * 2);
             ctx.stroke();
           }
           if (state.hoverNode === node.id) {
             ctx.fillStyle = '#ffffff';
-            ctx.fillText(node.id, sx + 8, sy - 4);
+            ctx.fillText(node.id, sx + jitter + 8, sy + jitter - 4);
           }
         }
 
@@ -3937,6 +4331,7 @@
       }
 
       const jitterBase = state.animNodeJitter ? (Math.sin(performance.now() / 300) * 0.8) : 0;
+      const useNodeIcons = shouldRenderTopologyIcons(nodes.length);
       for (const node of nodes) {
         const x = node._renderX;
         const y = node._renderY;
@@ -3947,16 +4342,13 @@
         }
         visibleNodes += 1;
 
-        const jitter = jitterBase + (hashString(node.id) % 5) * 0.03;
-        ctx.beginPath();
-        ctx.fillStyle = edgeColorByLoad(node);
-        const r = Math.max(2.4, Math.min(6, 4 * Math.log2(state.maxNodes ? Math.sqrt(state.maxNodes) / 20 : 1) + 1));
-        ctx.arc(sx + jitter, sy + jitter, r, 0, Math.PI * 2);
-        ctx.fill();
+        const rawJitter = jitterBase + (hashString(node.id) % 5) * 0.03;
+        const jitter = useNodeIcons ? rawJitter * 0.35 : rawJitter;
+        drawTopologyNodeGlyph(node, sx + jitter, sy + jitter, nodes.length);
 
         if (state.hoverNode === node.id) {
           ctx.fillStyle = '#ffffff';
-          ctx.fillText(node.id, sx + 8, sy - 4);
+          ctx.fillText(node.id, sx + jitter + 8, sy + jitter - 4);
         }
       }
 
@@ -4458,6 +4850,7 @@
       }, { action: 'ui.load_topology' });
       if (payload && Array.isArray(payload.nodes)) {
         state.topology = payload;
+        primeTopologyNodeIcons(payload.nodes);
         if (payload.nodes.length > 0 && (options.fit === true || !hadNodes)) {
           fitCameraToTopology();
         }
@@ -4481,6 +4874,7 @@
       const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/subgraph`, params, { action: 'ui.fetch_subgraph' });
       if (payload && Array.isArray(payload.nodes)) {
         state.topology = payload;
+        primeTopologyNodeIcons(payload.nodes);
         if (payload.nodes.length > 0 && (options.fit === true || !hadNodes)) {
           fitCameraToTopology();
         }
@@ -5135,31 +5529,30 @@
       const requestedCursor = state.mode === 'replay' ? normalizeReplayCursor(baseCursor) : baseCursor;
       const limit = Math.max(1, Number(options.limit) || 1);
       const advanceCursor = options.advanceCursor === true;
-      const typeFilter = classFilterParam(state.replayClasses);
       const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/events`, {
         from_event_id: requestedCursor,
         limit,
-        types: typeFilter,
       }, { action: 'ui.load_from_cursor' });
-      appendEvents(payload.events || [], 'http');
+      const replayEvents = Array.isArray(payload.events) ? payload.events.filter((event) => eventMatchesReplayFilter(event)) : [];
+      appendEvents(replayEvents, 'http');
       if (advanceCursor && payload.next_cursor != null) {
         applyNextCursor(payload.next_cursor);
       } else {
-        state.cursor = state.mode === 'replay' && Array.isArray(payload.events) && payload.events.length
-          ? Number(payload.events[payload.events.length - 1].cursor) || requestedCursor
+        state.cursor = state.mode === 'replay' && replayEvents.length
+          ? Number(replayEvents[replayEvents.length - 1].cursor) || requestedCursor
           : requestedCursor;
         state.maxSeenCursor = Math.max(state.maxSeenCursor, state.cursor, Number(ui.timeline.max) || 0);
         syncCursorUi();
         updateKpis();
       }
-      if (Array.isArray(payload.events) && payload.events.length > 0) {
+      if (replayEvents.length > 0) {
         await fetchAndRenderSubgraph({ fit: (state.topology.nodes || []).length === 0 });
       }
       await refreshActivitySnapshot({ anchorCursor: state.cursor });
       if (state.mode === 'replay') {
         const cluster = findClusterByCursor(requestedCursor);
-        state.replayDisplayedCursor = Array.isArray(payload.events) && payload.events.length
-          ? Number(payload.events[payload.events.length - 1].cursor) || requestedCursor
+        state.replayDisplayedCursor = replayEvents.length
+          ? Number(replayEvents[replayEvents.length - 1].cursor) || requestedCursor
           : requestedCursor;
         setReplayClusterState(cluster);
         state.replayStatus = 'paused';
@@ -5176,6 +5569,8 @@
       state.replaySimSecondsPerSecond = sliderToReplaySimSecondsPerSecond(state.speed);
       state.monitorWindowS = Number(ui.monitorWindow.value) || 1;
       state.monitorLookbackS = Number(ui.monitorLookback.value) || 15;
+      ui.monitorClass.value = 'core';
+      ui.replayClass.value = 'default';
       await Promise.all([loadSimulationTemplates(), loadExperimentCatalog(), loadRuns(), loadSimRuns()]);
       const matchedProfile = matchExperimentProfile(ui.simTemplate.value, ui.simConfig.value);
       if (matchedProfile && !ui.experimentProfile.value) {

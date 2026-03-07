@@ -149,6 +149,7 @@ The dashboard now supports a curated structured mode on top of the existing raw 
 Current curated profiles:
 
 - `two_node_mim_smoke`
+- `verify_replay_timeline`
 - `linear_five_mm_entanglement_swapping`
 - `measurement7000_simple_mim`
 
@@ -158,6 +159,12 @@ Profile notes:
   - default backend: profile default is inherited from the selected config unless overridden
   - intended result: setup/request metrics such as `setup_success_ratio` and `setup_latency_s`
   - tuned default: `traffic.request_rate_hz=1.0` so the summary is not flooded with requests in a 2s smoke run
+- `verify_replay_timeline`
+  - default backend: `graph_state`
+  - default `sim_time_limit`: `10.0s`
+  - default `traffic.request_rate_hz`: `2.0`
+  - intended result: `Replay` の sim-time seek、cluster 進行、`t=0` からの event 発生確認
+  - caveat: Results の bell-pair 活動確認よりも、Replay UI 検証を優先したプロファイルです
 - `linear_five_mm_entanglement_swapping`
   - default backend: `graph_state`
   - default `sim_time_limit`: `12.0s`
@@ -206,6 +213,7 @@ Unavailable metrics are returned as unavailable, not coerced to zero.
 Two practical interpretations matter in the current implementation:
 
 - `two_node_mim_smoke` is the profile to use when you want request/setup metrics.
+- `verify_replay_timeline` is the profile to use when you want early replayable events and time-seek verification.
 - `linear_five_mm_entanglement_swapping` is the profile to use when you want bell-pair activity and topology animation, not request/setup success.
 
 ## Experiment comparison
@@ -226,6 +234,47 @@ curl -X POST http://localhost:8765/api/experiments/compare \
     "metric_ids": ["setup_success_ratio", "link_fidelity"]
   }' | jq
 ```
+
+## Classical packet visualization taxonomy
+
+The dashboard now treats classical traffic in three separate categories:
+
+- `classical_packet_hop`
+  - emitted from `/Users/shota/GITHUB/quisp/quisp/modules/Common/Router.cc`
+  - represents one actual hop sent to `toQueue`
+  - used as the only classical edge animation source
+- `classical_packet_deliver_local`
+  - emitted from `Router` when a classical packet is handed to `toApp`, `cmPort`, `rePort`, `hmPort`, or `rdPort`
+  - rendered as a node-local pulse
+- summary / metrics / metadata
+  - `experiment_request_*`
+  - `experiment_link_quality_sample`
+  - `topology_snapshot`
+  - these are not packet animations; they are used in Results, key moments, and summaries
+
+Canonical classical packet families are:
+
+- `connection_setup`
+- `ruleset_forwarding`
+- `swapping`
+- `purification`
+- `link_generation`
+- `tomography`
+- `routing`
+- `unknown`
+
+Family visibility defaults:
+
+- `Replay`
+  - shows `connection_setup`, `ruleset_forwarding`, `swapping`, `purification`, `link_generation`
+  - hides `routing` and `tomography` by default
+- `Monitor core`
+  - includes `connection_setup`, `ruleset_forwarding`, `swapping`, `purification`, `link_generation`, `flying`, `bellpairs`, `loss`, `link_quality`
+  - does not include `routing`, `tomography`, or `unknown` unless explicitly selected in the filter
+
+Protocol-level classical packets such as `SwappingResult`, `PurificationResult`, `MSMResult`, and `LinkTomography*` are only drawn when the run contains canonical Router-level packet events. Old runs without `classical_packet_hop` / `classical_packet_deliver_local` keep their summaries and raw logs, but do not synthesize fake packet paths from generic `handleMessage` traces.
+
+This means old runs that do not contain `classical_packet_hop` / `classical_packet_deliver_local` will no longer fake classical packet animation from generic `handleMessage` logs. The UI keeps raw logs and summaries, but avoids drawing misleading packet paths.
 
 ## Known validated runs
 

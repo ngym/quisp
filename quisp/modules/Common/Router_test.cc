@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <messages/classical_messages.h>
+#include <test_utils/Logger.h>
 #include <test_utils/TestUtils.h>
 
 #include "Router.h"
@@ -27,6 +28,9 @@ class Strategy : public quisp_test::TestComponentProviderStrategy {
   cModule* getNode() override { return parent_qnode; }
   int getNodeAddr() override { return parent_qnode->address; }
   SharedResource* getSharedResource() override { return &shared_resource; }
+  quisp_test::Logger::TestLogger* getLogger() override { return &logger; }
+
+  quisp_test::Logger::TestLogger logger;
 
  private:
   MockNode* parent_qnode;
@@ -39,7 +43,8 @@ class Router : public OriginalRouter {
   using OriginalRouter::initialize;
   using OriginalRouter::routing_table;
   explicit Router(MockNode* parent_qnode) : OriginalRouter() {
-    this->provider.setStrategy(std::make_unique<Strategy>(parent_qnode));
+    strategy = new Strategy(parent_qnode);
+    this->provider.setStrategy(std::unique_ptr<Strategy>(strategy));
     this->setComponentType(new TestModuleType("test_router"));
     hmPort = new TestGate(this, "hmPort$o");
     rePort = new TestGate(this, "rePort$o");
@@ -54,6 +59,7 @@ class Router : public OriginalRouter {
   TestGate* cmPort;
   TestGate* rdPort;
   TestGate* queueGate;
+  Strategy* strategy = nullptr;
 
   std::map<const char*, cGate*> ports{};
   cGate* gate(const char* gatename, int index = -1) override {
@@ -67,6 +73,7 @@ class Router : public OriginalRouter {
   }
   bool parentModuleIsQNode() override { return dynamic_cast<MockNode*>(provider.getNode())->is_qnode; }
   void setIsQnode(bool is_qnode) { dynamic_cast<MockNode*>(provider.getNode())->is_qnode = is_qnode; }
+  quisp_test::Logger::TestLogger* loggerRef() { return strategy == nullptr ? nullptr : &strategy->logger; }
 };
 
 class RouterTest : public ::testing::Test {
@@ -115,6 +122,11 @@ TEST_F(RouterTest, handlePacketForOtherNode) {
     auto req = dynamic_cast<ConnectionSetupRequest*>(msg);
     EXPECT_EQ(req->getHopCount(), 1);
   }
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_hop");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"connection_setup\""), std::string::npos);
+  EXPECT_NE(logger->log_event_payload.find("\"src_node_id\":10"), std::string::npos);
 }
 
 TEST_F(RouterTest, handleConnSetupRequest) {
@@ -122,6 +134,10 @@ TEST_F(RouterTest, handleConnSetupRequest) {
   msg->setDestAddr(10);
   router->handleMessage(msg);
   ASSERT_EQ(router->cmPort->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_deliver_local");
+  EXPECT_NE(logger->log_event_payload.find("\"delivery_port\":\"cmPort\""), std::string::npos);
 }
 
 TEST_F(RouterTest, handleConnSetupResponse) {
@@ -157,6 +173,10 @@ TEST_F(RouterTest, handleInternalRuleSetForwarding) {
   msg->setDestAddr(10);
   router->handleMessage(msg);
   ASSERT_EQ(router->rePort->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_deliver_local");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"ruleset_forwarding\""), std::string::npos);
 }
 
 TEST_F(RouterTest, handleInternalRuleSetForwarding_Application) {
@@ -171,6 +191,10 @@ TEST_F(RouterTest, handleSwappingResult) {
   msg->setDestAddr(10);
   router->handleMessage(msg);
   ASSERT_EQ(router->rePort->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_deliver_local");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"swapping\""), std::string::npos);
 }
 
 TEST_F(RouterTest, handleLinkTomographyAck) {
@@ -178,6 +202,10 @@ TEST_F(RouterTest, handleLinkTomographyAck) {
   msg->setDestAddr(10);
   router->handleMessage(msg);
   ASSERT_EQ(router->hmPort->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_deliver_local");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"tomography\""), std::string::npos);
 }
 
 TEST_F(RouterTest, handleLinkTomographyRequest) {
@@ -199,6 +227,10 @@ TEST_F(RouterTest, handlePurificationResult) {
   msg->setDestAddr(10);
   router->handleMessage(msg);
   ASSERT_EQ(router->rePort->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_deliver_local");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"purification\""), std::string::npos);
 }
 
 TEST_F(RouterTest, handleStopEmitting) {
@@ -238,6 +270,10 @@ TEST_F(RouterTest, handleOspfPacket) {
   ack->setDestAddr(10);
   router->handleMessage(ack);
   ASSERT_EQ(router->rdPort->messages.size(), 6);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_deliver_local");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"routing\""), std::string::npos);
 }
 
 TEST_F(RouterTest, nonQNodeForwardOspfPacket) {
@@ -269,5 +305,49 @@ TEST_F(RouterTest, redirectOspfHelloPacketToRoutingDaemon) {
 
   router->handleMessage(msg);
   ASSERT_EQ(router->rdPort->messages.size(), 1);
+}
+
+TEST_F(RouterTest, handleForwardedRulesetForwardingLogsRulesetFamily) {
+  auto msg = new InternalRuleSetForwarding;
+  msg->setDestAddr(8);
+  router->handleMessage(msg);
+  ASSERT_EQ(router->queueGate->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_hop");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"ruleset_forwarding\""), std::string::npos);
+}
+
+TEST_F(RouterTest, handleForwardedSwappingResultLogsSwappingFamily) {
+  auto msg = new SwappingResult;
+  msg->setDestAddr(8);
+  router->handleMessage(msg);
+  ASSERT_EQ(router->queueGate->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_hop");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"swapping\""), std::string::npos);
+}
+
+TEST_F(RouterTest, handleForwardedTomographyRequestLogsTomographyFamily) {
+  auto msg = new LinkTomographyRequest;
+  msg->setDestAddr(8);
+  router->handleMessage(msg);
+  ASSERT_EQ(router->queueGate->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_hop");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"tomography\""), std::string::npos);
+}
+
+TEST_F(RouterTest, handleForwardedOspfPacketLogsRoutingFamily) {
+  auto msg = new OspfHelloPacket;
+  msg->setDestAddr(8);
+  router->handleMessage(msg);
+  ASSERT_EQ(router->queueGate->messages.size(), 1);
+  auto* logger = router->loggerRef();
+  ASSERT_NE(logger, nullptr);
+  EXPECT_EQ(logger->log_event_type, "classical_packet_hop");
+  EXPECT_NE(logger->log_event_payload.find("\"protocol_family\":\"routing\""), std::string::npos);
 }
 }  // namespace

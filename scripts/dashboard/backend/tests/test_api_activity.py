@@ -21,6 +21,7 @@ def test_activity_endpoints(tmp_path):
         'run_b',
         [
             {"event_type": "topology_snapshot", "sim_time": 0.0, "source": "1", "event_payload": {"nodes": [{"id": "1", "x": 0, "y": 0}, {"id": "2", "x": 100, "y": 0}], "edges": [{"src": "1", "dst": "2"}]}},
+            {"event_type": "classical_packet_hop", "sim_time": 0.6, "source": "1", "event_payload": {"src_node_id": 1, "dst_node_id": 2, "protocol_family": "routing", "final_src_addr": 1, "final_dest_addr": 2}},
             {"event_type": "flying_qubit_sent", "sim_time": 1.0, "source": "1", "event_payload": {"node_id": 1, "dst_node_id": 2}},
             {"event_type": "flying_qubit_loss", "sim_time": 1.4, "source": "1", "event_payload": {"node_id": 1, "dst_node_id": 2}},
         ],
@@ -39,3 +40,8 @@ def test_activity_endpoints(tmp_path):
         summary_payload = summary.json()
         assert summary_payload['run_id'] == 'run_b'
         assert 'visible_event_density' in summary_payload
+
+        routing = client.get('/api/runs/run_b/activity?classes=routing')
+        assert routing.status_code == 200
+        routing_payload = routing.json()
+        assert routing_payload['global_totals']['active_edge_count'] >= 1

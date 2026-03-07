@@ -21,6 +21,7 @@ def test_activity_snapshot_and_summary(tmp_path):
         'run_a',
         [
             {"event_type": "topology_snapshot", "sim_time": 0.0, "source": "1", "event_payload": {"nodes": [{"id": "1", "x": 0, "y": 0}, {"id": "2", "x": 100, "y": 0}], "edges": [{"src": "1", "dst": "2"}]}},
+            {"event_type": "classical_packet_hop", "sim_time": 0.8, "source": "1", "event_payload": {"src_node_id": 1, "dst_node_id": 2, "protocol_family": "connection_setup", "final_src_addr": 1, "final_dest_addr": 2}},
             {"event_type": "experiment_request_submitted", "sim_time": 1.0, "source": "1", "event_payload": {"src_addr": 1, "dst_addr": 2, "connection_session_id": 10, "connection_attempt": 1}},
             {"event_type": "experiment_request_setup_accepted", "sim_time": 1.5, "source": "1", "event_payload": {"src_addr": 1, "dst_addr": 2, "connection_session_id": 10, "connection_attempt": 1}},
             {"event_type": "BellPairGenerated", "sim_time": 2.0, "source": "1", "event_payload": {"partner_addr": 2}},
@@ -40,4 +41,4 @@ def test_activity_snapshot_and_summary(tmp_path):
     summary = asyncio.run(aggregator.build_summary('run_a', bin_s=1.0))
     assert summary.run_id == 'run_a'
     assert summary.visible_event_density.count >= 1
-    assert summary.global_counts_by_class['requests'] >= 2
+    assert summary.global_counts_by_class['connection_setup'] >= 1

@@ -80,6 +80,41 @@ PROFILE_REGISTRY: dict[str, ExperimentProfile] = {
         },
         notes="最初に使う確認用プロファイルです。launch, sim completion, summary artifact, Results の基本線を短時間で確認できます。",
     ),
+    "verify_replay_timeline": ExperimentProfile(
+        profile_id="verify_replay_timeline",
+        label="Verify: replay timeline",
+        description="Replay の time seek、cluster 進行、sim 時間同期を確認するための 2 node 検証プロファイルです。",
+        template_id="quisp/simulations/two_nodes.ini",
+        config_name="two_node_MIM",
+        supported_parameter_ids=[
+            "execution.seed_set",
+            "execution.sim_time_limit_s",
+            "execution.backend_type",
+            "traffic.request_rate_hz",
+            "traffic.pairs_per_request",
+        ],
+        default_parameter_values={
+            "execution.sim_time_limit_s": 10.0,
+            "execution.backend_type": "graph_state",
+            "traffic.request_rate_hz": 2.0,
+            "traffic.pairs_per_request": 1,
+        },
+        recommended_metric_ids=[
+            "request_submitted_count",
+            "request_setup_success_count",
+            "setup_success_ratio",
+            "setup_latency_s",
+        ],
+        override_mappings={
+            "execution.backend_type": {"kind": "direct", "override_key": "**.physical_backend_type"},
+            "traffic.request_rate_hz": {"kind": "inverse_rate_to_interval_s", "override_key": "*.source.app.request_generation_interval"},
+            "traffic.pairs_per_request": {"kind": "direct", "override_key": "*.source.app.number_of_bellpair"},
+        },
+        fixed_overrides={
+            "*.source.is_initiator": "true",
+        },
+        notes="t=0 付近から replayable event が出るように調整した Replay 検証用プロファイルです。Results よりも time seek と cluster 表示の確認に向きます。",
+    ),
     "verify_qutip_backend": ExperimentProfile(
         profile_id="verify_qutip_backend",
         label="Verify: qutip backend",

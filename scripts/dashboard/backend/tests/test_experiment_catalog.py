@@ -51,6 +51,22 @@ def test_qutip_verification_profile_defaults_to_qutip_backend():
     assert request_dict["overrides"]["*.source.app.request_generation_interval"] == "2s"
 
 
+def test_replay_timeline_verification_profile_defaults_to_early_event_timeline():
+    request = SimRunStartRequest(
+        experiment_profile_id="verify_replay_timeline",
+    )
+
+    resolved = resolve_experiment_request(request)
+    request_dict = resolved["request_dict"]
+
+    assert request_dict["template_id"] == "quisp/simulations/two_nodes.ini"
+    assert request_dict["config_name"] == "two_node_MIM"
+    assert request_dict["sim_time_limit"] == 10.0
+    assert request_dict["overrides"]["**.physical_backend_type"] == "graph_state"
+    assert request_dict["overrides"]["*.source.app.request_generation_interval"] == "0.5s"
+    assert request_dict["overrides"]["*.source.is_initiator"] == "true"
+
+
 def test_resolve_experiment_request_merges_defaults_and_raw_overrides():
     request = SimRunStartRequest(
         experiment_profile_id="two_node_mim_smoke",

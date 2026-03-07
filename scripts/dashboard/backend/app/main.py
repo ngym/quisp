@@ -135,6 +135,7 @@ def create_app(
         if env_value:
             runner_env[env_key] = env_value
 
+    experiment_aggregator = ExperimentAggregator(log_dir=log_dir)
     simulation_runner = SimulationRunner(
         run_store=store,
         sim_store=sim_store,
@@ -145,10 +146,11 @@ def create_app(
         max_concurrent_runs=max_concurrent_runs,
         run_timeout_seconds=run_timeout_seconds,
         stop_timeout_seconds=stop_timeout_seconds,
+        experiment_aggregator=experiment_aggregator,
         env=runner_env,
     )
     app.state.simulation_runner = simulation_runner
-    app.state.experiment_aggregator = ExperimentAggregator(log_dir=log_dir)
+    app.state.experiment_aggregator = experiment_aggregator
     app.state.activity_aggregator = ActivityAggregator(store=store)
     app.state.workspace_root = workspace_root
 
@@ -612,6 +614,10 @@ def create_app(
 
     @router.get("/metrics")
     async def get_metrics():
+        return store.get_metrics()
+
+    @app.get("/metrics")
+    async def get_root_metrics():
         return store.get_metrics()
 
     @router.websocket("/runs/{run_id}/stream")

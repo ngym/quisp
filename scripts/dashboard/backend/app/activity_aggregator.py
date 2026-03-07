@@ -32,7 +32,17 @@ BELLPAIR_EVENT_TYPES = {"bellpairgenerated", "bellpairerased"}
 FLYING_EVENT_TYPES = {"flying_qubit_generated", "flying_qubit_emit", "flying_qubit_sent"}
 LOSS_EVENT_TYPES = {"flying_qubit_loss"}
 LINK_QUALITY_EVENT_TYPES = {"experiment_link_quality_sample"}
-ALL_ACTIVITY_CLASSES = ("requests", "bellpairs", "flying", "loss", "link_quality")
+CLASSICAL_PACKET_FAMILIES = (
+    "connection_setup",
+    "ruleset_forwarding",
+    "swapping",
+    "purification",
+    "link_generation",
+    "tomography",
+    "routing",
+    "unknown",
+)
+ALL_ACTIVITY_CLASSES = CLASSICAL_PACKET_FAMILIES + ("bellpairs", "flying", "loss", "link_quality")
 
 
 @dataclass(frozen=True)
@@ -62,8 +72,12 @@ class ActivityAggregator:
     @staticmethod
     def _event_class(event: DashboardEvent) -> str:
         event_type = str(event.event_type or "").strip().lower()
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        protocol_family = str(payload.get("protocol_family") or "").strip().lower()
+        if event_type in {"classical_packet_hop", "classical_packet_deliver_local"}:
+            return protocol_family if protocol_family in CLASSICAL_PACKET_FAMILIES else "unknown"
         if event_type in REQUEST_EVENT_TYPES:
-            return "requests"
+            return "summary"
         if event_type in BELLPAIR_EVENT_TYPES:
             return "bellpairs"
         if event_type in FLYING_EVENT_TYPES:
@@ -85,7 +99,8 @@ class ActivityAggregator:
         payload = event.payload if isinstance(event.payload, dict) else {}
         event_type = str(event.event_type or "").strip().lower()
         source = self._parse_node(
-            payload.get("actual_src_addr")
+            payload.get("src_node_id")
+            or payload.get("actual_src_addr")
             or payload.get("src_addr")
             or payload.get("src")
             or payload.get("source")
@@ -94,7 +109,8 @@ class ActivityAggregator:
             or event.source
         )
         destination = self._parse_node(
-            payload.get("actual_dest_addr")
+            payload.get("dst_node_id")
+            or payload.get("actual_dest_addr")
             or payload.get("dst_addr")
             or payload.get("dst_node_id")
             or payload.get("dst")
@@ -223,6 +239,8 @@ class ActivityAggregator:
         filtered_events = []
         for event in window_events:
             event_class = self._event_class(event)
+            if event_class not in ALL_ACTIVITY_CLASSES:
+                continue
             if normalized_classes and event_class not in normalized_classes:
                 continue
             filtered_events.append(event)
@@ -280,49 +298,53 @@ class ActivityAggregator:
         view_edge_counts: Dict[tuple[str, str], Dict[str, int]] = defaultdict(lambda: defaultdict(int))
         key_moments: list[KeyMoment] = []
 
-        for event in filtered_events:
+        for event in window_events:
             event_class = self._event_class(event)
-            if event_class == "unknown":
-                continue
             endpoints = self._resolve_endpoints(event)
-            global_counts_by_class[event_class] += 1
-            if endpoints.src:
-                global_nodes.add(endpoints.src)
-            if endpoints.dst:
-                global_nodes.add(endpoints.dst)
-            if endpoints.src and endpoints.dst and endpoints.src != endpoints.dst:
-                global_edges.add(self._canonical_edge(endpoints.src, endpoints.dst))
-
+            bucket = None
             if sim_span > 0 and bins:
                 offset = max(0.0, event.sim_time - start_sim_time)
                 bucket_index = min(len(bins) - 1, int(offset // max(window_s, 1e-6)))
                 bucket = bins[bucket_index]
-                bucket["count"] += 1
-                bucket["counts_by_class"][event_class] += 1
+
+            if event_class in ALL_ACTIVITY_CLASSES and (not normalized_classes or event_class in normalized_classes):
+                global_counts_by_class[event_class] += 1
                 if endpoints.src:
-                    bucket["nodes"].add(endpoints.src)
+                    global_nodes.add(endpoints.src)
                 if endpoints.dst:
-                    bucket["nodes"].add(endpoints.dst)
+                    global_nodes.add(endpoints.dst)
                 if endpoints.src and endpoints.dst and endpoints.src != endpoints.dst:
-                    bucket["edges"].add(self._canonical_edge(endpoints.src, endpoints.dst))
+                    global_edges.add(self._canonical_edge(endpoints.src, endpoints.dst))
+
+                if bucket is not None:
+                    bucket["count"] += 1
+                    bucket["counts_by_class"][event_class] += 1
+                    if endpoints.src:
+                        bucket["nodes"].add(endpoints.src)
+                    if endpoints.dst:
+                        bucket["nodes"].add(endpoints.dst)
+                    if endpoints.src and endpoints.dst and endpoints.src != endpoints.dst:
+                        bucket["edges"].add(self._canonical_edge(endpoints.src, endpoints.dst))
+                    if event.event_type == "BellPairGenerated":
+                        bucket["bellpair_generation_rate"] += 1.0
+                    elif event.event_type == "flying_qubit_loss":
+                        bucket["photon_loss_rate"] += 1.0
+
+                if endpoints.src and endpoints.src in view_nodes:
+                    view_node_counts[endpoints.src][event_class] += 1
+                if endpoints.dst and endpoints.dst in view_nodes:
+                    view_node_counts[endpoints.dst][event_class] += 1
+                edge_key = self._canonical_edge(endpoints.src, endpoints.dst)
+                if edge_key != ("", "") and edge_key in view_edge_lookup:
+                    view_edge_counts[edge_key][event_class] += 1
+
+            if bucket is not None:
                 if event.event_type == "experiment_request_submitted":
                     bucket["request_submit_rate"] += 1.0
                 elif event.event_type == "experiment_request_setup_accepted":
                     bucket["request_accept_rate"] += 1.0
                 elif event.event_type == "experiment_request_setup_rejected":
                     bucket["request_reject_rate"] += 1.0
-                elif event.event_type == "BellPairGenerated":
-                    bucket["bellpair_generation_rate"] += 1.0
-                elif event.event_type == "flying_qubit_loss":
-                    bucket["photon_loss_rate"] += 1.0
-
-            if endpoints.src and endpoints.src in view_nodes:
-                view_node_counts[endpoints.src][event_class] += 1
-            if endpoints.dst and endpoints.dst in view_nodes:
-                view_node_counts[endpoints.dst][event_class] += 1
-            edge_key = self._canonical_edge(endpoints.src, endpoints.dst)
-            if edge_key != ("", "") and edge_key in view_edge_lookup:
-                view_edge_counts[edge_key][event_class] += 1
 
             if event.event_type == "experiment_request_setup_rejected":
                 reason = str((event.payload or {}).get("reason") or "request rejected")
@@ -356,9 +378,9 @@ class ActivityAggregator:
         global_totals = ActivityGlobalTotals(
             events_per_s=len(filtered_events) / duration if sim_span > 0 else 0.0,
             visible_event_density=(len(filtered_events) / sim_span) if sim_span > 0 else None,
-            request_submit_rate=sum(1 for event in filtered_events if event.event_type == "experiment_request_submitted") / duration if sim_span > 0 else 0.0,
-            request_accept_rate=sum(1 for event in filtered_events if event.event_type == "experiment_request_setup_accepted") / duration if sim_span > 0 else 0.0,
-            request_reject_rate=sum(1 for event in filtered_events if event.event_type == "experiment_request_setup_rejected") / duration if sim_span > 0 else 0.0,
+            request_submit_rate=sum(1 for event in window_events if event.event_type == "experiment_request_submitted") / duration if sim_span > 0 else 0.0,
+            request_accept_rate=sum(1 for event in window_events if event.event_type == "experiment_request_setup_accepted") / duration if sim_span > 0 else 0.0,
+            request_reject_rate=sum(1 for event in window_events if event.event_type == "experiment_request_setup_rejected") / duration if sim_span > 0 else 0.0,
             bellpair_generation_rate=sum(1 for event in filtered_events if event.event_type == "BellPairGenerated") / duration if sim_span > 0 else 0.0,
             photon_loss_rate=sum(1 for event in filtered_events if event.event_type == "flying_qubit_loss") / duration if sim_span > 0 else 0.0,
             active_node_count=len(global_nodes),
@@ -455,7 +477,7 @@ class ActivityAggregator:
         bin_map: Dict[int, Dict[str, Any]] = defaultdict(lambda: {"count": 0, "class_counts": defaultdict(int), "start": None, "end": None})
         for event in events:
             event_class = self._event_class(event)
-            if event_class == "unknown":
+            if event_class not in ALL_ACTIVITY_CLASSES:
                 continue
             if normalized_classes and event_class not in normalized_classes:
                 continue

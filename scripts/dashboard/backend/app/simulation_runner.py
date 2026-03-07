@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from .config_templates import get_template_path
+from .experiment_aggregator import ExperimentAggregator
 from .experiment_catalog import resolve_experiment_request
 from .runner_config_builder import build_run_ini, validate_run_spec_overrides
 from .sim_models import SimRunStartRequest, SimRunStatus
@@ -32,6 +33,7 @@ class SimulationRunner:
         max_concurrent_runs: int = 2,
         run_timeout_seconds: float = 7200.0,
         stop_timeout_seconds: float = 10.0,
+        experiment_aggregator: Optional[ExperimentAggregator] = None,
         env: Optional[dict[str, str]] = None,
     ) -> None:
         self.run_store = run_store
@@ -43,6 +45,7 @@ class SimulationRunner:
         self.max_concurrent_runs = max(1, int(max_concurrent_runs))
         self.run_timeout_seconds = max(0.0, float(run_timeout_seconds))
         self.stop_timeout_seconds = max(0.1, float(stop_timeout_seconds))
+        self.experiment_aggregator = experiment_aggregator
         self._env = env
         self._tasks: dict[str, set[asyncio.Task[Any]]] = {}
         self._project_sim_root = (self.workspace_root / "quisp").resolve() if (self.workspace_root / "quisp").exists() else self.workspace_root.resolve()
@@ -222,7 +225,18 @@ class SimulationRunner:
                 exit_code=exit_code,
             )
 
-        await self.sim_store.update_run(run_id, **updates)
+        final_record = await self.sim_store.update_run(run_id, **updates)
+        if self.experiment_aggregator is not None:
+            try:
+                self.experiment_aggregator.build_summary(
+                    run_id,
+                    display_name=final_record.display_name,
+                    status=final_record.status.value,
+                    experiment_profile_id=final_record.experiment_profile_id,
+                    status_message=final_record.status_message,
+                )
+            except Exception:
+                pass
         self._tasks.pop(run_id, None)
 
     async def start_run(self, *, request: SimRunStartRequest) -> SimRunRecord:

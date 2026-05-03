@@ -224,6 +224,24 @@
       bottom: 12px;
       z-index: 3;
     }
+    .canvasTooltip {
+      position: absolute;
+      pointer-events: none;
+      z-index: 4;
+      max-width: 320px;
+      padding: 6px 9px;
+      border-radius: 7px;
+      border: 1px solid rgba(103, 144, 214, 0.45);
+      background: rgba(7, 18, 43, 0.95);
+      color: #d4e3ff;
+      font-size: 11px;
+      line-height: 1.45;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+    }
+    .canvasTooltip .tt-title { font-weight: 600; color: #ffffff; margin-bottom: 3px; }
+    .canvasTooltip .tt-row { display: flex; gap: 6px; }
+    .canvasTooltip .tt-key { color: #9fb3db; min-width: 78px; }
+    .canvasTooltip .tt-value { color: #e9f0ff; word-break: break-word; }
     .controls {
       display: grid;
       gap: 8px;
@@ -859,6 +877,7 @@
             <span>描画エッジ: <strong id="visibleEdges">0</strong> <small id="visibleEdgesBreakdown" class="muted"></small></span>
             <span>カーソル: <strong id="cursorText">0</strong></span>
           </div>
+          <div id="canvasTooltip" class="canvasTooltip" hidden></div>
           <button id="toggleLegend" class="btn legendToggle">凡例: 表示</button>
           <div class="legend" id="eventLegend">
             <span class="legendItem"><span class="legendSwatch" style="background:#7dffad"></span>FQ Gen</span>
@@ -1038,6 +1057,7 @@
       lastRender: performance.now(),
       pendingRender: false,
       hoverNode: null,
+      hoverEdge: null,
       replaySettledAnimations: [],
       nextAnimationId: 1,
       operationLog: [],
@@ -1198,6 +1218,7 @@
       eventList: document.getElementById('eventList'),
       legend: document.getElementById('eventLegend'),
       canvas: document.getElementById('topologyCanvas'),
+      canvasTooltip: document.getElementById('canvasTooltip'),
     };
 
     const ctx = ui.canvas.getContext('2d');
@@ -1901,8 +1922,10 @@
     }
 
     function distributionAllNull(metric) {
-      return !metric
-        || (metric.mean == null && metric.p50 == null && metric.p95 == null && metric.count == null);
+      if (!metric) return true;
+      const allValuesMissing = metric.mean == null && metric.p50 == null && metric.p95 == null;
+      const noSamples = metric.count == null || Number(metric.count) === 0;
+      return allValuesMissing && noSamples;
     }
 
     function metricDisplay(summary, metricId) {
@@ -4309,6 +4332,141 @@
       return EDGE_KIND_COLORS[kind] || EDGE_KIND_COLORS.unknown;
     }
 
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;'}[c]));
+    }
+
+    function tooltipRowsHtml(rows) {
+      return rows
+        .filter(([, v]) => v != null && v !== '')
+        .map(([k, v]) => `<div class="tt-row"><span class="tt-key">${escapeHtml(k)}</span><span class="tt-value">${escapeHtml(String(v))}</span></div>`)
+        .join('');
+    }
+
+    function pointSegmentDistanceSquared(px, py, ax, ay, bx, by) {
+      const abx = bx - ax;
+      const aby = by - ay;
+      const lengthSq = abx * abx + aby * aby;
+      if (lengthSq === 0) {
+        const dx = px - ax;
+        const dy = py - ay;
+        return dx * dx + dy * dy;
+      }
+      let t = ((px - ax) * abx + (py - ay) * aby) / lengthSq;
+      t = Math.max(0, Math.min(1, t));
+      const cx = ax + t * abx;
+      const cy = ay + t * aby;
+      const dx = px - cx;
+      const dy = py - cy;
+      return dx * dx + dy * dy;
+    }
+
+    function findHoveredTopologyTarget(worldX, worldY) {
+      const nodes = state.topology.nodes || [];
+      const edges = state.topology.edges || [];
+      const scale = state.camera.scale || 1;
+      const nodeRadiusWorld = Math.max(8, 18 / scale);
+      const nodeRadiusSq = nodeRadiusWorld * nodeRadiusWorld;
+      let bestNode = null;
+      let bestNodeSq = nodeRadiusSq;
+      for (const node of nodes) {
+        const nx = Number(node.x) || 0;
+        const ny = Number(node.y) || 0;
+        const dx = nx - worldX;
+        const dy = ny - worldY;
+        const distSq = dx * dx + dy * dy;
+        if (distSq <= bestNodeSq) {
+          bestNodeSq = distSq;
+          bestNode = node;
+        }
+      }
+      if (bestNode) return { kind: 'node', node: bestNode };
+
+      const edgeThresholdWorld = Math.max(4, 6 / scale);
+      const edgeThresholdSq = edgeThresholdWorld * edgeThresholdWorld;
+      const nodesById = new Map(nodes.map((n) => [String(n.id), n]));
+      let bestEdge = null;
+      let bestEdgeSq = edgeThresholdSq;
+      for (const edge of edges) {
+        const src = nodesById.get(String(edge.src));
+        const dst = nodesById.get(String(edge.dst));
+        if (!src || !dst) continue;
+        const distSq = pointSegmentDistanceSquared(
+          worldX, worldY,
+          Number(src.x) || 0, Number(src.y) || 0,
+          Number(dst.x) || 0, Number(dst.y) || 0,
+        );
+        if (distSq <= bestEdgeSq) {
+          bestEdgeSq = distSq;
+          bestEdge = edge;
+        }
+      }
+      if (bestEdge) return { kind: 'edge', edge: bestEdge };
+      return null;
+    }
+
+    function showCanvasTooltip(target, screenX, screenY) {
+      const el = ui.canvasTooltip;
+      if (!el) return;
+      let html = '';
+      if (target.kind === 'node') {
+        const node = target.node;
+        const meta = node.meta || {};
+        const rows = [
+          ['label', node.label],
+          ['id', node.id],
+          ['module', meta.module],
+        ];
+        if (meta.last_seen != null) {
+          rows.push(['last seen', `t=${Number(meta.last_seen).toFixed(6)}s`]);
+        }
+        const heatList = (state.activitySnapshot && state.activitySnapshot.view_node_activity) || [];
+        const heat = heatList.find((h) => String(h.id) === String(node.id));
+        if (heat) {
+          rows.push(['activity', `${heat.dominant_class || '--'} / count ${heat.total_count ?? '--'}`]);
+        }
+        html = `<div class="tt-title">${escapeHtml(node.label || `Node ${node.id}`)}</div>${tooltipRowsHtml(rows)}`;
+      } else if (target.kind === 'edge') {
+        const edge = target.edge;
+        const meta = edge.meta || {};
+        const rows = [
+          ['kind', EDGE_KIND_LABELS[edge.kind] || edge.kind || 'unknown'],
+          ['src → dst', `${edge.src} → ${edge.dst}`],
+        ];
+        if (edge.weight != null) rows.push(['weight', edge.weight]);
+        if (meta.updated_sim_time != null) {
+          rows.push(['updated', `t=${Number(meta.updated_sim_time).toFixed(6)}s`]);
+        }
+        const heatList = (state.activitySnapshot && state.activitySnapshot.view_edge_activity) || [];
+        const heat = heatList.find((h) => String(h.src) === String(edge.src) && String(h.dst) === String(edge.dst));
+        if (heat) {
+          rows.push(['activity', `${heat.dominant_class || '--'} / count ${heat.total_count ?? '--'}`]);
+        }
+        const title = `${EDGE_KIND_LABELS[edge.kind] || edge.kind || 'edge'} link`;
+        html = `<div class="tt-title">${escapeHtml(title)}</div>${tooltipRowsHtml(rows)}`;
+      }
+      el.innerHTML = html;
+      el.hidden = false;
+      // Position relative to .canvasWrap (canvas direct parent).
+      const wrap = el.parentElement;
+      const wrapRect = wrap ? wrap.getBoundingClientRect() : null;
+      const ttRect = el.getBoundingClientRect();
+      let left = screenX + 14;
+      let top = screenY + 14;
+      if (wrapRect && ttRect) {
+        const maxLeft = wrapRect.width - ttRect.width - 4;
+        const maxTop = wrapRect.height - ttRect.height - 4;
+        if (left > maxLeft) left = Math.max(4, screenX - ttRect.width - 14);
+        if (top > maxTop) top = Math.max(4, screenY - ttRect.height - 14);
+      }
+      el.style.left = `${left}px`;
+      el.style.top = `${top}px`;
+    }
+
+    function hideCanvasTooltip() {
+      if (ui.canvasTooltip) ui.canvasTooltip.hidden = true;
+    }
+
     function formatEdgeKindBreakdown(kindCounts) {
       const entries = Object.entries(kindCounts || {});
       if (entries.length <= 1) {
@@ -5896,8 +6054,49 @@
         state.camera.scale = Math.min(8, Math.max(0.05, state.camera.scale * delta));
         state.camera.x = px - before.wx * state.camera.scale;
         state.camera.y = py - before.wy * state.camera.scale;
+        hideCanvasTooltip();
         requestRender();
       }, { passive: false });
+
+      ui.canvas.addEventListener('mousemove', (event) => {
+        if (state.pan.dragging) {
+          hideCanvasTooltip();
+          return;
+        }
+        const rect = ui.canvas.getBoundingClientRect();
+        const px = event.clientX - rect.left;
+        const py = event.clientY - rect.top;
+        const wx = (px - state.camera.x) / state.camera.scale;
+        const wy = (py - state.camera.y) / state.camera.scale;
+        const target = findHoveredTopologyTarget(wx, wy);
+        const prevNode = state.hoverNode;
+        const prevEdge = state.hoverEdge;
+        if (target && target.kind === 'node') {
+          state.hoverNode = target.node.id;
+          state.hoverEdge = null;
+          showCanvasTooltip(target, px, py);
+        } else if (target && target.kind === 'edge') {
+          state.hoverNode = null;
+          state.hoverEdge = `${target.edge.src}::${target.edge.dst}::${target.edge.kind || ''}`;
+          showCanvasTooltip(target, px, py);
+        } else {
+          state.hoverNode = null;
+          state.hoverEdge = null;
+          hideCanvasTooltip();
+        }
+        if (prevNode !== state.hoverNode || prevEdge !== state.hoverEdge) {
+          requestRender();
+        }
+      });
+
+      ui.canvas.addEventListener('mouseleave', () => {
+        if (state.hoverNode || state.hoverEdge) {
+          state.hoverNode = null;
+          state.hoverEdge = null;
+          requestRender();
+        }
+        hideCanvasTooltip();
+      });
 
       window.addEventListener('resize', ensureCanvasSize);
     }

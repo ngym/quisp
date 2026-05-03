@@ -2299,13 +2299,24 @@
       ui.monitorToolbar.hidden = !isMonitor;
       ui.replayToolbar.hidden = !isReplay;
       ui.resultsToolbar.hidden = !isResults;
-      ui.playBtn.style.display = isReplay ? '' : 'none';
-      ui.pauseBtn.style.display = isReplay ? '' : 'none';
-      ui.resetBtn.style.display = isReplay ? '' : 'none';
-      if (ui.speedWrap) {
-        ui.speedWrap.style.display = isReplay ? '' : 'none';
-      }
-      ui.goLiveBtn.style.display = isResults ? 'none' : '';
+      // Mode-specific topbar controls keep their slots reserved across
+      // modes so the header doesn't reflow when switching tabs. Buttons
+      // are visually hidden + non-interactive when their mode is inactive.
+      const setSlot = (el, visible) => {
+        if (!el) return;
+        el.style.visibility = visible ? 'visible' : 'hidden';
+        el.style.pointerEvents = visible ? '' : 'none';
+        if ('disabled' in el && !visible) {
+          el.dataset._slotHidden = '1';
+        } else if ('disabled' in el && el.dataset._slotHidden === '1') {
+          delete el.dataset._slotHidden;
+        }
+      };
+      setSlot(ui.playBtn, isReplay);
+      setSlot(ui.pauseBtn, isReplay);
+      setSlot(ui.resetBtn, isReplay);
+      setSlot(ui.speedWrap, isReplay);
+      setSlot(ui.goLiveBtn, !isResults);
       ui.eventList.dataset.mode = state.mode;
     }
 
@@ -3147,9 +3158,19 @@
       return null;
     }
 
+    // Disambiguate OMNeT++ scheduler event id from the dashboard's
+    // own JSON-cursor counter. The two are different axes (the
+    // simulator schedules ~10x more events than what reaches the
+    // JSON log), so reading "event #11432" next to "event 3473" was
+    // a recurring source of confusion.
+    function formatStatusMessageForUi(message) {
+      if (message == null) return message;
+      return String(message).replace(/\bevent #(\d+)/g, 'OMNeT++ event #$1');
+    }
+
     function formatFinishedStatusDetail(run) {
       if (run && run.status_message && run.status_message !== run.status) {
-        return run.status_message;
+        return formatStatusMessageForUi(run.status_message);
       }
       if (Number.isFinite(Number(state.lastEventSimTime))) {
         return `last sim ${formatSimTime(state.lastEventSimTime)}`;
@@ -3162,7 +3183,7 @@
       const backlog = Math.max(0, Math.max(state.maxSeenCursor, Number(ui.timeline.max) || 0) - state.cursor);
       const freshness = state.lastEventBatchAtMs == null ? null : (performance.now() - state.lastEventBatchAtMs) / 1000;
       const cursorSummary = `cursor: ${state.cursor} / max: ${Math.max(state.maxSeenCursor, Number(ui.timeline.max) || 0)}`;
-      const statusDetail = run && run.status_message && run.status_message !== run.status ? run.status_message : null;
+      const statusDetail = run && run.status_message && run.status_message !== run.status ? formatStatusMessageForUi(run.status_message) : null;
 
       if (run && run.status === 'failed') {
         return { label: 'FAILED', sublabel: statusDetail || `backlog: ${backlog} events`, tone: 'bad' };
@@ -3216,7 +3237,7 @@
 
       const freshness = state.lastEventBatchAtMs == null ? null : (performance.now() - state.lastEventBatchAtMs) / 1000;
       const run = state.selectedSimRun;
-      const statusDetail = run && run.status_message && run.status_message !== run.status ? run.status_message : null;
+      const statusDetail = run && run.status_message && run.status_message !== run.status ? formatStatusMessageForUi(run.status_message) : null;
       const visibleDensity = currentVisibleEventDensity();
       const avgLiveSimRate = averageSample(state.liveSimRateSamples);
       const avgReplaySimRate = averageSample(state.replaySimRateSamples);
@@ -3270,7 +3291,7 @@
       } else {
         ui.metricFreshnessLabel.textContent = '表示イベント';
         ui.metricFreshness.textContent = replayEventIndex != null && replayEventTotal
-          ? `event ${replayEventIndex + 1} / ${replayEventTotal}`
+          ? `${replayEventIndex + 1} / ${replayEventTotal}`
           : '--';
         ui.metricFreshnessSub.textContent = replayCluster
           ? `cluster ${replayCluster.index + 1} / ${replayCluster.total}`
@@ -3381,7 +3402,7 @@
       const latestLog = lines.length ? lines[lines.length - 1] : '';
       const pieces = [
         runDisplayName(run),
-        run.status_message || run.status,
+        formatStatusMessageForUi(run.status_message) || run.status,
       ];
       if (latestLog) {
         pieces.push(truncateText(latestLog, 280));
@@ -3460,7 +3481,7 @@
 
       const detailParts = [];
       if (run.status_message) {
-        detailParts.push(run.status_message);
+        detailParts.push(formatStatusMessageForUi(run.status_message));
       }
       if (run.config_name) {
         detailParts.push(`config: ${run.config_name}`);
@@ -4497,9 +4518,9 @@
           lines.push('No topology yet. Select a run and load topology.');
         } else if (state.selectedSimRun) {
           if (state.selectedSimRun.status === 'failed') {
-            lines.push(`Run failed: ${truncateText(state.selectedSimRun.status_message || 'unknown failure', 140)}`);
+            lines.push(`Run failed: ${truncateText(formatStatusMessageForUi(state.selectedSimRun.status_message) || 'unknown failure', 140)}`);
           } else if (state.selectedSimRun.status === 'terminated') {
-            lines.push(`Run terminated: ${truncateText(state.selectedSimRun.status_message || 'terminated before topology emission', 140)}`);
+            lines.push(`Run terminated: ${truncateText(formatStatusMessageForUi(state.selectedSimRun.status_message) || 'terminated before topology emission', 140)}`);
           } else if (state.selectedSimRun.status === 'stopping') {
             lines.push('Run stopping. Waiting for the process to exit.');
           } else if (state.selectedSimRun.status === 'queued' || state.selectedSimRun.status === 'starting') {
@@ -5035,7 +5056,7 @@
         const meta = document.createElement('div');
         meta.className = 'sim-run-meta';
         const started = formatRunTimeLabel(run.started_at || run.created_at);
-        const statusDetail = run.status_message && run.status_message !== run.status ? run.status_message : null;
+        const statusDetail = run.status_message && run.status_message !== run.status ? formatStatusMessageForUi(run.status_message) : null;
         meta.textContent = [
           started || null,
           run.status,
@@ -6819,7 +6840,9 @@
             parts.push(`sim ${effectiveCurrentSim.toFixed(6)} / ${totalSim.toFixed(6)} (${(simPct ?? 0).toFixed(1)}%)`);
           }
           if (totalEvents && currentPointIndex != null) {
-            parts.push(`event ${currentPointIndex + 1} / ${totalEvents}`);
+            // "visible event" disambiguates the dashboard cursor index
+            // from the OMNeT++ scheduler's internal event id.
+            parts.push(`visible event ${currentPointIndex + 1} / ${totalEvents}`);
           }
           if (cluster) {
             const replayRange = Number.isFinite(cluster.replay_start) && Number.isFinite(cluster.replay_end)

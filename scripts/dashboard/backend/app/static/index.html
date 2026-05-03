@@ -121,6 +121,18 @@
     .kpi[data-level="bad"] .value { color: #ff9cab; }
     .kpi[data-level="idle"] .value { color: #dce8ff; }
     .muted { color: var(--sub); font-size: 11px; }
+    .warning-banner {
+      margin-top: 6px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 217, 110, 0.45);
+      background: rgba(255, 217, 110, 0.08);
+      color: #ffd96e;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .warning-banner ul { margin: 0; padding-left: 18px; }
+    .warning-banner li + li { margin-top: 2px; }
     .canvasWrap {
       height: min(72vh, 720px);
       position: relative;
@@ -868,6 +880,7 @@
           <button id="refreshExperimentSummary" class="btn small">結果更新</button>
         </div>
         <div id="experimentSummaryCards" class="summary-grid"></div>
+        <div id="experimentSummaryWarnings" class="warning-banner" hidden></div>
         <div id="experimentSummaryMeta" class="help">選択中 run の summary を表示します。</div>
         <div class="section-title"><span>Viewer Diagnostics</span></div>
         <div id="activitySummaryCards" class="summary-grid"></div>
@@ -990,6 +1003,7 @@
       activitySnapshot: null,
       activitySummary: null,
       activityPollTimer: null,
+      lastActivitySignature: null,
       monitorRateLastAtMs: null,
       monitorRateLastSimTime: null,
       replayRateLastAtMs: null,
@@ -1173,6 +1187,7 @@
       metricSimTimeSub: document.getElementById('metricSimTimeSub'),
       experimentSummaryCards: document.getElementById('experimentSummaryCards'),
       experimentSummaryMeta: document.getElementById('experimentSummaryMeta'),
+      experimentSummaryWarnings: document.getElementById('experimentSummaryWarnings'),
       experimentSummaryStatus: document.getElementById('experimentSummaryStatus'),
       activitySummaryCards: document.getElementById('activitySummaryCards'),
       experimentFailureReasons: document.getElementById('experimentFailureReasons'),
@@ -1869,9 +1884,33 @@
       return summary && summary.metric_summaries ? summary.metric_summaries[metricId] : null;
     }
 
+    function selectedBackendType(summary) {
+      const params = (summary && summary.parameter_values) || {};
+      return params['execution.backend_type']
+        || params['physical.backend_type']
+        || params['backend_type']
+        || null;
+    }
+
+    function fidelityUnavailableHint(summary) {
+      const backend = selectedBackendType(summary);
+      if (backend === 'graph_state') {
+        return 'graph_state では未出力。density_matrix に切り替えるか tomography rule を追加';
+      }
+      return 'tomography sample が無い (rule 未配置 or run が短い)';
+    }
+
+    function distributionAllNull(metric) {
+      return !metric
+        || (metric.mean == null && metric.p50 == null && metric.p95 == null && metric.count == null);
+    }
+
     function metricDisplay(summary, metricId) {
       const metric = metricSummary(summary, metricId);
       if (!metric) {
+        if (metricId === 'link_fidelity') {
+          return { value: '--', subvalue: fidelityUnavailableHint(summary) };
+        }
         return { value: '--', subvalue: 'unavailable' };
       }
       if (metricId === 'failure_reason_breakdown') {
@@ -1880,6 +1919,9 @@
         return entry ? { value: `${entry[0]}`, subvalue: `${entry[1]} hits` } : { value: '--', subvalue: 'no failures' };
       }
       if (metric.kind === 'distribution') {
+        if (metricId === 'link_fidelity' && distributionAllNull(metric)) {
+          return { value: '--', subvalue: fidelityUnavailableHint(summary) };
+        }
         if (metricId === 'setup_latency_s') {
           return { value: formatExperimentValue(metric.p95, metric.unit), subvalue: `p50 ${formatExperimentValue(metric.p50, metric.unit)} / mean ${formatExperimentValue(metric.mean, metric.unit)}` };
         }
@@ -1911,6 +1953,29 @@
       ui.experimentSummaryStatus.textContent = '';
       ui.experimentFailureReasons.innerHTML = '<div class="muted">summary unavailable</div>';
       ui.experimentLinkQualityBody.innerHTML = '<tr><td colspan="6" class="muted">summary unavailable</td></tr>';
+      if (ui.experimentSummaryWarnings) {
+        ui.experimentSummaryWarnings.hidden = true;
+        ui.experimentSummaryWarnings.innerHTML = '';
+      }
+    }
+
+    function buildExperimentWarnings(summary) {
+      const params = (summary && summary.parameter_values) || {};
+      const warnings = [];
+      const emission = Number(params['physical.emission_success_probability']);
+      if (Number.isFinite(emission) && emission >= 1) {
+        warnings.push(`理想モデル: physical.emission_success_probability=${emission} (光子損失ゼロ・現実物理を反映していません)`);
+      }
+      const backend = selectedBackendType(summary);
+      const fidelityMetric = metricSummary(summary, 'link_fidelity');
+      if (backend === 'graph_state' && distributionAllNull(fidelityMetric)) {
+        warnings.push('graph_state バックエンドでは Fidelity / Link Quality の tomography sample が出力されません。density_matrix に切り替えるか、tomography rule を含む実験プロファイルに切替を推奨。');
+      }
+      const links = Array.isArray(summary && summary.link_quality_latest) ? summary.link_quality_latest : [];
+      if (!links.length && backend !== 'graph_state') {
+        warnings.push('Link Quality サンプル無し。run が短いか、link_quality 計測 rule が未配置の可能性。');
+      }
+      return warnings;
     }
 
     function renderExperimentSummary(summary) {
@@ -1941,15 +2006,29 @@
       }
       ui.experimentSummaryStatus.textContent = summaryStatusParts.join(' / ');
 
+      if (ui.experimentSummaryWarnings) {
+        const warnings = buildExperimentWarnings(summary);
+        if (warnings.length) {
+          ui.experimentSummaryWarnings.innerHTML = `<ul>${warnings.map((msg) => `<li>${msg}</li>`).join('')}</ul>`;
+          ui.experimentSummaryWarnings.hidden = false;
+        } else {
+          ui.experimentSummaryWarnings.hidden = true;
+          ui.experimentSummaryWarnings.innerHTML = '';
+        }
+      }
+
       const reasons = Object.entries(summary.failure_reason_breakdown || {});
       ui.experimentFailureReasons.innerHTML = reasons.length
         ? reasons.map(([reason, count]) => `<div class="event-row"><span class="badge" style="background:#ff9cab">FAIL</span><span>${count}</span><span>${reason}</span></div>`).join('')
         : '<div class="muted">no recorded failures</div>';
 
       const links = Array.isArray(summary.link_quality_latest) ? summary.link_quality_latest : [];
+      const linkEmptyHint = selectedBackendType(summary) === 'graph_state'
+        ? 'no link quality samples — graph_state backend では出力されません'
+        : 'no link quality samples';
       ui.experimentLinkQualityBody.innerHTML = links.length
         ? links.map((link) => `<tr><td>${link.partner_addr ?? '--'}</td><td>${link.qnic_index ?? '--'}</td><td>${formatExperimentValue(link.fidelity)}</td><td>${formatExperimentValue(link.bellpair_per_sec)}</td><td>${formatExperimentValue(link.distance_km, 'km')}</td><td>${formatExperimentValue(link.link_cost)}</td></tr>`).join('')
-        : '<tr><td colspan="6" class="muted">no link quality samples</td></tr>';
+        : `<tr><td colspan="6" class="muted">${linkEmptyHint}</td></tr>`;
     }
 
     async function refreshExperimentSummary(runId = state.runId) {
@@ -2348,6 +2427,8 @@
         params.anchor_cursor = options.anchorCursor != null ? options.anchorCursor : state.cursor;
       }
       const payload = await apiGet(`/runs/${encodeURIComponent(state.runId)}/activity`, params, { action: 'ui.load_activity_snapshot' });
+      const signature = activitySnapshotSignature(payload);
+      const unchanged = payload != null && signature && signature === state.lastActivitySignature;
       state.activitySnapshot = payload || null;
       if (payload) {
         state.lastEventBatchAtMs = performance.now();
@@ -2367,12 +2448,37 @@
           state.lastEventSimTime = Number(payload.anchor_sim_time);
         }
         state.lastEventTs = new Date().toISOString();
+        state.lastActivitySignature = signature || state.lastActivitySignature;
+      }
+      if (unchanged) {
+        // Snapshot identical to previous — skip downstream rerender to save CPU.
+        updateKpis();
+        return payload;
       }
       syncCursorUi();
       renderMonitorKeyMoments();
       updateKpis();
       requestRender();
       return payload;
+    }
+
+    function activitySnapshotSignature(payload) {
+      if (!payload) return null;
+      const totals = payload.global_totals || {};
+      return [
+        payload.anchor_cursor ?? '',
+        payload.live_edge_cursor ?? '',
+        payload.anchor_sim_time ?? '',
+        totals.total_count ?? '',
+        totals.active_node_count ?? '',
+        totals.active_edge_count ?? '',
+        Array.isArray(payload.bins) ? payload.bins.length : 0,
+      ].join('|');
+    }
+
+    function activityPollIntervalMs() {
+      // Poll less aggressively when the tab is hidden to spare host CPU and bandwidth.
+      return (typeof document !== 'undefined' && document.hidden) ? 5000 : 1000;
     }
 
     function scheduleActivityPolling(immediate = false) {
@@ -2387,13 +2493,13 @@
           // ignore poll failures
         }
         if (state.mode === 'monitor') {
-          state.activityPollTimer = setTimeout(tick, 1000);
+          state.activityPollTimer = setTimeout(tick, activityPollIntervalMs());
         }
       };
       if (immediate) {
         tick();
       } else {
-        state.activityPollTimer = setTimeout(tick, 1000);
+        state.activityPollTimer = setTimeout(tick, activityPollIntervalMs());
       }
     }
 
@@ -5850,9 +5956,21 @@
       }
     }
 
+    function attachVisibilityHandler() {
+      if (typeof document === 'undefined' || !document.addEventListener) return;
+      document.addEventListener('visibilitychange', () => {
+        // When the tab regains focus, immediately rescheduling resumes the
+        // 1s cadence; when hidden, the next tick will pick up the slow cadence.
+        if (!document.hidden && state.mode === 'monitor' && state.runId) {
+          scheduleActivityPolling(true);
+        }
+      });
+    }
+
     async function boot() {
       ensureCanvasSize();
       attachControls();
+      attachVisibilityHandler();
       applyEnvBadge();
       renderLegendVisibility();
       renderModeUi();

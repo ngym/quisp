@@ -139,7 +139,7 @@
       position: absolute;
       left: 8px;
       right: 8px;
-      bottom: 8px;
+      top: 8px;
       display: flex;
       justify-content: space-between;
       gap: 8px;
@@ -179,6 +179,7 @@
     .legend {
       position: absolute;
       left: 12px;
+      right: 110px; /* keep legend from sliding under .legendToggle */
       bottom: 12px;
       display: flex;
       flex-wrap: wrap;
@@ -557,7 +558,7 @@
 <body>
   <div class="shell">
     <div class="topbar panel">
-      <h1>QuISP Dashboard <span class="pill">Production</span></h1>
+      <h1>QuISP Dashboard <span class="pill" id="envBadge" hidden></span></h1>
       <div class="row">
         <label class="row" style="gap:6px; align-items:center;">
           Run:
@@ -721,9 +722,9 @@
             ノード正規表現（任意）
             <input id="nodeRegex" type="text" placeholder="例: ^node_" />
           </label>
-          <label>
-            描画ノードサンプル時のジッタ有効
-            <input id="animateNodes" type="checkbox" checked />
+          <label title="ノードに微小な揺らぎを加える演出。実トポロジを正確に見たいときは OFF を推奨。">
+            描画演出: ノードジッタ
+            <input id="animateNodes" type="checkbox" />
           </label>
           <button id="applyFilters" class="btn">サブグラフ再計算</button>
           <button id="toggleEdges" class="btn">エッジ描画: 表示</button>
@@ -843,7 +844,7 @@
           <canvas id="topologyCanvas"></canvas>
           <div class="overlay">
             <span>表示ノード: <strong id="visibleNodes">0</strong> / <strong id="allNodes">0</strong></span>
-            <span>描画エッジ: <strong id="visibleEdges">0</strong></span>
+            <span>描画エッジ: <strong id="visibleEdges">0</strong> <small id="visibleEdgesBreakdown" class="muted"></small></span>
             <span>カーソル: <strong id="cursorText">0</strong></span>
           </div>
           <button id="toggleLegend" class="btn legendToggle">凡例: 表示</button>
@@ -1009,7 +1010,7 @@
       pan: { dragging: false, x: 0, y: 0 },
       eventRateCounter: [],
       eventAnimations: [],
-      animNodeJitter: true,
+      animNodeJitter: false,
       legendVisible: true,
       lastEventBatchAtMs: null,
       lastEventBatchSize: 0,
@@ -1150,6 +1151,7 @@
       visibleNodes: document.getElementById('visibleNodes'),
       allNodes: document.getElementById('allNodes'),
       visibleEdges: document.getElementById('visibleEdges'),
+      visibleEdgesBreakdown: document.getElementById('visibleEdgesBreakdown'),
       metricStatusCard: document.getElementById('metricStatusCard'),
       metricStatusLabel: document.getElementById('metricStatusLabel'),
       metricStatus: document.getElementById('metricStatus'),
@@ -2919,8 +2921,10 @@
           ui.liveSeekStatus.textContent = 'no run selected';
         } else if (atEdge && state.mode === 'monitor' && state.followLiveEdge) {
           ui.liveSeekStatus.textContent = 'at live edge';
+        } else if (behind > 0) {
+          ui.liveSeekStatus.textContent = `${behind} ev behind live`;
         } else {
-          ui.liveSeekStatus.textContent = `-${behind} ev from live`;
+          ui.liveSeekStatus.textContent = 'at live edge';
         }
       }
 
@@ -3103,7 +3107,7 @@
         ui.metricFreshnessLabel.textContent = '終了時刻';
         ui.metricFreshness.textContent = state.lastEventTs ? formatRunTimeLabel(state.lastEventTs) : '--';
         ui.metricFreshnessSub.textContent = statusDetail || formatFinishedStatusDetail(run);
-        ui.metricEventRateLabel.textContent = '終了理由';
+        ui.metricEventRateLabel.textContent = '終了状況';
         ui.metricEventRate.textContent = truncateText(statusDetail || run?.status || '--', 22) || '--';
         ui.metricEventRateSub.textContent = run ? runDisplayName(run) : '--';
         ui.metricRenderFpsLabel.textContent = '可視イベント密度 mean';
@@ -4182,6 +4186,34 @@
       }, 200);
     }
 
+    const EDGE_KIND_LABELS = {
+      topology: '物理',
+      bell_pair: 'Bellペア',
+      classical: '古典',
+      unknown: 'その他',
+    };
+    const EDGE_KIND_COLORS = {
+      topology: '#2f4770',
+      bell_pair: '#7ad19c',
+      classical: '#9bdfff',
+      unknown: '#5a6580',
+    };
+
+    function edgeStrokeColorForKind(kind) {
+      return EDGE_KIND_COLORS[kind] || EDGE_KIND_COLORS.unknown;
+    }
+
+    function formatEdgeKindBreakdown(kindCounts) {
+      const entries = Object.entries(kindCounts || {});
+      if (entries.length <= 1) {
+        return '';
+      }
+      const order = ['topology', 'bell_pair', 'classical', 'unknown'];
+      entries.sort((a, b) => order.indexOf(a[0]) - order.indexOf(b[0]));
+      const parts = entries.map(([kind, n]) => `${EDGE_KIND_LABELS[kind] || kind}:${n}`);
+      return `(${parts.join(' / ')})`;
+    }
+
     function renderCanvas() {
       const t0 = performance.now();
       const nowMs = performance.now();
@@ -4248,9 +4280,9 @@
 
       let visibleNodes = 0;
       let visibleEdges = 0;
+      const visibleEdgeKindCounts = {};
 
       if (state.edgesVisible) {
-        ctx.strokeStyle = '#2f4770';
         ctx.lineWidth = Math.max(1, 1.2 * state.camera.scale);
         for (const edge of edges) {
           const src = nodeMap.get(edge.src);
@@ -4264,6 +4296,9 @@
             continue;
           }
           visibleEdges += 1;
+          const kind = edge.kind || 'unknown';
+          visibleEdgeKindCounts[kind] = (visibleEdgeKindCounts[kind] || 0) + 1;
+          ctx.strokeStyle = edgeStrokeColorForKind(kind);
           ctx.beginPath();
           ctx.moveTo(s.x, s.y);
           ctx.lineTo(d.x, d.y);
@@ -4329,6 +4364,9 @@
 
         ui.visibleNodes.textContent = String(visibleNodes);
         ui.visibleEdges.textContent = String(visibleEdges);
+        if (ui.visibleEdgesBreakdown) {
+          ui.visibleEdgesBreakdown.textContent = formatEdgeKindBreakdown(visibleEdgeKindCounts);
+        }
         ui.allNodes.textContent = String(nodes.length);
         recordRenderMetrics(t0);
         updateKpis();
@@ -4541,6 +4579,9 @@
 
       ui.visibleNodes.textContent = String(visibleNodes);
       ui.visibleEdges.textContent = String(visibleEdges);
+      if (ui.visibleEdgesBreakdown) {
+        ui.visibleEdgesBreakdown.textContent = formatEdgeKindBreakdown(visibleEdgeKindCounts);
+      }
       ui.allNodes.textContent = String(nodes.length);
 
       recordRenderMetrics(t0);
@@ -5794,9 +5835,25 @@
       }
     }
 
+    function applyEnvBadge() {
+      const badge = document.getElementById('envBadge');
+      if (!badge) return;
+      const host = location.hostname || '';
+      const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.endsWith('.local');
+      if (isLocal) {
+        badge.textContent = 'Local';
+        badge.dataset.env = 'local';
+        badge.hidden = false;
+      } else {
+        // Hidden by default. Backends/operators can override via /api/health later.
+        badge.hidden = true;
+      }
+    }
+
     async function boot() {
       ensureCanvasSize();
       attachControls();
+      applyEnvBadge();
       renderLegendVisibility();
       renderModeUi();
       state.speed = Number(ui.speed.value) || 5;

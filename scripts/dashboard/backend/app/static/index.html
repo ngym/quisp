@@ -700,9 +700,9 @@
             </label>
           </details>
           <div class="row">
-            <button id="startSimRun" class="btn">Run</button>
-            <button id="stopSimRun" class="btn">Stop Selected</button>
-            <button id="refreshSimRuns" class="btn">更新</button>
+            <button id="startSimRun" class="btn">起動</button>
+            <button id="stopSimRun" class="btn">選択中を停止</button>
+            <button id="refreshSimRuns" class="btn">ジョブ更新</button>
           </div>
           <p class="help">起動は `/api/sim/runs` でキュー登録され、同じrun_idが可視化対象として `/api/runs` にも出ます。</p>
         </div>
@@ -797,8 +797,8 @@
             </label>
           </div>
           <div class="campaign-row">
-            <button class="btn small" data-testid="campaign-preview-button" id="campaignPreviewButton">Plan Preview</button>
-            <button class="btn small" data-testid="campaign-enqueue-button" id="campaignEnqueueButton" disabled>Enqueue Campaign</button>
+            <button class="btn small" data-testid="campaign-preview-button" id="campaignPreviewButton">計画プレビュー</button>
+            <button class="btn small" data-testid="campaign-enqueue-button" id="campaignEnqueueButton" disabled>キャンペーン投入</button>
           </div>
           <div class="campaign-preview" data-testid="campaign-preview" id="campaignPreview" hidden>preview unavailable</div>
           <div class="campaign-tracker" data-testid="campaign-tracker" id="campaignTracker" hidden>
@@ -1581,6 +1581,13 @@
         return text;
       }
       return `${text.slice(0, 12)}…${text.slice(-6)}`;
+    }
+
+    // Last 6 chars of the run id — enough to disambiguate same-named runs
+    // in a list without dragging the full epoch+suffix into a title.
+    function shortRunIdSuffix(runId) {
+      const text = String(runId || '').trim();
+      return text.length > 6 ? text.slice(-6) : text;
     }
 
     function runIdTimeLabel(runId) {
@@ -3204,6 +3211,17 @@
         return { label: 'PAUSED', sublabel: cursorSummary, tone: 'idle' };
       }
       if (run && run.status === 'finished') {
+        // Detect silent failures: process exits 0 but the JSON log is empty.
+        // Common causes are dummy binaries (e.g. /usr/bin/true) or runtime
+        // dependency failures that crash before any event is recorded.
+        const noOutput = Number(run.event_count || 0) === 0 && Number(run.output_lines || 0) === 0;
+        if (noOutput) {
+          return {
+            label: 'FINISHED (no output)',
+            sublabel: 'exit=0 でしたが JSON event 0 件 / バイナリ未動作の可能性',
+            tone: 'warn',
+          };
+        }
         return { label: 'FINISHED', sublabel: formatFinishedStatusDetail(run), tone: 'ok' };
       }
       if (run && ['queued', 'starting', 'running'].includes(run.status) && state.lastEventBatchAtMs == null) {
@@ -5044,7 +5062,7 @@
       }
       const runningCount = state.simRuns.filter((run) => ['queued', 'starting', 'running'].includes(run.status)).length;
       const archivedCount = state.simRuns.filter((run) => run.archived).length;
-      ui.simRunSummary.textContent = `running ${runningCount}/${visibleRuns.length} visible / ${state.simRuns.length} total${archivedCount ? ` / ${archivedCount} archived` : ''}`;
+      ui.simRunSummary.textContent = `実行中 ${runningCount} / 表示 ${visibleRuns.length} / 合計 ${state.simRuns.length}${archivedCount ? ` / アーカイブ ${archivedCount}` : ''}`;
       for (const run of visibleRuns) {
         const row = document.createElement('div');
         row.className = 'sim-run-row';
@@ -5052,7 +5070,11 @@
         row.dataset.archived = String(Boolean(run.archived));
         const head = document.createElement('div');
         const title = document.createElement('div');
-        title.textContent = runDisplayName(run);
+        const idSuffix = shortRunIdSuffix(run.run_id);
+        const noOutput = run.status === 'finished' && Number(run.event_count || 0) === 0;
+        title.innerHTML = `${escapeHtml(runDisplayName(run))} <span class="muted">#${escapeHtml(idSuffix)}</span>${
+          noOutput ? ' <span class="badge" style="background:#ffd96e;color:#1a1303">no output</span>' : ''
+        }`;
         const meta = document.createElement('div');
         meta.className = 'sim-run-meta';
         const started = formatRunTimeLabel(run.started_at || run.created_at);
@@ -5064,7 +5086,6 @@
           statusDetail,
           run.exit_code != null ? `code:${run.exit_code}` : null,
           `${run.event_count ?? 0} events`,
-          `id:${abbreviateRunId(run.run_id)}`,
         ].filter(Boolean).join(' / ');
         head.appendChild(title);
         head.appendChild(meta);
@@ -5091,7 +5112,7 @@
 
         const btnStop = document.createElement('button');
         btnStop.className = 'btn small';
-        btnStop.textContent = 'Stop';
+        btnStop.textContent = '停止';
         btnStop.disabled = !['queued', 'starting', 'running'].includes(run.status);
         btnStop.addEventListener('click', async () => {
           logUiAction('ui.stop_run_from_list', { run_id: run.run_id });
@@ -5119,7 +5140,7 @@
         const canArchive = !['queued', 'starting', 'running', 'stopping'].includes(run.status);
         const btnArchive = document.createElement('button');
         btnArchive.className = 'btn small';
-        btnArchive.textContent = run.archived ? '戻す' : 'Archive';
+        btnArchive.textContent = run.archived ? '戻す' : 'アーカイブ';
         btnArchive.disabled = !canArchive;
         btnArchive.addEventListener('click', async () => {
           logUiAction(run.archived ? 'ui.restore_run_from_list' : 'ui.archive_run_from_list', { run_id: run.run_id });

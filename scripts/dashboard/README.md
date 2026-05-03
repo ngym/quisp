@@ -2,6 +2,8 @@
 
 This directory provides a production dashboard server and Canvas UI for OMNeT++/QuISP logs.
 
+> **日本語版**: [README.ja.md](README.ja.md) を参照してください。
+
 - Visual APIs:
   - `GET /api/runs` / `GET /api/runs/{run_id}/topology`
   - `GET /api/runs/{run_id}/events` / `.../events/stream`
@@ -29,7 +31,7 @@ The frontend is served at `/` and available at:
 ## Install dashboard dependencies
 
 ```bash
-cd /Users/shota/GITHUB/quisp
+cd <repo-root>
 python3 -m pip install -r scripts/dashboard/backend/requirements.txt
 ```
 
@@ -38,20 +40,20 @@ python3 -m pip install -r scripts/dashboard/backend/requirements.txt
 Use a repo-local virtualenv so all developers point QuISP at the same Python runtime.
 
 ```bash
-cd /Users/shota/GITHUB/quisp
+cd <repo-root>
 make qutip-env
 make qutip-check
 ```
 
 This creates:
 
-- `/Users/shota/GITHUB/quisp/.venv-qutip`
-- `/Users/shota/GITHUB/quisp/requirements-qutip.txt`
+- `<repo-root>/.venv-qutip`
+- `<repo-root>/requirements-qutip.txt`
 
 At runtime, QuISP will use:
 
 ```text
-QUTIP_PYTHON_EXECUTABLE=/Users/shota/GITHUB/quisp/.venv-qutip/bin/python
+QUTIP_PYTHON_EXECUTABLE=<repo-root>/.venv-qutip/bin/python
 ```
 
 if you start the dashboard with the provided helper below.
@@ -61,43 +63,43 @@ if you start the dashboard with the provided helper below.
 Recommended:
 
 ```bash
-cd /Users/shota/GITHUB/quisp
+cd <repo-root>
 make dashboard-backend
 ```
 
 This will:
 
-1. use `/Users/shota/GITHUB/quisp/quisp/quisp` as the QuISP binary
+1. use `<repo-root>/quisp/quisp` as the QuISP binary
 2. start the dashboard on `127.0.0.1:8765`
-3. point QuISP's qutip backend at `/Users/shota/GITHUB/quisp/.venv-qutip/bin/python`
+3. point QuISP's qutip backend at `<repo-root>/.venv-qutip/bin/python`
 
 Direct script entrypoint:
 
 ```bash
-cd /Users/shota/GITHUB/quisp
+cd <repo-root>
 ./scripts/dashboard/run_backend.sh
 ```
 
 Manual entrypoint:
 
 ```bash
-cd /Users/shota/GITHUB/quisp
-QUTIP_PYTHON_EXECUTABLE=/Users/shota/GITHUB/quisp/.venv-qutip/bin/python \
-PYTHONPATH=/Users/shota/GITHUB/quisp \
+cd <repo-root>
+QUTIP_PYTHON_EXECUTABLE=<repo-root>/.venv-qutip/bin/python \
+PYTHONPATH=<repo-root> \
 python3 -m scripts.dashboard.backend.app.main \
-  --workspace-root /Users/shota/GITHUB/quisp \
-  --quisp-binary /Users/shota/GITHUB/quisp/quisp/quisp \
-  --log-dir /Users/shota/GITHUB/quisp/scripts/dashboard/runs \
+  --workspace-root <repo-root> \
+  --quisp-binary <repo-root>/quisp/quisp \
+  --log-dir <repo-root>/scripts/dashboard/runs \
   --host 127.0.0.1 \
   --port 8765 \
-  --audit-log /Users/shota/GITHUB/quisp/scripts/dashboard/dashboard_audit.log
+  --audit-log <repo-root>/scripts/dashboard/dashboard_audit.log
 ```
 
 Optional:
 
 ```bash
---workspace-root /Users/shota/GITHUB/quisp \
---quisp-binary /Users/shota/GITHUB/quisp/quisp \
+--workspace-root <repo-root> \
+--quisp-binary <repo-root>/quisp \
 --max-concurrent-runs 2 \
 --run-timeout-seconds 7200 \
 --stop-timeout-seconds 10
@@ -112,7 +114,7 @@ http://localhost:8765/
 For audit log:
 
 ```bash
-tail -f /Users/shota/GITHUB/quisp/scripts/dashboard/dashboard_audit.log
+tail -f <repo-root>/scripts/dashboard/dashboard_audit.log
 ```
 
 ## Simulation setup from UI
@@ -126,7 +128,7 @@ From the left panel:
    Allowed override key characters: alphanumeric, `_`, `.`, `-`, `[`, `]`.
 5. Click `Run`.
 
-The started job appears under `実行ジョブ` and is connectable to the same visualization timeline with `ビューへ`.
+The started job appears in the running-jobs list (`実行ジョブ`) and can be connected to the same visualization timeline via the `ビューへ` (To View) link.
 
 If `Run` fails with a qutip import error, verify:
 
@@ -163,8 +165,8 @@ Profile notes:
   - default backend: `graph_state`
   - default `sim_time_limit`: `10.0s`
   - default `traffic.request_rate_hz`: `2.0`
-  - intended result: `Replay` の sim-time seek、cluster 進行、`t=0` からの event 発生確認
-  - caveat: Results の bell-pair 活動確認よりも、Replay UI 検証を優先したプロファイルです
+  - intended result: confirm sim-time seek in `Replay`, cluster progression, and event emission starting at `t=0`
+  - caveat: this profile prioritizes Replay UI verification over checking bell-pair activity in `Results`
 - `linear_five_mm_entanglement_swapping`
   - default backend: `graph_state`
   - default `sim_time_limit`: `12.0s`
@@ -218,7 +220,7 @@ Two practical interpretations matter in the current implementation:
 
 ## Experiment comparison
 
-Use `比較+` from the run list to add runs to the compare queue. The compare drawer fetches:
+Use `比較+` (Compare+) from the run list to add runs to the compare queue. The compare drawer fetches:
 
 - per-run scalar metrics
 - distribution summaries such as `mean / p50 / p95 / p99`
@@ -240,7 +242,7 @@ curl -X POST http://localhost:8765/api/experiments/compare \
 The dashboard now treats classical traffic in three separate categories:
 
 - `classical_packet_hop`
-  - emitted from `/Users/shota/GITHUB/quisp/quisp/modules/Common/Router.cc`
+  - emitted from `<repo-root>/quisp/modules/Common/Router.cc`
   - represents one actual hop sent to `toQueue`
   - used as the only classical edge animation source
 - `classical_packet_deliver_local`
@@ -294,34 +296,34 @@ These runs were checked against the current implementation on March 7, 2026.
     - `bellpair_inventory_peak > 0`
     - `setup_success_ratio` unavailable
 
-## 実験開始までの手順（おすすめ）
+## Recommended steps to start an experiment
 
-1. Dashboard起動時に `--log-dir` を書き込み可能なディレクトリ（既定: `scripts/dashboard/runs`）に設定しておく。
-2. UIを開く: `http://localhost:8765/`
-3. `Template` で `quisp/networks/*.ini` または `quisp/simulations/*.ini` 内のテンプレートを選ぶ。
-4. `Config` から実行コンフィグを選ぶ。
-5. `Num Runs`、`Seed Set`、`sim-time-limit` を必要に応じて設定。
-6. `Run` を押す。
-7. `実行ジョブ` の該当行で `ビューへ` を押して同じ run_id のイベント再生を開始。
-8. `サブグラフ再計算` で `Focus`/`Hops`/`ノード正規表現` を切り替える。
-9. 完了したら `Stop Selected` / `Stop` で終了要求を送る。状態は `running -> terminated` など遷移。
+1. When starting the dashboard, set `--log-dir` to a writable directory (default: `scripts/dashboard/runs`).
+2. Open the UI: `http://localhost:8765/`
+3. Pick a template from `Template` (entries from `quisp/networks/*.ini` or `quisp/simulations/*.ini`).
+4. Pick a `Config`.
+5. Set `Num Runs`, `Seed Set`, and `sim-time-limit` as needed.
+6. Click `Run`.
+7. From the corresponding row in the running-jobs list (`実行ジョブ`), click `ビューへ` (To View) to start event playback for the same `run_id`.
+8. Use `サブグラフ再計算` (Recompute subgraph) to switch `Focus` / `Hops` / node regex.
+9. When done, send a stop request via `Stop Selected` / `Stop`. State transitions like `running -> terminated`.
 
-### 最短の実験サンプル
+### Quickest experiment samples
 
-- 既存ログを可視化だけ行う場合: 
-  - まず `layout`/テンプレート起動はせず、`--log-dir` 配下に `run.jsonl` を置く。
-  - `実行一覧` 更新で run が検出されれば、`run_id` を選択して再生開始。
-- まず1件だけUIで起動して挙動確認する場合:
-  - `Num Runs: 1`、`Seed Set` 空、`sim-time-limit` 空で `Run`。
-  - 1分以上進まない場合は、`maxNodes` を下げて表示を軽くして再試行。
+- Visualize an existing log only:
+  - Skip `layout` / template launching and place `run.jsonl` under `--log-dir`.
+  - Once the run appears after refreshing the run list, select the `run_id` and start playback.
+- Try one run from the UI first to check behavior:
+  - Set `Num Runs: 1`, leave `Seed Set` and `sim-time-limit` empty, then click `Run`.
+  - If it does not progress for over a minute, lower `maxNodes` to lighten rendering and retry.
 
-### コマンド起動確認（API経由）
+### Command-line launch check (via API)
 
 ```bash
-# テンプレート一覧
+# list templates
 curl http://localhost:8765/api/sim/templates | jq
 
-# 実行開始
+# start a run
 curl -X POST http://localhost:8765/api/sim/runs \
   -H 'content-type: application/json' \
   -d '{
@@ -331,18 +333,18 @@ curl -X POST http://localhost:8765/api/sim/runs \
   }' | jq
 ```
 
-上記は `template_id` を環境に合わせて置換してください（`/api/sim/templates` で実際のIDを確認）。
+Replace `template_id` to match your environment (find the actual ID via `/api/sim/templates`).
 
-### 最短実験シナリオ（コマンド主導）
+### Shortest experiment scenario (command-driven)
 
 ```bash
-# 1) ダッシュボード起動
+# 1) start the dashboard
 python -m scripts.dashboard.backend.app.main --log-dir scripts/dashboard/runs --port 8765
 
-# 2) テンプレート/実行設定取得
+# 2) fetch templates / run configs
 curl -s http://localhost:8765/api/sim/templates | jq '.[0:5]'
 
-# 3) 1回だけ実行
+# 3) execute once
 curl -s -X POST http://localhost:8765/api/sim/runs \
   -H 'content-type: application/json' \
   -d '{
@@ -355,24 +357,24 @@ curl -s -X POST http://localhost:8765/api/sim/runs \
 ```
 
 ```bash
-# 4) run_id を確認して状態監視
-RUN_ID=... # 上のPOSTで返った run_id を代入
+# 4) capture run_id and watch status
+RUN_ID=... # paste the run_id returned by the POST above
 watch -n 5 "curl -s http://localhost:8765/api/sim/runs/$RUN_ID | jq '.status,.sim_time_limit,.metrics.lines_read'"
 
-# 5) UIで同じrun_idを可視化
-open http://localhost:8765/   # ブラウザで「実行ジョブ」->「ビューへ」
+# 5) visualize the same run_id from the UI
+open http://localhost:8765/   # in browser: running-jobs list -> To View
 
-# 6) 収束後の停止（必要時）
+# 6) stop after convergence (if needed)
 curl -X POST http://localhost:8765/api/sim/runs/$RUN_ID/stop
 
-# 7) ログ取得
+# 7) fetch the log
 curl -s http://localhost:8765/api/sim/runs/$RUN_ID/log | jq '.tail'
 ```
 
-注記:
-- `TemplateIDHere` は `curl .../api/sim/templates` の実体で置換してください。
-- `open` は macOS向けコマンドです。Linuxは `xdg-open` など環境に合わせて置き換え。
-- `watch` コマンドが使えない環境では5秒間隔でGETを手動実行してください。
+Notes:
+- Replace `TemplateIDHere` with an actual ID from `curl .../api/sim/templates`.
+- `open` is a macOS command. On Linux, substitute with `xdg-open` or your environment's equivalent.
+- If `watch` is not available, run the GET manually every 5 seconds.
 
 ### Simulation API Notes
 
@@ -405,8 +407,8 @@ It does not replay raw events. Instead, it polls aggregated activity from `GET /
 - edge activity heat
 - key moments
 - stream health
-- `sim進行倍率` (`delta(sim_time) / delta(real_time)`)
-- `可視イベント密度` (`dashboard-visible events / sim-second`)
+- `sim進行倍率` (sim-time advance ratio): `delta(sim_time) / delta(real_time)`
+- `可視イベント密度` (visible event density): `dashboard-visible events / sim-second`
 
 `LIVE` in this mode means "follow the live edge". Moving the timeline away from the end turns the view into historical activity inspection instead of raw event playback.
 
@@ -420,9 +422,9 @@ It does not replay raw events. Instead, it polls aggregated activity from `GET /
 
 Replay adds viewer-side speed metrics:
 
-- `実効sim再生倍率`: observed `delta(displayed sim_time) / delta(real_time)`
-- `再生イベント速度`: replayed events per wall-clock second
-- `可視イベント密度`: visible logged events per sim-second in the active analysis window
+- `実効sim再生倍率` (effective sim playback rate): observed `delta(displayed sim_time) / delta(real_time)`
+- `再生イベント速度` (replay event speed): replayed events per wall-clock second
+- `可視イベント密度` (visible event density): visible logged events per sim-second in the active analysis window
 
 Use this mode when you need to step through `flying_qubit_*`, `BellPair*`, or request/setup events in detail.
 
@@ -430,9 +432,9 @@ Use this mode when you need to step through `flying_qubit_*`, `BellPair*`, or re
 
 `Results` is the default for completed runs when summary artifacts are available. It is intended for experiment evaluation, not playback. In addition to experiment summaries and compare tables, it now shows viewer diagnostics derived from `GET /api/runs/{run_id}/activity/summary`:
 
-- `可視イベント密度 mean`
-- `可視イベント密度 p95`
-- `可視イベント密度 peak`
+- `可視イベント密度 mean` (visible event density mean)
+- `可視イベント密度 p95` (visible event density p95)
+- `可視イベント密度 peak` (visible event density peak)
 
 ## Activity APIs
 

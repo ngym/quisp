@@ -17,6 +17,8 @@ Shonan Fujisawa Campus, Fujisawa, Japan.  See
 [http://aqua.sfc.wide.ad.jp](http://aqua.sfc.wide.ad.jp) and the list
 of [Authors](Authors.md).
 
+> **日本語版**: [README.ja.md](README.ja.md) を参照してください。
+
 ## Research questions
 
 A simulator is one or more of three things: a time machine, an X-ray
@@ -114,6 +116,11 @@ Working infrastructure:
 * A complete internal model of the software architecture for a
   repeater, including a connection manager, the RuleSet execution
   engine, real-time tracking of quantum states, etc.
+* Multiple physical-layer backends — the legacy `graph_state` backend
+  and a `qutip_density_matrix` backend that delegates state evolution
+  to a Python QuTiP worker.
+* A web dashboard (`scripts/dashboard/`) that launches QuISP runs,
+  visualizes events on a Canvas UI, and aggregates experiment summaries.
 
 Besides the obvious joys of the endless network configurability, here
 are the key quantum protocols that are implemented:
@@ -132,6 +139,8 @@ are the key quantum protocols that are implemented:
   working on a way to pre-calculate this, so that you can choose to
   either include tomography or not.)
 * *entanglement swapping*.
+* link architectures: memory-to-memory (MM), midpoint interference
+  (MIM), and midpoint source (MSM).
 
 Current generic networking-level status:
 
@@ -150,7 +159,6 @@ Upcoming features in near-term releases:
 
 * more general resource allocation & multiplexing
 * more general mechanism for establishing traffic patterns
-* MSM links
 * graph states at the link level
 * multi-party states at the application level
 
@@ -226,50 +234,55 @@ Optional `qutip` tuning parameters are available on `Backend`:
 *.backend.qutip_profile_overrides = ""
 ```
 
-`qutip_profile` は全 operation に共通適用される単一プロファイルです。
+`qutip_profile` is a single profile that applies to every operation.
 
-- `standard_light`: `dim=2`（既定）
+- `standard_light`: `dim=2` (default)
 - `standard_qutrit`: `dim=4`
 - `high_fidelity`: `dim=6`
-- `custom`: `qutip_profile_overrides` で `dim`, `leakage_enabled`, `truncation` を JSON で指定
-- `custom` では `dim` / `truncation` の最小値は `2` です。未対応値は `error_category="invalid_profile"` で失敗します。
-- `leakage_enabled` は `true`/`false` の他、`1`/`0`, `"on"`/`"off"`, `"yes"`/`"no"` も受理します。
+- `custom`: supply `dim`, `leakage_enabled`, `truncation` via
+  `qutip_profile_overrides` as JSON.
+- For `custom`, the minimum values for `dim` and `truncation` are both
+  `2`. Unsupported values fail with `error_category="invalid_profile"`.
+- `leakage_enabled` accepts `true`/`false`, `1`/`0`, `"on"`/`"off"`,
+  and `"yes"`/`"no"`.
 
-例:
+Example:
 
 ```ini
 *.backend.qutip_profile = "custom"
 *.backend.qutip_profile_overrides = "{\"dim\":5,\"leakage_enabled\":true,\"truncation\":9}"
 ```
 
-`standard_light` は既定互換 (`2`準位) を保持します。`qutip_profile` に不明な名前や
-`qutip_profile_overrides` の不正 JSON / 型違反が含まれた場合は `error_category="invalid_profile"` を返して
-`success=false` となります。
+`standard_light` keeps the default compatibility (2-level system).
+Unknown profile names, or invalid JSON / type violations in
+`qutip_profile_overrides`, return `error_category="invalid_profile"`
+with `success=false`.
 
-### プロファイル別の推奨INI例
+### Recommended INI snippets per profile
 
-A寄り（既定2準位）:
+A-style (default 2-level):
 
 ```ini
 *.backend.qutip_profile = "standard_light"
 *.backend.qutip_profile_overrides = "{}"
 ```
 
-B寄り（4準位）:
+B-style (4-level):
 
 ```ini
 *.backend.qutip_profile = "standard_qutrit"
 ```
 
-高忠実度寄り（必要時のみ）:
+High-fidelity (only when needed):
 
 ```ini
 *.backend.qutip_profile = "custom"
 *.backend.qutip_profile_overrides = '{"dim":6, "leakage_enabled":true, "truncation":12}'
 ```
 
-`custom`では、`qutip_profile_overrides` の `truncation` は内部のカットオフ値として参照されます。
-必要に応じて `dim` を 2〜6 の範囲で切り替える運用を想定しています。
+For `custom`, `truncation` in `qutip_profile_overrides` is used as the
+internal cutoff value. Switching `dim` in the range `2`–`6` is the
+intended operational usage.
 
 The default is now density-matrix qutip mode (`physical_backend_type = "qutip_density_matrix"`), with
 `graph_state` still available for compatibility.
@@ -320,6 +333,32 @@ CCACHE_DISABLE=1 make run-module-test
 
 `module_tests/runtest` now tolerates older OMNeT++/make combinations where
 `--no-deep-includes` is unsupported, and keeps the legacy test harness compatible.
+
+## Web dashboard
+
+QuISP ships a web dashboard under `scripts/dashboard/` that can launch
+QuISP runs from a UI, visualize events live, and aggregate experiment
+summaries. Detailed usage is documented in
+[`scripts/dashboard/README.md`](scripts/dashboard/README.md) (English) /
+[`scripts/dashboard/README.ja.md`](scripts/dashboard/README.ja.md)
+(日本語).
+
+The recommended setup uses a repo-local QuTiP virtualenv:
+
+```bash
+# from the repository root
+make qutip-env       # create .venv-qutip and install QuTiP dependencies
+make qutip-check     # verify .venv-qutip can import qutip and qutip_qip
+make dashboard-backend
+```
+
+`make dashboard-backend` builds the QuISP binary (`quisp/quisp`),
+points the QuTiP backend at `.venv-qutip/bin/python`, and starts the
+dashboard at `http://127.0.0.1:8765/`. Host, port, log directory,
+audit log, workspace root and binary path are overridable via Makefile
+variables (`DASHBOARD_HOST`, `DASHBOARD_PORT`, `DASHBOARD_LOG_DIR`,
+`DASHBOARD_AUDIT_LOG`, `DASHBOARD_WORKSPACE_ROOT`,
+`DASHBOARD_QUISP_BINARY`).
 
 ## Trying it out on the web
 

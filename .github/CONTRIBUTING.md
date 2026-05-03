@@ -79,7 +79,7 @@ We want to make QuISP development as easy as possible, be it installation, setti
 
 The required OMNeT++ version for CI parity is recorded in `.omnetpp-version`
 (currently `omnetpp-6.3.0`). For changes that affect generated OMNeT++ message
-files, use the devcontainer or the `ghcr.io/sfc-aqua/quisp-ci:latest` image.
+files, use the devcontainer or the `ghcr.io/ngym/quisp-ci:omnetpp-6.3.0` image.
 Run `make check-omnetpp` to verify your local toolchain; after switching
 OMNeT++ versions locally, run `make clean` before rebuilding.
 

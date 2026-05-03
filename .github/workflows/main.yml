@@ -1,12 +1,15 @@
 name: quisp main
 on: [push, pull_request]
+permissions:
+  contents: read
+  packages: read
 jobs:
   unit-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/sfc-aqua/quisp-ci:latest
+      image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
-        username: quisp-bot
+        username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: work around permission issue
@@ -39,9 +42,9 @@ jobs:
   simulation-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/sfc-aqua/quisp-ci:latest
+      image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
-        username: quisp-bot
+        username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: work around permission issue
@@ -65,9 +68,9 @@ jobs:
   module-test:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/sfc-aqua/quisp-ci:latest
+      image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
-        username: quisp-bot
+        username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: work around permission issue
@@ -103,9 +106,9 @@ jobs:
   clang-tidy:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/sfc-aqua/quisp-ci:latest
+      image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
-        username: quisp-bot
+        username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: work around permission issue
@@ -129,9 +132,9 @@ jobs:
   clang-format:
     runs-on: ubuntu-latest
     container:
-      image: ghcr.io/sfc-aqua/quisp-ci:latest
+      image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
-        username: quisp-bot
+        username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: work around permission issue

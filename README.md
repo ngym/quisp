@@ -331,7 +331,7 @@ First see [Wiki](https://github.com/sfc-aqua/quisp/wiki), then follow the instru
 
 The required OMNeT++ version for CI parity is recorded in `.omnetpp-version`
 (currently `omnetpp-6.3.0`). For development work that should match CI, prefer
-the devcontainer or the `ghcr.io/sfc-aqua/quisp-ci:latest` image. Run
+the devcontainer or the `ghcr.io/ngym/quisp-ci:omnetpp-6.3.0` image. Run
 `make check-omnetpp` to verify your local toolchain; after switching OMNeT++
 versions, run `make clean` before rebuilding.
 

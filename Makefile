@@ -9,8 +9,9 @@ DASHBOARD_LOG_DIR ?= $(CURDIR)/scripts/dashboard/runs
 DASHBOARD_AUDIT_LOG ?= $(CURDIR)/scripts/dashboard/dashboard_audit.log
 DASHBOARD_WORKSPACE_ROOT ?= $(CURDIR)
 DASHBOARD_QUISP_BINARY ?= $(CURDIR)/quisp/quisp
+DASHBOARD_TEST_PYTHON ?= python3
 
-.PHONY: all tidy format ci makefile-exe makefile-lib check-omnetpp checkmakefile googletest clean test coverage coverage-report help quispr run-unit-test run-sim-test qutip-env qutip-check dashboard-backend
+.PHONY: all tidy format ci makefile-exe makefile-lib check-omnetpp checkmakefile googletest clean test coverage coverage-report help quispr run-unit-test run-sim-test qutip-env qutip-check dashboard-backend dashboard-test dashboard-e2e
 
 all: makefile-exe
 	$(MAKE) -C quisp -j$(NPROC)
@@ -47,6 +48,12 @@ dashboard-backend: exe
 	DASHBOARD_WORKSPACE_ROOT=$(DASHBOARD_WORKSPACE_ROOT) \
 	DASHBOARD_QUISP_BINARY=$(DASHBOARD_QUISP_BINARY) \
 	./scripts/dashboard/run_backend.sh
+
+dashboard-test:
+	$(DASHBOARD_TEST_PYTHON) -m pytest scripts/dashboard/backend/tests -m "not e2e"
+
+dashboard-e2e:
+	$(DASHBOARD_TEST_PYTHON) -m pytest scripts/dashboard/backend/tests/test_dashboard_e2e_campaigns.py -m e2e
 
 lib: makefile-lib
 	$(MAKE) -C quisp -j$(NPROC)
@@ -167,6 +174,8 @@ help:
 	echo '  qutip-env           create .venv-qutip and install qutip dependencies'; \
 	echo '  qutip-check         verify that .venv-qutip can import qutip and qutip_qip'; \
 	echo '  dashboard-backend   start dashboard backend with repo-local qutip python'; \
+	echo '  dashboard-test      run dashboard backend tests'; \
+	echo '  dashboard-e2e       run dashboard browser E2E tests'; \
 	echo '  check-omnetpp       verify that OMNeT++ build tools and version match .omnetpp-version'; \
 	echo '  clean               remove objcet files, executables and libraries'; \
 	echo '  distclean           remove everything includes submoduled components'; \

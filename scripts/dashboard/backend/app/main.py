@@ -17,6 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from .activity_aggregator import ActivityAggregator
+from .campaign_models import CampaignCreateRequest
+from .campaign_scheduler import CampaignScheduler
+from .campaign_store import CampaignStore
 from .config_templates import TemplateNotFoundError, list_templates, template_with_configs
 from .experiment_aggregator import ExperimentAggregator
 from .experiment_catalog import list_profiles, resolve_experiment_request, schema_for
@@ -83,8 +86,13 @@ async def lifespan(app: FastAPI):
     store: RunStore = app.state.store
     sim_store: SimulationRunStore = app.state.sim_store
     log_dir: Path = app.state.log_dir
+    log_dir.mkdir(parents=True, exist_ok=True)
     await store.discover_runs()
     await sim_store.restore_from_disk(log_dir)
+    campaign_store: CampaignStore = app.state.campaign_store
+    campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
+    campaign_store.restore_from_disk(mark_orphaned_active_runs_failed=True)
+    await campaign_scheduler.tick()
     yield
 
 
@@ -153,6 +161,15 @@ def create_app(
     app.state.experiment_aggregator = experiment_aggregator
     app.state.activity_aggregator = ActivityAggregator(store=store)
     app.state.workspace_root = workspace_root
+    campaign_store = CampaignStore(root_dir=log_dir / "_campaigns")
+    campaign_scheduler = CampaignScheduler(
+        campaign_store=campaign_store,
+        simulation_runner=simulation_runner,
+        max_concurrent_runs=max_concurrent_runs,
+        sim_store=sim_store,
+    )
+    app.state.campaign_store = campaign_store
+    app.state.campaign_scheduler = campaign_scheduler
 
     @app.middleware("http")
     async def audit_api(request: Request, call_next):
@@ -415,6 +432,94 @@ def create_app(
         profile_id: Optional[str] = Query(default=None),
     ):
         return schema_for(template_id=template_id, config_name=config_name, profile_id=profile_id).model_dump()
+
+    def _validate_campaign_template(preview_payload) -> None:
+        template_info = template_with_configs(preview_payload.resolved_template_id, project_root=workspace_root)
+        config_names = template_info.get("config_names", [])
+        if preview_payload.resolved_config_name not in config_names:
+            raise HTTPException(status_code=400, detail=f"config_name not found in template: {preview_payload.resolved_config_name}")
+
+    @router.post("/experiments/campaigns/preview")
+    async def preview_experiment_campaign(request: CampaignCreateRequest):
+        campaign_store: CampaignStore = app.state.campaign_store
+        try:
+            preview = campaign_store.preview_request(request)
+            _validate_campaign_template(preview)
+            return preview.model_dump()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except TemplateNotFoundError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @router.post("/experiments/campaigns", status_code=201)
+    async def create_experiment_campaign(request: CampaignCreateRequest):
+        campaign_store: CampaignStore = app.state.campaign_store
+        campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
+        try:
+            preview = campaign_store.preview_request(request)
+            _validate_campaign_template(preview)
+            campaign = campaign_store.create_campaign_from_request(request)
+            await campaign_scheduler.tick()
+            return campaign_store.get_campaign(campaign.campaign_id).model_dump()
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        except TemplateNotFoundError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @router.get("/experiments/campaigns")
+    async def list_experiment_campaigns():
+        campaign_store: CampaignStore = app.state.campaign_store
+        campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
+        await campaign_scheduler.sync()
+        return [campaign.model_dump() for campaign in campaign_store.list_campaigns()]
+
+    @router.get("/experiments/campaigns/{campaign_id}")
+    async def get_experiment_campaign(campaign_id: str):
+        campaign_store: CampaignStore = app.state.campaign_store
+        campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
+        await campaign_scheduler.sync()
+        try:
+            return campaign_store.get_campaign(campaign_id).model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
+    @router.post("/experiments/campaigns/{campaign_id}/pause")
+    async def pause_experiment_campaign(campaign_id: str):
+        campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
+        try:
+            campaign = await campaign_scheduler.pause_campaign(campaign_id)
+            return campaign.model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
+    @router.post("/experiments/campaigns/{campaign_id}/resume")
+    async def resume_experiment_campaign(campaign_id: str):
+        campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
+        try:
+            campaign = await campaign_scheduler.resume_campaign(campaign_id)
+            return campaign.model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
+    @router.post("/experiments/campaigns/{campaign_id}/stop")
+    async def stop_experiment_campaign(campaign_id: str):
+        campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
+        try:
+            campaign = await campaign_scheduler.stop_campaign(campaign_id)
+            return campaign.model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+
+    @router.post("/experiments/campaigns/{campaign_id}/runs/{run_id}/retry")
+    async def retry_experiment_campaign_run(campaign_id: str, run_id: str):
+        campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
+        try:
+            campaign = await campaign_scheduler.retry_run_spec(campaign_id, run_id)
+            return campaign.model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc))
 
     @router.get("/sim/runs")
     async def list_sim_runs() -> list[SimRunInfo]:

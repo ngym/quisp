@@ -136,7 +136,7 @@ def test_experiment_catalog_and_structured_start(tmp_path, monkeypatch):
 
     catalog_resp = client.get("/api/experiments/catalog")
     assert catalog_resp.status_code == 200
-    assert any(item["profile_id"] == "two_node_mim_smoke" for item in catalog_resp.json())
+    assert any(item["profile_id"] == "verify_two_node_setup" for item in catalog_resp.json())
 
     schema_resp = client.get(
         "/api/experiments/catalog/schema",
@@ -146,7 +146,7 @@ def test_experiment_catalog_and_structured_start(tmp_path, monkeypatch):
         },
     )
     assert schema_resp.status_code == 200
-    assert schema_resp.json()["profile_id"] == "two_node_mim_smoke"
+    assert schema_resp.json()["profile_id"] == "verify_two_node_setup"
 
     start_resp = client.post(
         "/api/sim/runs",

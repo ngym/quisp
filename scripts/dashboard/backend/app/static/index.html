@@ -459,6 +459,40 @@
       font: inherit;
       padding: 0;
     }
+    .campaign-workspace {
+      display: grid;
+      gap: 10px;
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid rgba(52, 82, 136, 0.72);
+      border-radius: 8px;
+      background: rgba(8, 15, 34, 0.82);
+    }
+    .campaign-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: end;
+    }
+    .campaign-row label {
+      min-width: 180px;
+      flex: 1 1 180px;
+    }
+    .campaign-preview,
+    .campaign-tracker {
+      display: grid;
+      gap: 6px;
+      padding: 8px 10px;
+      border: 1px solid rgba(45, 70, 114, 0.72);
+      border-radius: 8px;
+      background: rgba(9, 18, 42, 0.72);
+      color: #d7e6ff;
+      font-size: 12px;
+    }
+    .campaign-preview[hidden],
+    .campaign-tracker[hidden] {
+      display: none;
+    }
     .table-lite {
       width: 100%;
       border-collapse: collapse;
@@ -705,6 +739,44 @@
           <button id="replayModeBtn" class="mode-tab" data-active="false">Replay</button>
           <button id="resultsModeBtn" class="mode-tab" data-active="false">Results</button>
         </div>
+        <section class="campaign-workspace" data-testid="experiments-workspace" aria-label="Experiments workspace">
+          <div class="section-title">
+            <span>Experiments</span>
+            <span class="status">Campaign batch execution</span>
+          </div>
+          <div class="campaign-row">
+            <label>
+              Campaign Name
+              <input data-testid="campaign-display-name" id="campaignDisplayName" type="text" placeholder="optional" />
+            </label>
+            <button class="btn small" data-testid="campaign-sweep-add" id="campaignSweepAdd">Sweep+</button>
+            <label>
+              Sweep Parameter
+              <select data-testid="campaign-sweep-parameter" id="campaignSweepParameter">
+                <option value="execution.seed_set">Seed Set</option>
+                <option value="execution.sim_time_limit_s">Sim Time Limit</option>
+                <option value="traffic.request_rate_hz">Request Rate</option>
+                <option value="traffic.pairs_per_request">Pairs Per Request</option>
+                <option value="physical.emission_success_probability">Emission Success Prob.</option>
+              </select>
+            </label>
+            <label>
+              Sweep Values
+              <input data-testid="campaign-sweep-values" id="campaignSweepValues" type="text" placeholder="1,2,3" />
+            </label>
+          </div>
+          <div class="campaign-row">
+            <button class="btn small" data-testid="campaign-preview-button" id="campaignPreviewButton">Plan Preview</button>
+            <button class="btn small" data-testid="campaign-enqueue-button" id="campaignEnqueueButton" disabled>Enqueue Campaign</button>
+          </div>
+          <div class="campaign-preview" data-testid="campaign-preview" id="campaignPreview" hidden>preview unavailable</div>
+          <div class="campaign-tracker" data-testid="campaign-tracker" id="campaignTracker" hidden>
+            <div id="campaignTrackerSummary">campaign unavailable</div>
+            <div class="campaign-row">
+              <button class="btn small" data-testid="campaign-view-run" id="campaignViewRun">View run</button>
+            </div>
+          </div>
+        </section>
         <div id="monitorToolbar" class="toolbar-row">
           <button id="monitorGoLiveBtn" class="btn small">LIVE</button>
           <label class="inline-select">window
@@ -875,6 +947,8 @@
       experimentSummary: null,
       experimentComparison: null,
       experimentCompareRunIds: [],
+      campaignPreviewPayload: null,
+      campaignCurrent: null,
       simRunStatusMap: {},
       lastAppliedDemoPresetKey: null,
       lastAppliedDemoPresetOverrides: '',
@@ -1025,6 +1099,16 @@
       refreshExperimentSummary: document.getElementById('refreshExperimentSummary'),
       refreshExperimentCompare: document.getElementById('refreshExperimentCompare'),
       refreshRuns: document.getElementById('refreshRuns'),
+      campaignDisplayName: document.getElementById('campaignDisplayName'),
+      campaignSweepAdd: document.getElementById('campaignSweepAdd'),
+      campaignSweepParameter: document.getElementById('campaignSweepParameter'),
+      campaignSweepValues: document.getElementById('campaignSweepValues'),
+      campaignPreviewButton: document.getElementById('campaignPreviewButton'),
+      campaignEnqueueButton: document.getElementById('campaignEnqueueButton'),
+      campaignPreview: document.getElementById('campaignPreview'),
+      campaignTracker: document.getElementById('campaignTracker'),
+      campaignTrackerSummary: document.getElementById('campaignTrackerSummary'),
+      campaignViewRun: document.getElementById('campaignViewRun'),
       monitorModeBtn: document.getElementById('monitorModeBtn'),
       replayModeBtn: document.getElementById('replayModeBtn'),
       resultsModeBtn: document.getElementById('resultsModeBtn'),
@@ -1601,6 +1685,109 @@
         values[definition.id] = value;
       }
       return values;
+    }
+
+    function parseCampaignSweepValues(raw) {
+      return String(raw || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => {
+          const numeric = Number(item);
+          return Number.isFinite(numeric) && item !== '' ? numeric : item;
+        });
+    }
+
+    function buildCampaignRequest() {
+      const baseParameterValues = collectExperimentParameterValues();
+      const sweepValues = parseCampaignSweepValues(ui.campaignSweepValues && ui.campaignSweepValues.value);
+      const sweeps = [];
+      if (sweepValues.length > 0 && ui.campaignSweepParameter) {
+        sweeps.push({
+          target: 'profile_parameter',
+          id: ui.campaignSweepParameter.value || 'execution.seed_set',
+          values: sweepValues,
+        });
+      }
+      return {
+        display_name: (ui.campaignDisplayName && ui.campaignDisplayName.value.trim()) || null,
+        experiment_profile_id: ui.experimentProfile.value || null,
+        template_id: ui.simTemplate.value || null,
+        config_name: ui.simConfig.value || null,
+        base_parameter_values: baseParameterValues,
+        sweeps,
+        fixed_overrides: parseOverridesText(ui.simOverrides.value),
+        requested_metrics: (state.experimentSchema && state.experimentSchema.recommended_metric_ids) || [],
+        tags: { source: 'dashboard-ui' },
+      };
+    }
+
+    function renderCampaignPreview(payload) {
+      state.campaignPreviewPayload = payload || null;
+      if (!ui.campaignPreview || !ui.campaignEnqueueButton) {
+        return;
+      }
+      if (!payload) {
+        ui.campaignPreview.hidden = true;
+        ui.campaignEnqueueButton.disabled = true;
+        return;
+      }
+      const warnings = Array.isArray(payload.warnings) && payload.warnings.length
+        ? ` / warnings: ${payload.warnings.join(', ')}`
+        : '';
+      ui.campaignPreview.hidden = false;
+      ui.campaignPreview.textContent = `${payload.total_runs} runs / ${payload.resolved_template_id} / ${payload.resolved_config_name}${warnings}`;
+      ui.campaignEnqueueButton.disabled = false;
+    }
+
+    function renderCampaignTracker(campaign) {
+      state.campaignCurrent = campaign || null;
+      if (!ui.campaignTracker || !ui.campaignTrackerSummary) {
+        return;
+      }
+      if (!campaign) {
+        ui.campaignTracker.hidden = true;
+        return;
+      }
+      ui.campaignTracker.hidden = false;
+      ui.campaignTrackerSummary.textContent = [
+        campaign.display_name || campaign.campaign_id,
+        campaign.status,
+        `running ${campaign.running_count || 0}`,
+        `queued ${campaign.queued_count || 0}`,
+        `finished ${campaign.finished_count || 0}`,
+        `failed ${campaign.failed_count || 0}`,
+      ].join(' / ');
+    }
+
+    async function previewCampaign() {
+      const payload = await apiPost('/experiments/campaigns/preview', buildCampaignRequest(), {
+        action: 'ui.preview_campaign',
+      });
+      renderCampaignPreview(payload);
+      return payload;
+    }
+
+    async function enqueueCampaign() {
+      const campaign = await apiPost('/experiments/campaigns', buildCampaignRequest(), {
+        action: 'ui.enqueue_campaign',
+        timeout_ms: 15000,
+      });
+      renderCampaignTracker(campaign);
+      await Promise.all([loadRuns(), loadSimRuns()]);
+      return campaign;
+    }
+
+    async function viewCampaignRun() {
+      const campaign = state.campaignCurrent;
+      if (!campaign || !Array.isArray(campaign.run_specs)) {
+        return;
+      }
+      const spec = campaign.run_specs.find((item) => item.run_id) || null;
+      if (!spec || !spec.run_id) {
+        return;
+      }
+      await selectRunForView(spec.run_id);
     }
 
     function renderExperimentSchema(schema) {
@@ -5088,6 +5275,53 @@
           profileId: ui.experimentProfile.value || null,
         });
       });
+
+      if (ui.campaignSweepAdd) {
+        ui.campaignSweepAdd.addEventListener('click', () => {
+          logUiAction('ui.campaign_sweep_add_click');
+          if (ui.campaignSweepValues && !ui.campaignSweepValues.value.trim()) {
+            ui.campaignSweepValues.value = '1,2';
+          }
+          renderCampaignPreview(null);
+        });
+      }
+
+      if (ui.campaignPreviewButton) {
+        ui.campaignPreviewButton.addEventListener('click', async () => {
+          logUiAction('ui.campaign_preview_click');
+          try {
+            await previewCampaign();
+          } catch (err) {
+            renderCampaignPreview(null);
+            if (ui.campaignPreview) {
+              ui.campaignPreview.hidden = false;
+              ui.campaignPreview.textContent = `preview failed: ${String(err && err.message ? err.message : err)}`;
+            }
+          }
+        });
+      }
+
+      if (ui.campaignEnqueueButton) {
+        ui.campaignEnqueueButton.addEventListener('click', async () => {
+          logUiAction('ui.campaign_enqueue_click');
+          try {
+            await enqueueCampaign();
+          } catch (err) {
+            renderCampaignTracker(null);
+            if (ui.campaignPreview) {
+              ui.campaignPreview.hidden = false;
+              ui.campaignPreview.textContent = `enqueue failed: ${String(err && err.message ? err.message : err)}`;
+            }
+          }
+        });
+      }
+
+      if (ui.campaignViewRun) {
+        ui.campaignViewRun.addEventListener('click', async () => {
+          logUiAction('ui.campaign_view_run_click');
+          await viewCampaignRun();
+        });
+      }
 
       ui.startSimRun.addEventListener('click', async () => {
         logUiAction('ui.start_sim_run_click');

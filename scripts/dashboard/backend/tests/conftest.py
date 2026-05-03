@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "anyio: run test with AnyIO")
+    config.addinivalue_line("markers", "e2e: browser-based dashboard tests")
 
 
 @pytest.fixture

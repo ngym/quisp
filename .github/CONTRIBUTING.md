@@ -77,6 +77,11 @@ All code changes should happen through pull requests.
 
 We want to make QuISP development as easy as possible, be it installation, setting up working evironment, writing tests, or adding new features. We provide [some guides](https://github.com/sfc-aqua/quisp/wiki#3-setup-development-environment) on how to do that depending on your machine operating system and how you want to run QuISP.
 
+The required OMNeT++ version for CI parity is recorded in `.omnetpp-version`
+(currently `omnetpp-6.3.0`). For changes that affect generated OMNeT++ message
+files, use the devcontainer or the `ghcr.io/sfc-aqua/quisp-ci:latest` image.
+Run `make check-omnetpp` to verify your local toolchain; after switching
+OMNeT++ versions locally, run `make clean` before rebuilding.
 
 ### Reporting Bugs
 

@@ -1,5 +1,6 @@
 QUISP_MAKEFILE = "./quisp/Makefile"
 NPROC ?= $(shell nproc)
+EXPECTED_OMNETPP_VERSION ?= $(shell cat $(CURDIR)/.omnetpp-version 2>/dev/null)
 QUTIP_VENV ?= $(CURDIR)/.venv-qutip
 QUTIP_PYTHON ?= $(QUTIP_VENV)/bin/python
 DASHBOARD_HOST ?= 127.0.0.1
@@ -9,7 +10,7 @@ DASHBOARD_AUDIT_LOG ?= $(CURDIR)/scripts/dashboard/dashboard_audit.log
 DASHBOARD_WORKSPACE_ROOT ?= $(CURDIR)
 DASHBOARD_QUISP_BINARY ?= $(CURDIR)/quisp/quisp
 
-.PHONY: all tidy format ci makefile-exe makefile-lib checkmakefile googletest clean test coverage coverage-report help quispr run-unit-test run-sim-test qutip-env qutip-check dashboard-backend
+.PHONY: all tidy format ci makefile-exe makefile-lib check-omnetpp checkmakefile googletest clean test coverage coverage-report help quispr run-unit-test run-sim-test qutip-env qutip-check dashboard-backend
 
 all: makefile-exe
 	$(MAKE) -C quisp -j$(NPROC)
@@ -53,7 +54,7 @@ lib: makefile-lib
 lib-debug: makefile-lib
 	$(MAKE) -C quisp -j$(NPROC) MODE=debug
 
-msgheaders: checkmakefile
+msgheaders: check-omnetpp checkmakefile
 	$(MAKE) -C quisp msgheaders
 
 format-ci:
@@ -65,10 +66,37 @@ format: quisp/Makefile
 tidy: quisp/Makefile
 	$(MAKE) -C quisp tidy
 
-makefile-exe: eigen spdlog json
+check-omnetpp:
+	@if [ -z "$(EXPECTED_OMNETPP_VERSION)" ]; then \
+		echo 'Expected OMNeT++ version is not set. Check .omnetpp-version or EXPECTED_OMNETPP_VERSION.'; \
+		exit 1; \
+	fi
+	@if ! command -v opp_makemake >/dev/null 2>&1; then \
+		echo 'opp_makemake was not found. Source the QuISP/OMNeT++ environment first, or use the devcontainer/CI image.'; \
+		exit 1; \
+	fi
+	@if ! command -v opp_configfilepath >/dev/null 2>&1; then \
+		echo 'opp_configfilepath was not found. Source the QuISP/OMNeT++ environment first, or use the devcontainer/CI image.'; \
+		exit 1; \
+	fi
+	@echo "Using OMNeT++ config: $$(opp_configfilepath)"
+	@version_file="$$(dirname "$$(opp_configfilepath)")/Version"; \
+	if [ ! -f "$$version_file" ]; then \
+		echo "OMNeT++ version file not found: $$version_file"; \
+		exit 1; \
+	fi; \
+	actual_version="$$(cat "$$version_file")"; \
+	echo "Using OMNeT++ version: $$actual_version"; \
+	if [ "$$actual_version" != "$(EXPECTED_OMNETPP_VERSION)" ]; then \
+		echo "Expected OMNeT++ version: $(EXPECTED_OMNETPP_VERSION)"; \
+		echo 'Install the expected OMNeT++ version locally, or use the devcontainer/CI image.'; \
+		exit 1; \
+	fi
+
+makefile-exe: check-omnetpp eigen spdlog json
 	cd quisp && opp_makemake -f --deep -O out -i ./makefrag
 
-makefile-lib: eigen spdlog json
+makefile-lib: check-omnetpp eigen spdlog json
 	cd quisp && opp_makemake -f --deep -O out -i ./makefrag -M debug  --make-so
 
 googletest/CMakeLists.txt:
@@ -139,6 +167,7 @@ help:
 	echo '  qutip-env           create .venv-qutip and install qutip dependencies'; \
 	echo '  qutip-check         verify that .venv-qutip can import qutip and qutip_qip'; \
 	echo '  dashboard-backend   start dashboard backend with repo-local qutip python'; \
+	echo '  check-omnetpp       verify that OMNeT++ build tools and version match .omnetpp-version'; \
 	echo '  clean               remove objcet files, executables and libraries'; \
 	echo '  distclean           remove everything includes submoduled components'; \
 	echo '  test       			build and run all tests'; \

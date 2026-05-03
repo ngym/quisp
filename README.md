@@ -329,6 +329,12 @@ If you just want to take a peek at the basic sample simulation set, we encourage
 
 First see [Wiki](https://github.com/sfc-aqua/quisp/wiki), then follow the instructions below.
 
+The required OMNeT++ version for CI parity is recorded in `.omnetpp-version`
+(currently `omnetpp-6.3.0`). For development work that should match CI, prefer
+the devcontainer or the `ghcr.io/sfc-aqua/quisp-ci:latest` image. Run
+`make check-omnetpp` to verify your local toolchain; after switching OMNeT++
+versions, run `make clean` before rebuilding.
+
 There are two main ways of working with QUISP. You can either use the
 Eclipse-like graphical interface of OmNET++, for which you will find
 instructions in [Building QuISP with OMNeT IDE

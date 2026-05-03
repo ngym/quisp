@@ -1,7 +1,7 @@
 QUISP_VERSION=0.3.0
 CXXFLAGS = -std=c++17
 
-OBJS := $(filter-out test_utils/% %_test.o,$(OBJS))
+OBJS := $(filter-out $(O)/test_utils/% test_utils/% %_test.o,$(OBJS))
 OBJS := $(filter-out %unit_test_main.o,$(OBJS))
 MSGC:=$(MSGC) --msg6
 

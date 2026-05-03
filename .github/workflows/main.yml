@@ -19,6 +19,10 @@ jobs:
         run: make makefile-lib
       - name: generate message headers
         run: make msgheaders
+      - name: verify OMNeT++ and generated message files
+        run: |
+          make check-omnetpp
+          git diff --exit-code -- quisp/FlyingQubit_m.cc quisp/FlyingQubit_m.h
       - name: make googletest
         run: make googletest
       - name: unit tests and generate coverage report
@@ -76,6 +80,10 @@ jobs:
         run: make makefile-lib
       - name: generate message headers
         run: make msgheaders
+      - name: verify OMNeT++ and generated message files
+        run: |
+          make check-omnetpp
+          git diff --exit-code -- quisp/FlyingQubit_m.cc quisp/FlyingQubit_m.h
       - name: make googletest
         run: make googletest
       - name: Run logging observability audit
@@ -110,6 +118,10 @@ jobs:
         run: make makefile-lib
       - name: generate message headers
         run: make msgheaders
+      - name: verify OMNeT++ and generated message files
+        run: |
+          make check-omnetpp
+          git diff --exit-code -- quisp/FlyingQubit_m.cc quisp/FlyingQubit_m.h
       - name: make googletest
         run: make googletest
       - name: clang-tidy
@@ -130,5 +142,9 @@ jobs:
         run: make makefile-lib
       - name: generate message headers
         run: make msgheaders
+      - name: verify OMNeT++ and generated message files
+        run: |
+          make check-omnetpp
+          git diff --exit-code -- quisp/FlyingQubit_m.cc quisp/FlyingQubit_m.h
       - name: clang-format
         run: make format-ci

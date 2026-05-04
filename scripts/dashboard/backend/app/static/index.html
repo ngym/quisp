@@ -1931,9 +1931,18 @@
     }
 
     function runSelectorLabel(run) {
+      // Same display name + same event count is the easy case to leave
+      // ambiguous, so the dropdown also includes a short timestamp from
+      // started_at / created_at (whichever is available) and the last
+      // 6 chars of the run id. That is enough to tell apart 5 sweep
+      // runs that share the same Verify profile.
       const name = runDisplayName(run) || String(run.run_id || '');
       const eventCount = Number(run.event_count || 0);
-      return `${name} (${eventCount})`;
+      const ts = formatRunTimeLabel(run.started_at || run.created_at) || '';
+      const tsCompact = ts ? ts.replace(/^\d{2}\/\d{2}\s+/, '') : '';
+      const suffix = shortRunIdSuffix(run.run_id);
+      const tail = [tsCompact, suffix ? `#${suffix}` : '', `${eventCount} ev`].filter(Boolean).join(' · ');
+      return tail ? `${name} · ${tail}` : `${name} (${eventCount})`;
     }
 
     function findExperimentProfile(profileId) {

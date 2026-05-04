@@ -784,6 +784,45 @@
       <button id="navSettings" type="button" aria-selected="false" data-section-target="settings">Settings</button>
     </nav>
 
+    <section class="campaign-workspace list-only" data-section-only="studies" data-testid="experiments-workspace" aria-label="Experiments workspace" style="margin-top:12px;">
+      <div class="section-title">
+        <span>Experiments / Sweep 投入</span>
+        <span class="status">Plan / Setup フェーズの操作</span>
+      </div>
+      <div class="campaign-row">
+        <label>
+          Campaign Name
+          <input data-testid="campaign-display-name" id="campaignDisplayName" type="text" placeholder="optional" />
+        </label>
+        <button class="btn small" data-testid="campaign-sweep-add" id="campaignSweepAdd">Sweep+</button>
+        <label>
+          Sweep Parameter
+          <select data-testid="campaign-sweep-parameter" id="campaignSweepParameter">
+            <option value="execution.seed_set">Seed Set</option>
+            <option value="execution.sim_time_limit_s">Sim Time Limit</option>
+            <option value="traffic.request_rate_hz">Request Rate</option>
+            <option value="traffic.pairs_per_request">Pairs Per Request</option>
+            <option value="physical.emission_success_probability">Emission Success Prob.</option>
+          </select>
+        </label>
+        <label>
+          Sweep Values
+          <input data-testid="campaign-sweep-values" id="campaignSweepValues" type="text" placeholder="1,2,3" />
+        </label>
+      </div>
+      <div class="campaign-row">
+        <button class="btn small" data-testid="campaign-preview-button" id="campaignPreviewButton">計画プレビュー</button>
+        <button class="btn small" data-testid="campaign-enqueue-button" id="campaignEnqueueButton" disabled>キャンペーン投入</button>
+      </div>
+      <div class="campaign-preview" data-testid="campaign-preview" id="campaignPreview" hidden>preview unavailable</div>
+      <div class="campaign-tracker" data-testid="campaign-tracker" id="campaignTracker" hidden>
+        <div id="campaignTrackerSummary">campaign unavailable</div>
+        <div class="campaign-row">
+          <button class="btn small" data-testid="campaign-view-run" id="campaignViewRun">View run</button>
+        </div>
+      </div>
+    </section>
+
     <div data-section-only="library" class="library-shell">
       <div class="panel" style="margin-top:12px;">
         <div class="section-title">
@@ -1001,44 +1040,6 @@
           <button id="replayModeBtn" class="mode-tab" data-active="false" title="event 単位のステップ実行。デバッグ向け。">Replay</button>
           <button id="resultsModeBtn" class="mode-tab" data-active="false" title="この run の設定 (parameter_values / overrides / 物理仮定) を確認">Configuration</button>
         </div>
-        <section class="campaign-workspace" data-testid="experiments-workspace" aria-label="Experiments workspace">
-          <div class="section-title">
-            <span>Experiments</span>
-            <span class="status">Campaign batch execution</span>
-          </div>
-          <div class="campaign-row">
-            <label>
-              Campaign Name
-              <input data-testid="campaign-display-name" id="campaignDisplayName" type="text" placeholder="optional" />
-            </label>
-            <button class="btn small" data-testid="campaign-sweep-add" id="campaignSweepAdd">Sweep+</button>
-            <label>
-              Sweep Parameter
-              <select data-testid="campaign-sweep-parameter" id="campaignSweepParameter">
-                <option value="execution.seed_set">Seed Set</option>
-                <option value="execution.sim_time_limit_s">Sim Time Limit</option>
-                <option value="traffic.request_rate_hz">Request Rate</option>
-                <option value="traffic.pairs_per_request">Pairs Per Request</option>
-                <option value="physical.emission_success_probability">Emission Success Prob.</option>
-              </select>
-            </label>
-            <label>
-              Sweep Values
-              <input data-testid="campaign-sweep-values" id="campaignSweepValues" type="text" placeholder="1,2,3" />
-            </label>
-          </div>
-          <div class="campaign-row">
-            <button class="btn small" data-testid="campaign-preview-button" id="campaignPreviewButton">計画プレビュー</button>
-            <button class="btn small" data-testid="campaign-enqueue-button" id="campaignEnqueueButton" disabled>キャンペーン投入</button>
-          </div>
-          <div class="campaign-preview" data-testid="campaign-preview" id="campaignPreview" hidden>preview unavailable</div>
-          <div class="campaign-tracker" data-testid="campaign-tracker" id="campaignTracker" hidden>
-            <div id="campaignTrackerSummary">campaign unavailable</div>
-            <div class="campaign-row">
-              <button class="btn small" data-testid="campaign-view-run" id="campaignViewRun">View run</button>
-            </div>
-          </div>
-        </section>
         <div id="monitorToolbar" class="toolbar-row">
           <button id="monitorGoLiveBtn" class="btn small">LIVE</button>
           <label class="inline-select">window

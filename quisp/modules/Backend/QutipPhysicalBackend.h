@@ -12,10 +12,10 @@
 
 namespace quisp::modules::backend {
 
-class QutipBackend : public IPhysicalBackend {
+class QutipPhysicalBackend : public IPhysicalBackend {
  public:
-  explicit QutipBackend(std::string backend_type = "qutip_density_matrix");
-  ~QutipBackend() override;
+  explicit QutipPhysicalBackend(std::string backend_type = "qutip_density_matrix");
+  ~QutipPhysicalBackend() override;
 
   uint32_t capabilities() const override;
 

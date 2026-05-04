@@ -20,7 +20,7 @@ class DefaultComponentProviderStrategy : public IComponentProviderStrategy {
   IRoutingDaemon *getRoutingDaemon() override;
   IHardwareMonitor *getHardwareMonitor() override;
   IRealTimeController *getRealTimeController() override;
-  IQuantumBackend *getQuantumBackend() override;
+  IGraphStateBackend *getQuantumBackend() override;
   ILogger *getLogger() override;
   SharedResource *getSharedResource() override;
 

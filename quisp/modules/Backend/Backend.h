@@ -9,7 +9,7 @@
 
 namespace quisp::modules::backend {
 using quisp::modules::common::GraphStateBackend;
-using quisp::modules::common::IQuantumBackend;
+using quisp::modules::common::IGraphStateBackend;
 using quisp::modules::common::StationaryQubitConfiguration;
 using rng::RNG;
 
@@ -21,14 +21,14 @@ class BackendContainer : public omnetpp::cSimpleModule, GraphStateBackend::ICall
   void initialize() override;
   void finish() override;
 
-  IQuantumBackend* getQuantumBackend();
+  IGraphStateBackend* getQuantumBackend();
   void willUpdate(GraphStateBackend& backend) override;
 
  protected:
   std::string getSelectedBackendType() const;
-  std::unique_ptr<IQuantumBackend> createBackend(const std::string& backend_type);
+  std::unique_ptr<IGraphStateBackend> createBackend(const std::string& backend_type);
   std::unique_ptr<StationaryQubitConfiguration> getDefaultQubitErrorModelConfiguration();
-  std::unique_ptr<IQuantumBackend> backend = nullptr;
+  std::unique_ptr<IGraphStateBackend> backend = nullptr;
 };
 
 Define_Module(BackendContainer);

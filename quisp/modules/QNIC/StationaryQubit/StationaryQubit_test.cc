@@ -11,11 +11,11 @@
 #include <unsupported/Eigen/MatrixFunctions>
 #include "backends/Backends.h"
 #include "backends/interfaces/IConfiguration.h"
-#include "backends/interfaces/IQuantumBackend.h"
+#include "backends/interfaces/IGraphStateBackend.h"
 #include "omnetpp/cmessage.h"
 #include "test_utils/Simulation.h"
 #include "test_utils/TestUtilFunctions.h"
-#include "test_utils/mock_backends/MockQuantumBackend.h"
+#include "test_utils/mock_backends/MockGraphStateBackend.h"
 
 using quisp::backends::abstract::IQubit;
 
@@ -32,10 +32,10 @@ namespace {
 
 class Strategy : public TestComponentProviderStrategy {
  public:
-  Strategy(IQuantumBackend *backend) : backend(backend) {}
+  Strategy(IGraphStateBackend *backend) : backend(backend) {}
   ~Strategy() {}
-  IQuantumBackend *getQuantumBackend() override { return backend; }
-  IQuantumBackend *backend;
+  IGraphStateBackend *getQuantumBackend() override { return backend; }
+  IGraphStateBackend *backend;
 };
 
 class StatQubitTarget : public StationaryQubit {
@@ -46,7 +46,7 @@ class StatQubitTarget : public StationaryQubit {
   using StationaryQubit::initialize;
   using StationaryQubit::par;
   using StationaryQubit::prepareBackendQubitConfiguration;
-  StatQubitTarget(IQuantumBackend *backend) : StationaryQubit() {
+  StatQubitTarget(IGraphStateBackend *backend) : StationaryQubit() {
     setComponentType(new TestModuleType("test qubit"));
     provider.setStrategy(std::make_unique<Strategy>(backend));
     toLensGate = new TestGate(this, "tolens_quantum_port");
@@ -113,7 +113,7 @@ class StatQubitTest : public ::testing::Test {
  protected:
   void SetUp() {
     sim = prepareSimulation();
-    backend = new MockQuantumBackend();
+    backend = new MockGraphStateBackend();
     qubit = new StatQubitTarget(backend);
     qubit->fillParams();
     sim->registerComponent(qubit);
@@ -121,7 +121,7 @@ class StatQubitTest : public ::testing::Test {
   void TearDown() { delete backend; }
 
   StatQubitTarget *qubit;
-  MockQuantumBackend *backend;
+  MockGraphStateBackend *backend;
   simulation::TestSimulation *sim;
 };
 

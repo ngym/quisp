@@ -2,7 +2,7 @@
 #include "GraphState/Backend.h"
 #include "backends/QubitConfiguration.h"
 #include "interfaces/IConfiguration.h"
-#include "interfaces/IQuantumBackend.h"
+#include "interfaces/IGraphStateBackend.h"
 #include "interfaces/IQubit.h"
 #include "interfaces/IQubitId.h"
 
@@ -11,7 +11,7 @@ namespace quisp::backends {
 
 using abstract::EigenvalueResult;
 using abstract::IConfiguration;
-using abstract::IQuantumBackend;
+using abstract::IGraphStateBackend;
 using abstract::IQubit;
 using abstract::IQubitId;
 using abstract::MeasurementOutcome;

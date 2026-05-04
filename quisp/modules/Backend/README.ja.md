@@ -43,7 +43,7 @@
   - `discarded`: 管理側の寿命・切断等
   - `photon_lost`: 物理伝搬損失
 
-## 4) GraphState backend (`ErrorBasisBackend`) の位置付け
+## 4) GraphState backend (`GraphStatePhysicalBackend`) の位置付け
 - Pauli ノイズは `noiselessX`/`noiselessZ` で stabilizer state に直接適用し、
   誤差フラグは保持しない。
 - `discarded`, `photon_lost` のみバックエンド内部メタデータとして保持。

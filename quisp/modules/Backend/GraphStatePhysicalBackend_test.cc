@@ -10,14 +10,14 @@
 #include "backends/interfaces/IConfiguration.h"
 #include "backends/interfaces/IQubit.h"
 #include "backends/interfaces/IQubitId.h"
-#include "backends/interfaces/IQuantumBackend.h"
+#include "backends/interfaces/IGraphStateBackend.h"
 #include "modules/QNIC/StationaryQubit/QubitId.h"
 
 using quisp::backends::abstract::EigenvalueResult;
 using quisp::backends::abstract::IConfiguration;
 using quisp::backends::abstract::IQubit;
 using quisp::backends::abstract::IQubitId;
-using quisp::backends::abstract::IQuantumBackend;
+using quisp::backends::abstract::IGraphStateBackend;
 using quisp::modules::backend::MeasureBasis;
 using quisp::modules::backend::PhysicalServiceFacade;
 using quisp::modules::backend::QubitHandle;
@@ -84,7 +84,7 @@ class FakeQubit : public IQubit {
   std::unique_ptr<IQubitId> id_;
 };
 
-class FakeBackend : public IQuantumBackend {
+class FakeBackend : public IGraphStateBackend {
  public:
   IQubit* createQubit(const IQubitId* id, std::unique_ptr<IConfiguration> /*configuration*/) override {
     return createQubitInternal(id);
@@ -159,7 +159,7 @@ QubitHandle handleFrom(int node, int idx, int type, int q) {
   return QubitHandle{node, idx, type, q};
 }
 
-TEST(ErrorBasisBackendContractTest, ApplyGateRoutesToBackendQubits) {
+TEST(GraphStatePhysicalBackendContractTest, ApplyGateRoutesToBackendQubits) {
   FakeBackend backend;
   auto* qubit = static_cast<FakeQubit*>(backend.createQubit(new QubitId(1, 0, 0, 7)));
   ASSERT_NE(qubit, nullptr);
@@ -173,7 +173,7 @@ TEST(ErrorBasisBackendContractTest, ApplyGateRoutesToBackendQubits) {
   EXPECT_EQ(qubit->sdg_count, 1);
 }
 
-TEST(ErrorBasisBackendContractTest, ApplyGateSupportsCnot) {
+TEST(GraphStatePhysicalBackendContractTest, ApplyGateSupportsCnot) {
   FakeBackend backend;
   auto* source = static_cast<FakeQubit*>(backend.createQubit(new QubitId(2, 0, 0, 1)));
   auto* target = static_cast<FakeQubit*>(backend.createQubit(new QubitId(2, 0, 0, 2)));
@@ -187,7 +187,7 @@ TEST(ErrorBasisBackendContractTest, ApplyGateSupportsCnot) {
   EXPECT_EQ(source->cnot_targets.front(), target);
 }
 
-TEST(ErrorBasisBackendContractTest, ApplyNoiselessGateRoutesToNoiselessBackendOps) {
+TEST(GraphStatePhysicalBackendContractTest, ApplyNoiselessGateRoutesToNoiselessBackendOps) {
   FakeBackend backend;
   auto* source = static_cast<FakeQubit*>(backend.createQubit(new QubitId(9, 0, 0, 1)));
   auto* target = static_cast<FakeQubit*>(backend.createQubit(new QubitId(9, 0, 0, 2)));
@@ -207,7 +207,7 @@ TEST(ErrorBasisBackendContractTest, ApplyNoiselessGateRoutesToNoiselessBackendOp
   EXPECT_EQ(source->noiseless_cnot_targets.front(), target);
 }
 
-TEST(ErrorBasisBackendContractTest, MeasureReturnsObservedOutcome) {
+TEST(GraphStatePhysicalBackendContractTest, MeasureReturnsObservedOutcome) {
   FakeBackend backend;
   auto* qubit = static_cast<FakeQubit*>(backend.createQubit(new QubitId(3, 0, 0, 9)));
   ASSERT_NE(qubit, nullptr);
@@ -231,7 +231,7 @@ TEST(ErrorBasisBackendContractTest, MeasureReturnsObservedOutcome) {
   EXPECT_FALSE(bad.success);
 }
 
-TEST(ErrorBasisBackendContractTest, MeasureNoiselessForcesPlusAndSupportsMeasure) {
+TEST(GraphStatePhysicalBackendContractTest, MeasureNoiselessForcesPlusAndSupportsMeasure) {
   FakeBackend backend;
   auto* qubit = static_cast<FakeQubit*>(backend.createQubit(new QubitId(10, 0, 0, 3)));
   ASSERT_NE(qubit, nullptr);
@@ -247,7 +247,7 @@ TEST(ErrorBasisBackendContractTest, MeasureNoiselessForcesPlusAndSupportsMeasure
   EXPECT_FALSE(regular.measured_plus);
 }
 
-TEST(ErrorBasisBackendContractTest, GenerateEntanglementCallsNoiselessOps) {
+TEST(GraphStatePhysicalBackendContractTest, GenerateEntanglementCallsNoiselessOps) {
   FakeBackend backend;
   auto* source = static_cast<FakeQubit*>(backend.createQubit(new QubitId(5, 0, 0, 1)));
   auto* target = static_cast<FakeQubit*>(backend.createFlyingQubit());
@@ -262,7 +262,7 @@ TEST(ErrorBasisBackendContractTest, GenerateEntanglementCallsNoiselessOps) {
   EXPECT_EQ(source->noiseless_cnot_targets.size(), 1);
 }
 
-TEST(ErrorBasisBackendContractTest, GenerateEntanglementResolvesFlyingTargetByIdentity) {
+TEST(GraphStatePhysicalBackendContractTest, GenerateEntanglementResolvesFlyingTargetByIdentity) {
   FakeBackend backend;
   auto* source = static_cast<FakeQubit*>(backend.createQubit(new QubitId(5, 0, 0, 1)));
   auto* first_target = static_cast<FakeQubit*>(backend.createFlyingQubit());
@@ -279,7 +279,7 @@ TEST(ErrorBasisBackendContractTest, GenerateEntanglementResolvesFlyingTargetById
   EXPECT_NE(source->noiseless_cnot_targets.front(), first_target);
 }
 
-TEST(ErrorBasisBackendContractTest, GenerateEntanglementFailsForUnknownFlyingHandle) {
+TEST(GraphStatePhysicalBackendContractTest, GenerateEntanglementFailsForUnknownFlyingHandle) {
   FakeBackend backend;
   auto* source = static_cast<FakeQubit*>(backend.createQubit(new QubitId(5, 0, 0, 1)));
   ASSERT_NE(source, nullptr);
@@ -292,7 +292,7 @@ TEST(ErrorBasisBackendContractTest, GenerateEntanglementFailsForUnknownFlyingHan
   EXPECT_NE(result.message.find("target qubit not found"), std::string::npos);
 }
 
-TEST(ErrorBasisBackendContractTest, UnknownGateReturnsFailure) {
+TEST(GraphStatePhysicalBackendContractTest, UnknownGateReturnsFailure) {
   FakeBackend backend;
   backend.createQubit(new QubitId(6, 0, 0, 2));
 

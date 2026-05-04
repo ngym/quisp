@@ -11,8 +11,8 @@
 #include <string>
 #include <utility>
 
-#include "ErrorBasisBackend.h"
-#include "QutipBackend.h"
+#include "GraphStatePhysicalBackend.h"
+#include "QutipPhysicalBackend.h"
 #include "omnetpp.h"
 
 namespace quisp::modules::backend {
@@ -43,26 +43,26 @@ std::string normalizeBackendType(const std::string& value) {
   return normalized;
 }
 
-std::unique_ptr<IPhysicalBackend> createBackendByType(const std::string& backend_name, IQuantumBackend* backend) {
+std::unique_ptr<IPhysicalBackend> createBackendByType(const std::string& backend_name, IGraphStateBackend* backend) {
   if (backend_name == "qutip" || backend_name == "qutip_density_matrix" || backend_name == "qutip_state_vector") {
-    return std::make_unique<QutipBackend>(backend_name);
+    return std::make_unique<QutipPhysicalBackend>(backend_name);
   }
   if (backend_name.empty() || backend_name == "graph_state") {
-    return std::make_unique<ErrorBasisBackend>(backend);
+    return std::make_unique<GraphStatePhysicalBackend>(backend);
   }
   throw std::runtime_error("PhysicalServiceFacade: unsupported physical backend type: " + backend_name);
 }
 
 // Cache of physical backends keyed by (backend_type, underlying graph_state pointer).
 // Without this, every PhysicalServiceFacade construction (one per quantum
-// operation in QuISP) would tear down and rebuild a QutipBackend, killing the
+// operation in QuISP) would tear down and rebuild a QutipPhysicalBackend, killing the
 // persistent Python worker — and with it the entire entanglement-set state —
 // after at most a single op.
-using BackendCacheKey = std::pair<std::string, IQuantumBackend*>;
+using BackendCacheKey = std::pair<std::string, IGraphStateBackend*>;
 std::map<BackendCacheKey, std::unique_ptr<IPhysicalBackend>> g_backend_cache;
 std::mutex g_backend_cache_mutex;
 
-IPhysicalBackend* lookupOrCreateCachedBackend(const std::string& backend_name, IQuantumBackend* backend) {
+IPhysicalBackend* lookupOrCreateCachedBackend(const std::string& backend_name, IGraphStateBackend* backend) {
   std::lock_guard<std::mutex> lock(g_backend_cache_mutex);
   const auto key = std::make_pair(backend_name, backend);
   auto it = g_backend_cache.find(key);
@@ -81,7 +81,7 @@ void PhysicalServiceFacade::clearBackendCache() {
   g_backend_cache.clear();
 }
 
-PhysicalServiceFacade::PhysicalServiceFacade(IQuantumBackend* backend) {
+PhysicalServiceFacade::PhysicalServiceFacade(IGraphStateBackend* backend) {
   backend_name_ = resolveBackendTypeFromContext();
   if (backend == nullptr) {
     backend_ = nullptr;
@@ -91,7 +91,7 @@ PhysicalServiceFacade::PhysicalServiceFacade(IQuantumBackend* backend) {
   backend_ = lookupOrCreateCachedBackend(backend_name_, backend);
 }
 
-PhysicalServiceFacade::PhysicalServiceFacade(IQuantumBackend* backend, const std::string& backend_type) {
+PhysicalServiceFacade::PhysicalServiceFacade(IGraphStateBackend* backend, const std::string& backend_type) {
   backend_name_ = normalizeBackendType(!backend_type.empty() ? backend_type : resolveBackendTypeFromContext());
   if (backend == nullptr) {
     backend_ = nullptr;

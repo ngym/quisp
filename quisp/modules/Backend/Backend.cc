@@ -33,13 +33,13 @@ BackendContainer::BackendContainer() {}
 BackendContainer::~BackendContainer() {
   // The cache holds raw pointers to the underlying graph_state backend that we
   // are about to destroy. Drop it now so the next simulation run starts with
-  // a fresh QutipBackend (and Python worker) bound to the new backend pointer.
+  // a fresh QutipPhysicalBackend (and Python worker) bound to the new backend pointer.
   PhysicalServiceFacade::clearBackendCache();
 }
 
 void BackendContainer::initialize() {
   // Defensive: if a previous simulation left cache entries, drop them before
-  // we instantiate a new IQuantumBackend.
+  // we instantiate a new IGraphStateBackend.
   PhysicalServiceFacade::clearBackendCache();
   auto backend_type = getSelectedBackendType();
   backend = createBackend(backend_type);
@@ -57,7 +57,7 @@ std::string BackendContainer::getSelectedBackendType() const {
   return "qutip_density_matrix";
 }
 
-std::unique_ptr<IQuantumBackend> BackendContainer::createBackend(const std::string& backend_type) {
+std::unique_ptr<IGraphStateBackend> BackendContainer::createBackend(const std::string& backend_type) {
   const auto normalized = normalizeBackendType(backend_type);
   if (normalized == "GraphStateBackend" || normalized == "qutip" || normalized == "qutip_density_matrix" || normalized == "qutip_state_vector" ||
       normalized == "qutip_sv") {
@@ -114,7 +114,7 @@ std::unique_ptr<StationaryQubitConfiguration> BackendContainer::getDefaultQubitE
 void BackendContainer::willUpdate(GraphStateBackend& backend) { backend.setSimTime(omnetpp::simTime()); }
 void BackendContainer::finish() {}
 
-IQuantumBackend* BackendContainer::getQuantumBackend() {
+IGraphStateBackend* BackendContainer::getQuantumBackend() {
   if (backend == nullptr) {
     throw omnetpp::cRuntimeError("Backend is not initialized");
   }

@@ -76,7 +76,7 @@ IRealTimeController *ComponentProvider::getRealTimeController() {
   return strategy->getRealTimeController();
 }
 
-IQuantumBackend *ComponentProvider::getQuantumBackend() {
+IGraphStateBackend *ComponentProvider::getQuantumBackend() {
   ensureStrategy();
   return strategy->getQuantumBackend();
 }

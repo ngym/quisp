@@ -7,16 +7,16 @@
 #include <vector>
 
 #include "IPhysicalBackend.h"
-#include "backends/interfaces/IQuantumBackend.h"
+#include "backends/interfaces/IGraphStateBackend.h"
 #include "modules/QNIC/StationaryQubit/QubitId.h"
 
 namespace quisp::modules::backend {
 
-using quisp::backends::IQuantumBackend;
+using quisp::backends::IGraphStateBackend;
 
-class ErrorBasisBackend : public IPhysicalBackend {
+class GraphStatePhysicalBackend : public IPhysicalBackend {
  public:
-  explicit ErrorBasisBackend(IQuantumBackend* backend);
+  explicit GraphStatePhysicalBackend(IGraphStateBackend* backend);
 
   uint32_t capabilities() const override;
 
@@ -49,7 +49,7 @@ class ErrorBasisBackend : public IPhysicalBackend {
 
   OperationResult measureAt(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis);
   OperationResult measureNoiselessAt(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus);
-  IQuantumBackend* backend_;
+  IGraphStateBackend* backend_;
   mutable std::unordered_map<std::string, GraphErrorState> error_states_;
 };
 

@@ -13,7 +13,7 @@ using QubitId = std::tuple<QNodeAddr, QNicIndex, QNicType, QubitIndex>;
 using IBackendQubit = quisp::backends::IQubit;
 using quisp::backends::GraphStateBackend;
 using quisp::backends::IConfiguration;
-using quisp::backends::IQuantumBackend;
+using quisp::backends::IGraphStateBackend;
 using quisp::backends::IQubitId;
 using quisp::backends::StationaryQubitConfiguration;
 }  // namespace quisp::modules::common

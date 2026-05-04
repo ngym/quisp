@@ -59,7 +59,7 @@ IPhysicalBackend
   - measure
   - generateEntanglement
         |
-        +--> ErrorBasisBackend (default)
+        +--> GraphStatePhysicalBackend (default)
         +--> Future backends (density-matrix / external)
 ```
 
@@ -122,15 +122,15 @@ Notes / 補足:
 - `graph_state` を `GraphStateBackend` と同値として初期化経路に採用。
 - `Backend` テストで `physical_backend_type` の初期化成功/失敗ケースを追加。
 - `qutip` はサブモジュール依存から外し、`requirements.txt` の `qutip` / `qutip-qip` で管理する前提へ切り替え（`qutip.qip` 利用時は `qutip-qip` が必須）。
-- `IPhysicalBackend` / `PhysicalServiceFacade` / `ErrorBasisBackend` を実装し、`StationaryQubit` の `measureX/Y/Z` を `PhysicalServiceFacade` 経由に変更（挙動非変更）。
+- `IPhysicalBackend` / `PhysicalServiceFacade` / `GraphStatePhysicalBackend` を実装し、`StationaryQubit` の `measureX/Y/Z` を `PhysicalServiceFacade` 経由に変更（挙動非変更）。
 - `StationaryQubit` の `measureX/Y/Z`, `gateX/Y/Z/H/S/Sdg/CNOT`, `generateEntangledPhoton`, `measureRandomPauliBasis` を `PhysicalServiceFacade` 経由に変更（挙動非変更）。
 
 ### PR-1: Introduce seam with no behavior change / 挙動非変更で境界を導入
 
 - Add `IPhysicalBackend` and `PhysicalServiceFacade`.
   - `IPhysicalBackend` と `PhysicalServiceFacade` を追加。
-- Add `ErrorBasisBackend` adapter that delegates to current logic.
-  - 現行ロジックへ委譲する `ErrorBasisBackend` アダプタを追加。
+- Add `GraphStatePhysicalBackend` adapter that delegates to current logic.
+  - 現行ロジックへ委譲する `GraphStatePhysicalBackend` アダプタを追加。
 - Route one narrow call path through the facade (e.g., measurement path).
   - まずは限定経路（例: 測定処理）を Facade 経由にする。
 - Add configuration key in `.ini`: `**.physical_backend_type = "graph_state"` (default fallback: empty -> `backend_type`).
@@ -169,8 +169,8 @@ Notes / 補足:
   - ベースライン結果との回帰比較テストを追加。
 
 **Acceptance criteria / 受け入れ条件**
-- Contract tests pass for `ErrorBasisBackend`.
-  - `ErrorBasisBackend` の契約テストが成功。
+- Contract tests pass for `GraphStatePhysicalBackend`.
+  - `GraphStatePhysicalBackend` の契約テストが成功。
 - Determinism tests pass across repeated runs with the same seed.
   - 同一シード反復実行で決定性テストが成功。
 
@@ -193,8 +193,8 @@ Notes / 補足:
   - `quisp/modules/Backend/IPhysicalBackend.h`
   - `quisp/modules/Backend/PhysicalServiceFacade.h`
   - `quisp/modules/Backend/PhysicalServiceFacade.cc`
-  - `quisp/modules/Backend/ErrorBasisBackend.h`
-  - `quisp/modules/Backend/ErrorBasisBackend.cc`
+  - `quisp/modules/Backend/GraphStatePhysicalBackend.h`
+  - `quisp/modules/Backend/GraphStatePhysicalBackend.cc`
 
 - Likely integration touch points (verify during implementation) /
   想定される統合ポイント（実装時に要確認）:

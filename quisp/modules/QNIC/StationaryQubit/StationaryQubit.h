@@ -13,7 +13,7 @@
 #include <utils/ComponentProvider.h>
 #include "IStationaryQubit.h"
 #include "QubitId.h"
-#include "backends/interfaces/IQuantumBackend.h"
+#include "backends/interfaces/IGraphStateBackend.h"
 
 namespace quisp::modules {
 
@@ -29,7 +29,7 @@ namespace quisp::modules {
 
 using quisp::modules::common::IBackendQubit;
 using quisp::modules::common::IConfiguration;
-using quisp::modules::common::IQuantumBackend;
+using quisp::modules::common::IGraphStateBackend;
 
 class StationaryQubit : public IStationaryQubit, protected Logger::LoggerBase {
  protected:
@@ -98,7 +98,7 @@ class StationaryQubit : public IStationaryQubit, protected Logger::LoggerBase {
   int qnic_address;
 
   utils::ComponentProvider provider;
-  IQuantumBackend *backend;
+  IGraphStateBackend *backend;
 };
 
 }  // namespace quisp::modules

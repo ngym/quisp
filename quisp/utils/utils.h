@@ -24,7 +24,7 @@ using modules::QNIC_N;
 using modules::QNIC_names;
 using modules::QNIC_type;
 using modules::backend::BackendContainer;
-using modules::common::IQuantumBackend;
+using modules::common::IGraphStateBackend;
 using modules::Logger::ILogger;
 using modules::Logger::LoggerModule;
 using modules::SharedResource::SharedResource;

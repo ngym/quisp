@@ -79,7 +79,7 @@ modules::IRealTimeController *DefaultComponentProviderStrategy::getRealTimeContr
   auto *qrsa = getQRSA();
   return check_and_cast<IRealTimeController *>(qrsa->getSubmodule("rt"));
 }
-IQuantumBackend *DefaultComponentProviderStrategy::getQuantumBackend() {
+IGraphStateBackend *DefaultComponentProviderStrategy::getQuantumBackend() {
   cModule *currentModule = self->getParentModule();
   auto *mod = currentModule->findModuleByPath("backend");
   if (mod == nullptr) {

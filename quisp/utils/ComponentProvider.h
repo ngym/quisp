@@ -37,7 +37,7 @@ class ComponentProvider {
   IRoutingDaemon *getRoutingDaemon();
   IHardwareMonitor *getHardwareMonitor();
   IRealTimeController *getRealTimeController();
-  IQuantumBackend *getQuantumBackend();
+  IGraphStateBackend *getQuantumBackend();
   ILogger *getLogger();
   cTopology *getTopologyForRoutingDaemon(const cModule *const rd_module);
   cTopology *getTopologyForRouter();

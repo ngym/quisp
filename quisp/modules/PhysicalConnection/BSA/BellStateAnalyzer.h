@@ -51,7 +51,7 @@ class BellStateAnalyzer : public omnetpp::cSimpleModule {
   std::vector<PhotonRecord> first_port_records;
   std::vector<PhotonRecord> second_port_records;
   utils::ComponentProvider provider;
-  backends::IQuantumBackend *backend;
+  backends::IGraphStateBackend *backend;
 
   // for testing and debugging
   long long pair_count = 0;

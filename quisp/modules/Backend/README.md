@@ -62,7 +62,7 @@ and the execution result.
   - `discarded`: management-side lifetime / disconnect, etc.
   - `photon_lost`: physical propagation loss
 
-## 4) Position of the GraphState backend (`ErrorBasisBackend`)
+## 4) Position of the GraphState backend (`GraphStatePhysicalBackend`)
 - Pauli noise is applied directly to the stabilizer state via real
   `noiselessX`/`noiselessZ` gates; no error flags are tracked.
 - `discarded`, `photon_lost` are kept only as backend-internal metadata.

@@ -21,7 +21,7 @@ using namespace quisp::messages;
 using namespace quisp::backends::abstract;
 using namespace quisp::modules::backend;
 using namespace quisp::modules::qubit_id;
-using quisp::backends::IQuantumBackend;
+using quisp::backends::IGraphStateBackend;
 
 namespace quisp::channels {
 
@@ -56,7 +56,7 @@ omnetpp::cModule* findBackendModule() {
   return nullptr;
 }
 
-IQuantumBackend* resolveQuantumBackend() {
+IGraphStateBackend* resolveQuantumBackend() {
   auto* backend_module = findBackendModule();
   if (backend_module == nullptr) return nullptr;
   auto* backend_container = dynamic_cast<BackendContainer*>(backend_module);
@@ -119,7 +119,7 @@ cChannel::Result QuantumChannel::processMessage(cMessage *msg, const SendOptions
     throw new cRuntimeError("something other than photonic qubit is sent through quantum channel");
   }
 
-  IQuantumBackend* backend = resolveQuantumBackend();
+  IGraphStateBackend* backend = resolveQuantumBackend();
   if (backend == nullptr) {
     throw cRuntimeError("QuantumChannel: quantum backend not found");
   }

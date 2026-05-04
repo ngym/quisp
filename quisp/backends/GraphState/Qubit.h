@@ -2,7 +2,7 @@
 #include <string>
 #include <unordered_set>
 #include <unsupported/Eigen/MatrixFunctions>
-#include "../interfaces/IQuantumBackend.h"
+#include "../interfaces/IGraphStateBackend.h"
 #include "../interfaces/IQubit.h"
 #include "Eigen/src/Core/Matrix.h"
 #include "backends/QubitConfiguration.h"
@@ -17,7 +17,7 @@ using util_functions::samplingWithWeights;
 namespace backends::graph_state {
 
 using abstract::EigenvalueResult;
-using abstract::IQuantumBackend;
+using abstract::IGraphStateBackend;
 using abstract::IQubit;
 using abstract::IQubitId;
 using abstract::MeasurementOutcome;

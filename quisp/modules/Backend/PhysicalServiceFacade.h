@@ -6,20 +6,20 @@
 
 #include "IPhysicalBackend.h"
 #include "backends/interfaces/IQubit.h"
-#include "backends/interfaces/IQuantumBackend.h"
+#include "backends/interfaces/IGraphStateBackend.h"
 
 namespace quisp::modules::backend {
 
 using quisp::backends::abstract::EigenvalueResult;
-using quisp::backends::abstract::IQuantumBackend;
+using quisp::backends::abstract::IGraphStateBackend;
 
-class ErrorBasisBackend;
-class QutipBackend;
+class GraphStatePhysicalBackend;
+class QutipPhysicalBackend;
 
 class PhysicalServiceFacade {
  public:
-  explicit PhysicalServiceFacade(IQuantumBackend* backend);
-  explicit PhysicalServiceFacade(IQuantumBackend* backend, const std::string& backend_type);
+  explicit PhysicalServiceFacade(IGraphStateBackend* backend);
+  explicit PhysicalServiceFacade(IGraphStateBackend* backend, const std::string& backend_type);
   explicit PhysicalServiceFacade(std::unique_ptr<IPhysicalBackend> backend, const std::string& backend_type = "");
 
   // All quantum mutations/noise/measurement are forwarded to backend; OMNeT side uses only classical outputs.
@@ -50,7 +50,7 @@ class PhysicalServiceFacade {
   EigenvalueResult measureZ(QubitHandle qubit);
 
   // Drop every cached backend instance. Call from the OMNeT++ Backend module
-  // when a new simulation run starts so the previous run's QutipBackend (and
+  // when a new simulation run starts so the previous run's QutipPhysicalBackend (and
   // its persistent worker) is torn down before the underlying graph_state
   // backend pointer is invalidated.
   static void clearBackendCache();
@@ -62,7 +62,7 @@ class PhysicalServiceFacade {
   std::string backend_name_;
   // Either we own the backend (legacy unique_ptr ctor / tests), or we point to
   // a process-wide cached instance that survives many facades. Caching is the
-  // critical fix that lets the QutipBackend keep its persistent Python worker
+  // critical fix that lets the QutipPhysicalBackend keep its persistent Python worker
   // alive across operations: the facade itself is constructed per call site.
   std::unique_ptr<IPhysicalBackend> owned_backend_;
   IPhysicalBackend* backend_ = nullptr;

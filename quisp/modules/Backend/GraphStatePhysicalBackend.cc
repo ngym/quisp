@@ -1,4 +1,4 @@
-#include "ErrorBasisBackend.h"
+#include "GraphStatePhysicalBackend.h"
 
 #include <algorithm>
 #include <cctype>
@@ -80,14 +80,14 @@ double extractProfileProbability(const nlohmann::json& payload, const std::initi
 }
 }  // namespace
 
-ErrorBasisBackend::ErrorBasisBackend(IQuantumBackend* backend) : backend_(backend) {}
+GraphStatePhysicalBackend::GraphStatePhysicalBackend(IGraphStateBackend* backend) : backend_(backend) {}
 
-uint32_t ErrorBasisBackend::capabilities() const {
+uint32_t GraphStatePhysicalBackend::capabilities() const {
   return static_cast<uint32_t>(BackendCapability::SupportsLegacyErrorModel);
 }
 
-OperationResult ErrorBasisBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) {
-  if (backend_ == nullptr) throw std::runtime_error("ErrorBasisBackend has no backend");
+OperationResult GraphStatePhysicalBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) {
+  if (backend_ == nullptr) throw std::runtime_error("GraphStatePhysicalBackend has no backend");
   (void)ctx;
   auto* target = resolveQubit(qubit);
   if (target == nullptr) return {false};
@@ -95,8 +95,8 @@ OperationResult ErrorBasisBackend::applyNoise(const BackendContext& ctx, QubitHa
   return {true};
 }
 
-OperationResult ErrorBasisBackend::applyGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
-  if (backend_ == nullptr) throw std::runtime_error("ErrorBasisBackend has no backend");
+OperationResult GraphStatePhysicalBackend::applyGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
+  if (backend_ == nullptr) throw std::runtime_error("GraphStatePhysicalBackend has no backend");
   (void)ctx;
   if (qubits.empty()) {
     return {false};
@@ -149,8 +149,8 @@ OperationResult ErrorBasisBackend::applyGate(const BackendContext& ctx, const st
   return {false};
 }
 
-OperationResult ErrorBasisBackend::applyNoiselessGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
-  if (backend_ == nullptr) throw std::runtime_error("ErrorBasisBackend has no backend");
+OperationResult GraphStatePhysicalBackend::applyNoiselessGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
+  if (backend_ == nullptr) throw std::runtime_error("GraphStatePhysicalBackend has no backend");
   (void)ctx;
   if (qubits.empty()) {
     return {false};
@@ -185,16 +185,16 @@ OperationResult ErrorBasisBackend::applyNoiselessGate(const BackendContext& ctx,
   return {false};
 }
 
-OperationResult ErrorBasisBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
+OperationResult GraphStatePhysicalBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
   return measureAt(ctx, qubit, basis);
 }
 
-OperationResult ErrorBasisBackend::measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
+OperationResult GraphStatePhysicalBackend::measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
   return measureNoiselessAt(ctx, qubit, basis, forced_plus);
 }
 
-OperationResult ErrorBasisBackend::generateEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) {
-  if (backend_ == nullptr) throw std::runtime_error("ErrorBasisBackend has no backend");
+OperationResult GraphStatePhysicalBackend::generateEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) {
+  if (backend_ == nullptr) throw std::runtime_error("GraphStatePhysicalBackend has no backend");
   (void)ctx;
   auto* source = resolveQubit(source_qubit);
   auto* target = resolveQubit(target_qubit);
@@ -211,7 +211,7 @@ OperationResult ErrorBasisBackend::generateEntanglement(const BackendContext& ct
   }
 }
 
-OperationResult ErrorBasisBackend::applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
+OperationResult GraphStatePhysicalBackend::applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
   if (operation.kind == "unitary") {
     const auto gate_entry = operation.payload.find("gate");
     if (!operation.targets.empty() && gate_entry != operation.payload.end() && gate_entry->is_string()) {
@@ -256,7 +256,7 @@ OperationResult ErrorBasisBackend::applyOperation(const BackendContext& ctx, con
   return failureResult("unsupported operation kind: " + operation.kind);
 }
 
-backends::IQubit* ErrorBasisBackend::resolveQubit(QubitHandle qubit) {
+backends::IQubit* GraphStatePhysicalBackend::resolveQubit(QubitHandle qubit) {
   auto id = std::make_unique<qubit_id::QubitId>(qubit.node_id, qubit.qnic_index, qubit.qnic_type, qubit.qubit_index);
   try {
     return backend_->getQubit(id.get());
@@ -265,22 +265,22 @@ backends::IQubit* ErrorBasisBackend::resolveQubit(QubitHandle qubit) {
   }
 }
 
-std::string ErrorBasisBackend::keyFor(const QubitHandle& qubit) const {
+std::string GraphStatePhysicalBackend::keyFor(const QubitHandle& qubit) const {
   return keyFromHandle(qubit);
 }
 
-ErrorBasisBackend::GraphErrorState& ErrorBasisBackend::metadataFor(const QubitHandle& qubit) {
+GraphStatePhysicalBackend::GraphErrorState& GraphStatePhysicalBackend::metadataFor(const QubitHandle& qubit) {
   return error_states_[keyFor(qubit)];
 }
 
-ErrorBasisBackend::GraphErrorState* ErrorBasisBackend::metadataPtr(const QubitHandle& qubit) const {
+GraphStatePhysicalBackend::GraphErrorState* GraphStatePhysicalBackend::metadataPtr(const QubitHandle& qubit) const {
   const auto key = keyFor(qubit);
   const auto it = error_states_.find(key);
   if (it == error_states_.end()) return nullptr;
   return const_cast<GraphErrorState*>(&it->second);
 }
 
-OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, const PhysicalOperation& operation) {
+OperationResult GraphStatePhysicalBackend::applyErrorChannel(const BackendContext& ctx, const PhysicalOperation& operation) {
   if (operation.targets.empty()) {
     return failureResult("error_channel target missing");
   }
@@ -409,7 +409,7 @@ OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, 
   return failureResult("unsupported error_channel profile: " + profile);
 }
 
-OperationResult ErrorBasisBackend::applyHomInterference(const PhysicalOperation& operation) {
+OperationResult GraphStatePhysicalBackend::applyHomInterference(const PhysicalOperation& operation) {
   if (operation.targets.size() < 2) {
     return failureResult("hom_interference requires at least two targets");
   }
@@ -456,7 +456,7 @@ OperationResult ErrorBasisBackend::applyHomInterference(const PhysicalOperation&
   return result;
 }
 
-OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, const PhysicalOperation& operation) {
+OperationResult GraphStatePhysicalBackend::applyDetection(const BackendContext& ctx, const PhysicalOperation& operation) {
   if (operation.targets.empty()) {
     return failureResult("detection requires target(s)");
   }
@@ -611,7 +611,7 @@ OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, con
   return result;
 }
 
-double ErrorBasisBackend::extractProbability(const nlohmann::json& payload, std::initializer_list<const char*> keys, double default_value) const {
+double GraphStatePhysicalBackend::extractProbability(const nlohmann::json& payload, std::initializer_list<const char*> keys, double default_value) const {
   for (const auto* key : keys) {
     auto it = payload.find(key);
     if (it == payload.end()) continue;
@@ -628,7 +628,7 @@ double ErrorBasisBackend::extractProbability(const nlohmann::json& payload, std:
   return clampProbability(default_value);
 }
 
-bool ErrorBasisBackend::eventOccurs(uint64_t seed, const std::string& key, double probability) {
+bool GraphStatePhysicalBackend::eventOccurs(uint64_t seed, const std::string& key, double probability) {
   if (probability <= 0.0) return false;
   if (probability >= 1.0) return true;
   std::mt19937_64 rng{mixSeed(seed ^ std::hash<std::string>{}(key))};
@@ -636,7 +636,7 @@ bool ErrorBasisBackend::eventOccurs(uint64_t seed, const std::string& key, doubl
   return dist(rng);
 }
 
-double ErrorBasisBackend::computeLossProbability(const nlohmann::json& payload) const {
+double GraphStatePhysicalBackend::computeLossProbability(const nlohmann::json& payload) const {
   const double legacy = clampProbability(extractProbability(payload, {"legacy_channel_loss_rate", "channel_loss_rate"}, 0.0));
   const double attenuation = clampProbability(extractProbability(payload, {"attenuation_db_per_km", "channel_attenuation_db_per_km"}, 0.0));
   const double node_overhead = clampProbability(extractProbability(payload, {"node_io_overhead_db", "channel_node_io_overhead_db"}, 0.0));
@@ -657,7 +657,7 @@ double ErrorBasisBackend::computeLossProbability(const nlohmann::json& payload) 
   return clampProbability(1.0 - transmission);
 }
 
-OperationResult ErrorBasisBackend::measureAt(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
+OperationResult GraphStatePhysicalBackend::measureAt(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
   (void)ctx;
   auto* target = resolveQubit(qubit);
   if (target == nullptr) return {false};
@@ -680,7 +680,7 @@ OperationResult ErrorBasisBackend::measureAt(const BackendContext& ctx, QubitHan
   return {true, 1.0, false, false, false, result == quisp::backends::EigenvalueResult::PLUS_ONE};
 }
 
-OperationResult ErrorBasisBackend::measureNoiselessAt(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
+OperationResult GraphStatePhysicalBackend::measureNoiselessAt(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
   (void)ctx;
   auto* target = resolveQubit(qubit);
   if (target == nullptr) return {false};

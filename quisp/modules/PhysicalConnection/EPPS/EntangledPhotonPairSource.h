@@ -22,7 +22,7 @@ class EntangledPhotonPairSource : public omnetpp::cSimpleModule {
   double emission_z_error_rate;
 
   utils::ComponentProvider provider;
-  IQuantumBackend* backend;
+  IGraphStateBackend* backend;
 
  protected:
   virtual void initialize() override;

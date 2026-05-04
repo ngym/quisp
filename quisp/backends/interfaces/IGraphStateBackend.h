@@ -16,10 +16,10 @@ class IQubit;
  * the QuantumBackend class manages its own qubits and the simulator instance.
  * It is responsible for creating qubits and managing their lifecycle.
  */
-class IQuantumBackend {
+class IGraphStateBackend {
  public:
-  IQuantumBackend(){};
-  virtual ~IQuantumBackend(){};
+  IGraphStateBackend(){};
+  virtual ~IGraphStateBackend(){};
 
   virtual IQubit* createQubit(const IQubitId* id, std::unique_ptr<IConfiguration> conf) = 0;
   virtual IQubit* createQubit(const IQubitId* id) = 0;

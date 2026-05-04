@@ -1,4 +1,4 @@
-#include "QutipBackend.h"
+#include "QutipPhysicalBackend.h"
 
 #include <algorithm>
 #include <cctype>
@@ -157,17 +157,17 @@ double extractErrorRate(const nlohmann::json& payload, const std::vector<std::st
 
 }  // namespace
 
-std::string QutipBackend::qubitKey(const QubitHandle& qubit) const {
+std::string QutipPhysicalBackend::qubitKey(const QubitHandle& qubit) const {
   return qubitHandleKey(qubit);
 }
 
-int64_t QutipBackend::nextEntanglementSetId() const {
+int64_t QutipPhysicalBackend::nextEntanglementSetId() const {
   const auto id = next_entanglement_set_id_;
   ++next_entanglement_set_id_;
   return id;
 }
 
-int64_t QutipBackend::attachEntanglementSetToTargets(const std::vector<QubitHandle>& targets, std::vector<EntanglementSetId>* merged_from) const {
+int64_t QutipPhysicalBackend::attachEntanglementSetToTargets(const std::vector<QubitHandle>& targets, std::vector<EntanglementSetId>* merged_from) const {
   if (merged_from != nullptr) merged_from->clear();
   if (targets.empty()) {
     return -1;
@@ -252,7 +252,7 @@ int64_t QutipBackend::attachEntanglementSetToTargets(const std::vector<QubitHand
   return main_entanglement_set_id;
 }
 
-void QutipBackend::detachTargetFromEntanglementSet(const QubitHandle& qubit) const {
+void QutipPhysicalBackend::detachTargetFromEntanglementSet(const QubitHandle& qubit) const {
   const auto key = qubitKey(qubit);
   const auto mapped = qubit_entanglement_set_map_.find(key);
   if (mapped == qubit_entanglement_set_map_.end()) {
@@ -660,11 +660,11 @@ omnetpp::cModule* getBackendModuleFromContext() {
   return nullptr;
 }
 
-QutipBackend::QutipBackend(std::string backend_type) : backend_type_(std::move(backend_type)) {}
+QutipPhysicalBackend::QutipPhysicalBackend(std::string backend_type) : backend_type_(std::move(backend_type)) {}
 
-QutipBackend::~QutipBackend() { shutdownWorker(); }
+QutipPhysicalBackend::~QutipPhysicalBackend() { shutdownWorker(); }
 
-int QutipBackend::workerTimeoutMs(const nlohmann::json& backend_config) const {
+int QutipPhysicalBackend::workerTimeoutMs(const nlohmann::json& backend_config) const {
   // Per-operation timeout. The worker's first response also covers Python-side
   // qutip module import (~1-2s on cold start), so callers see a longer effective
   // budget for the first request via worker_first_request_done_ below.
@@ -672,7 +672,7 @@ int QutipBackend::workerTimeoutMs(const nlohmann::json& backend_config) const {
   return std::max(100, configured);
 }
 
-bool QutipBackend::ensureWorkerStarted(const nlohmann::json& backend_config) const {
+bool QutipPhysicalBackend::ensureWorkerStarted(const nlohmann::json& backend_config) const {
   if (worker_started_) return true;
 
   const std::string script = findWorkerScript(backend_config);
@@ -747,7 +747,7 @@ bool QutipBackend::ensureWorkerStarted(const nlohmann::json& backend_config) con
   return true;
 }
 
-bool QutipBackend::sendWorkerRequest(const std::string& payload) const {
+bool QutipPhysicalBackend::sendWorkerRequest(const std::string& payload) const {
   if (!worker_started_ || worker_stdin_fd_ < 0) return false;
   std::string buffer = payload;
   if (buffer.empty() || buffer.back() != '\n') buffer.push_back('\n');
@@ -769,7 +769,7 @@ bool QutipBackend::sendWorkerRequest(const std::string& payload) const {
   return true;
 }
 
-bool QutipBackend::readWorkerResponse(int timeout_ms, std::string& line_out) const {
+bool QutipPhysicalBackend::readWorkerResponse(int timeout_ms, std::string& line_out) const {
   if (!worker_started_ || worker_stdout_fd_ < 0) return false;
 
   while (true) {
@@ -813,7 +813,7 @@ bool QutipBackend::readWorkerResponse(int timeout_ms, std::string& line_out) con
   }
 }
 
-void QutipBackend::shutdownWorker() const {
+void QutipPhysicalBackend::shutdownWorker() const {
   if (!worker_started_) return;
 
   if (worker_stdin_fd_ >= 0) {
@@ -863,18 +863,18 @@ void QutipBackend::shutdownWorker() const {
   worker_stdout_buffer_.clear();
 }
 
-uint32_t QutipBackend::capabilities() const {
+uint32_t QutipPhysicalBackend::capabilities() const {
   return static_cast<uint32_t>(BackendCapability::SupportsLegacyErrorModel) | static_cast<uint32_t>(BackendCapability::SupportsDenseOperator) |
          static_cast<uint32_t>(BackendCapability::SupportsAdvancedOperation);
 }
 
-OperationResult QutipBackend::unsupported(const std::string& reason) const {
+OperationResult QutipPhysicalBackend::unsupported(const std::string& reason) const {
   OperationResult result;
   result.message = reason;
   return result;
 }
 
-bool QutipBackend::checkQutipRuntimeAvailable() const {
+bool QutipPhysicalBackend::checkQutipRuntimeAvailable() const {
   if (qutip_runtime_checked_) {
     return qutip_runtime_available_;
   }
@@ -896,7 +896,7 @@ bool QutipBackend::checkQutipRuntimeAvailable() const {
   return false;
 }
 
-nlohmann::json QutipBackend::collectBackendParameters() const {
+nlohmann::json QutipPhysicalBackend::collectBackendParameters() const {
   nlohmann::json params = {
       {"backend_name", normalizeBackendTypeLabel(backend_type_)},
       {"python_executable", pythonExecutable()},
@@ -925,12 +925,12 @@ nlohmann::json QutipBackend::collectBackendParameters() const {
   return params;
 }
 
-bool QutipBackend::isAdvancedOperation(const std::string& kind) const {
+bool QutipPhysicalBackend::isAdvancedOperation(const std::string& kind) const {
   const auto normalized = normalizeAdvancedKind(kind);
   return kSupportedAdvancedKinds.count(normalized) > 0;
 }
 
-OperationResult QutipBackend::runUnitary(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits, const std::string& context) const {
+OperationResult QutipPhysicalBackend::runUnitary(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits, const std::string& context) const {
   if (gate.empty()) {
     return unsupported("qutip backend unitary request missing gate");
   }
@@ -954,7 +954,7 @@ OperationResult QutipBackend::runUnitary(const BackendContext& ctx, const std::s
   return executeQutipWorker(ctx, operation);
 }
 
-OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool is_noiseless) const {
+OperationResult QutipPhysicalBackend::runMeasurement(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool is_noiseless) const {
   if (!validateQubitHandle(qubit)) {
     return unsupported("qutip backend measurement request received invalid qubit handle");
   }
@@ -983,7 +983,7 @@ OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHan
   return result;
 }
 
-OperationResult QutipBackend::runNoise(const BackendContext& ctx, QubitHandle qubit, const std::string& noise_kind, const nlohmann::json& noise_payload,
+OperationResult QutipPhysicalBackend::runNoise(const BackendContext& ctx, QubitHandle qubit, const std::string& noise_kind, const nlohmann::json& noise_payload,
                                       const std::vector<double>& params) const {
   if (!validateQubitHandle(qubit)) {
     return unsupported("qutip backend noise operation received invalid qubit handle");
@@ -1005,7 +1005,7 @@ OperationResult QutipBackend::runNoise(const BackendContext& ctx, QubitHandle qu
   return executeQutipWorker(ctx, operation);
 }
 
-OperationResult QutipBackend::applyErrorChannel(const BackendContext& ctx, const std::vector<QubitHandle>& qubits, const nlohmann::json& payload) const {
+OperationResult QutipPhysicalBackend::applyErrorChannel(const BackendContext& ctx, const std::vector<QubitHandle>& qubits, const nlohmann::json& payload) const {
   if (qubits.empty()) {
     return unsupported("qutip backend error_channel operation missing target(s)");
   }
@@ -1026,7 +1026,7 @@ OperationResult QutipBackend::applyErrorChannel(const BackendContext& ctx, const
   return executeQutipWorker(ctx, operation);
 }
 
-OperationResult QutipBackend::runEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) const {
+OperationResult QutipPhysicalBackend::runEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) const {
   if (!validateQubitHandle(source_qubit) || !validateQubitHandle(target_qubit)) {
     return unsupported("qutip backend entanglement request received invalid qubit handle");
   }
@@ -1037,7 +1037,7 @@ OperationResult QutipBackend::runEntanglement(const BackendContext& ctx, QubitHa
   return runUnitary(ctx, "CNOT", {source_qubit, target_qubit}, "entanglement");
 }
 
-OperationResult QutipBackend::executeQutipWorker(const BackendContext& ctx, const PhysicalOperation& operation) const {
+OperationResult QutipPhysicalBackend::executeQutipWorker(const BackendContext& ctx, const PhysicalOperation& operation) const {
   if (!checkQutipRuntimeAvailable()) {
     return unsupported(qutip_runtime_check_error_);
   }
@@ -1107,23 +1107,23 @@ OperationResult QutipBackend::executeQutipWorker(const BackendContext& ctx, cons
   return result;
 }
 
-OperationResult QutipBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) {
+OperationResult QutipPhysicalBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) {
   return runNoise(ctx, qubit, "dephasing", {});
 }
 
-OperationResult QutipBackend::applyGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
+OperationResult QutipPhysicalBackend::applyGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
   return runUnitary(ctx, gate, qubits, "");
 }
 
-OperationResult QutipBackend::applyNoiselessGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
+OperationResult QutipPhysicalBackend::applyNoiselessGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
   return runUnitary(ctx, gate, qubits, "noiseless");
 }
 
-OperationResult QutipBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
+OperationResult QutipPhysicalBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
   return runMeasurement(ctx, qubit, basis, false);
 }
 
-OperationResult QutipBackend::measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
+OperationResult QutipPhysicalBackend::measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
   auto result = runMeasurement(ctx, qubit, basis, true);
   if (forced_plus && result.success) {
     result.measured_plus = true;
@@ -1131,11 +1131,11 @@ OperationResult QutipBackend::measureNoiseless(const BackendContext& ctx, QubitH
   return result;
 }
 
-OperationResult QutipBackend::generateEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) {
+OperationResult QutipPhysicalBackend::generateEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) {
   return runEntanglement(ctx, source_qubit, target_qubit);
 }
 
-void QutipBackend::releaseQubit(const BackendContext& ctx, QubitHandle qubit) {
+void QutipPhysicalBackend::releaseQubit(const BackendContext& ctx, QubitHandle qubit) {
   // Look up the qubit's current entanglement set on the C++ side. If it isn't
   // tracked, there is nothing the worker is holding for it either.
   const auto key = qubitKey(qubit);
@@ -1163,7 +1163,7 @@ void QutipBackend::releaseQubit(const BackendContext& ctx, QubitHandle qubit) {
   detachTargetFromEntanglementSet(qubit);
 }
 
-OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
+OperationResult QutipPhysicalBackend::applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
   if (operation.kind.empty()) {
     return unsupported("qutip backend operation.kind is empty [category=invalid_payload]");
   }

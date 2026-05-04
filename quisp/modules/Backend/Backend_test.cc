@@ -1,7 +1,7 @@
 #include "Backend.h"
 #include <gtest/gtest.h>
 #include <test_utils/TestUtils.h>
-#include "backends/interfaces/IQuantumBackend.h"
+#include "backends/interfaces/IGraphStateBackend.h"
 #include "modules/common_types.h"
 
 namespace {

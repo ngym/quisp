@@ -4,7 +4,7 @@
 #include <memory>
 #include <unordered_map>
 #include "../interfaces/IConfiguration.h"
-#include "../interfaces/IQuantumBackend.h"
+#include "../interfaces/IGraphStateBackend.h"
 #include "../interfaces/IQubit.h"
 #include "../interfaces/IRandomNumberGenerator.h"
 #include "Qubit.h"
@@ -13,14 +13,14 @@
 
 namespace quisp::backends::graph_state {
 using abstract::IConfiguration;
-using abstract::IQuantumBackend;
+using abstract::IGraphStateBackend;
 using abstract::IQubit;
 using abstract::IQubitId;
 using abstract::IRandomNumberGenerator;
 using graph_state::GraphStateQubit;
 using omnetpp::SimTime;
 
-class GraphStateBackend : public IQuantumBackend {
+class GraphStateBackend : public IGraphStateBackend {
  public:
   class ICallback {
    public:

@@ -635,12 +635,35 @@
       .kpis { grid-template-columns: 1fr; }
       .summary-grid { grid-template-columns: 1fr; }
     }
+    /* Two-view shell: list (no run selected) vs run-detail (a run is open). */
+    body[data-view="list"] .run-only,
+    body[data-view="run"] .list-only { display: none !important; }
+    body[data-view="run"] .layout > main.panel { grid-column: 1 / -1; }
+    body[data-view="run"] .layout { grid-template-columns: minmax(0, 1fr); }
+    .topbar-nav { display: flex; align-items: center; gap: 8px; }
+    .back-to-list-btn {
+      display: none;
+      background: rgba(82, 214, 255, 0.14);
+      border: 1px solid rgba(82, 214, 255, 0.4);
+      color: #9bdfff;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    body[data-view="run"] .back-to-list-btn { display: inline-flex; }
+    body[data-view="run"] .topbar-tagline { display: none; }
+    body[data-view="list"] .topbar-tagline { color: #9fb3db; font-size: 11px; }
   </style>
 </head>
-<body>
+<body data-view="list">
   <div class="shell">
     <div class="topbar panel">
-      <h1>QuISP Dashboard <span class="pill" id="envBadge" hidden></span></h1>
+      <div class="topbar-nav">
+        <button id="backToListBtn" class="back-to-list-btn" title="一覧に戻る">← 一覧へ</button>
+        <h1>QuISP Dashboard <span class="pill" id="envBadge" hidden></span></h1>
+        <span class="topbar-tagline">Plan · Setup · Launch · Observe · Analyse</span>
+      </div>
       <div class="row">
         <label class="row" style="gap:6px; align-items:center;">
           Run:
@@ -659,12 +682,12 @@
       </div>
     </div>
 
-    <div id="runAlert" class="panel failure-banner" data-level="bad" hidden>
+    <div id="runAlert" class="panel failure-banner run-only" data-level="bad" hidden>
       <div id="runAlertTitle" class="alert-title">FAILED RUN</div>
       <div id="runAlertBody" class="alert-text"></div>
     </div>
 
-    <div class="kpis panel">
+    <div class="kpis panel run-only">
       <div class="kpi" id="metricStatusCard" data-level="idle">
         <div class="label" id="metricStatusLabel">状態</div>
         <div class="value" id="metricStatus">IDLE</div>
@@ -699,10 +722,11 @@
 
     <div class="layout">
       <aside class="panel">
-        <div class="section-title">
+        <div class="section-title list-only">
           <span>シミュレーション起動</span>
           <button id="refreshTemplates" class="btn small">テンプレ更新</button>
         </div>
+        <div class="list-only">
         <div class="controls">
           <label>
             Experiment Profile
@@ -779,7 +803,9 @@
           <div id="selectedRunDetail" class="help">選択中 run の起動状態と末尾ログを表示します。</div>
           <pre id="selectedRunLog" class="log-snippet">-</pre>
         </div>
+        </div><!-- /.list-only sidebar -->
 
+        <div class="run-only">
         <div class="section-title"><span>コントロール</span></div>
         <div class="controls">
           <label>
@@ -815,9 +841,10 @@
             <span class="info-icon" tabindex="0" role="img" aria-label="ヘルプ" title="フォーカス/ホップ/正規表現を設定すると表示サブネットが切り替わります。10000ノード以上でも描画可否を保つため、画面外は自動でスキップされます。">?</span>
           </div>
         </div>
+        </div><!-- /.run-only canvas controls -->
       </aside>
 
-      <main class="panel split">
+      <main class="panel split run-only">
         <div class="modebar">
           <button id="monitorModeBtn" class="mode-tab" data-active="true">Monitor</button>
           <button id="replayModeBtn" class="mode-tab" data-active="false">Replay</button>
@@ -946,7 +973,7 @@
     </div>
 
     <div class="grid2">
-      <section class="panel">
+      <section class="panel run-only">
         <div class="section-title">
           <span>Experiment Results</span>
           <button id="refreshExperimentSummary" class="btn small">結果更新</button>
@@ -5602,6 +5629,7 @@
       if (Array.from(ui.runSelect.options).some((option) => option.value === runId)) {
         ui.runSelect.value = runId;
       }
+      setShellView('run', runId);
       state.runId = runId;
       state.simRunId = (findSimRun(runId) || {}).run_id || null;
       state.replayTimelinePoints = [];
@@ -5864,6 +5892,23 @@
     }
 
     function attachControls() {
+      const backBtn = document.getElementById('backToListBtn');
+      if (backBtn) {
+        backBtn.addEventListener('click', () => {
+          logUiAction('ui.back_to_list_click', { previous_run: state.runId });
+          setShellView('list', null);
+        });
+      }
+      window.addEventListener('hashchange', () => {
+        const next = readShellViewFromHash();
+        if (next.view === 'run' && next.runId && next.runId !== state.runId) {
+          // Browser navigation re-opening a run.
+          selectRunForView(next.runId).catch(() => {});
+        } else if (next.view === 'list') {
+          setShellView('list', null);
+        }
+      });
+
       ui.refreshTemplates.addEventListener('click', async () => {
         logUiAction('ui.refresh_templates_click');
         flashButton(ui.refreshTemplates, 'info');
@@ -6496,6 +6541,32 @@
       }
     }
 
+    // Shell view = 'list' (Plan/Setup) or 'run' (Observe/Analyse one run).
+    // The data-view attribute on <body> drives CSS that hides .list-only or
+    // .run-only sections. URL hash provides deep-link / browser-back support.
+    function setShellView(view, runId) {
+      const target = view === 'run' && runId ? 'run' : 'list';
+      document.body.dataset.view = target;
+      const desiredHash = target === 'run' ? `#/run/${encodeURIComponent(runId)}` : '';
+      if (location.hash !== desiredHash) {
+        if (target === 'run') {
+          history.replaceState(null, '', desiredHash);
+        } else {
+          history.replaceState(null, '', location.pathname + location.search);
+        }
+      }
+      logUiAction('ui.shell_view', { view: target, run_id: runId || null });
+    }
+
+    function readShellViewFromHash() {
+      const match = (location.hash || '').match(/^#\/run\/([^?#]+)/);
+      if (match) {
+        try { return { view: 'run', runId: decodeURIComponent(match[1]) }; }
+        catch (_e) { return { view: 'list', runId: null }; }
+      }
+      return { view: 'list', runId: null };
+    }
+
     function attachVisibilityHandler() {
       if (typeof document === 'undefined' || !document.addEventListener) return;
       document.addEventListener('visibilitychange', () => {
@@ -6531,10 +6602,29 @@
         profileId: ui.experimentProfile.value || null,
       });
       renderExperimentCompareQueue();
-      if (state.runs.length > 0) {
-        state.runId = ui.runSelect.value;
-        await selectRunForView(state.runId);
+      const initialNav = readShellViewFromHash();
+      if (initialNav.view === 'run' && initialNav.runId) {
+        // Deep-link from URL hash: open the requested run if it exists.
+        const targetRun = state.runs.find((r) => r.run_id === initialNav.runId);
+        if (targetRun) {
+          await selectRunForView(initialNav.runId);
+        } else {
+          // Stale hash — fall back to list and clear it.
+          setShellView('list', null);
+          renderSelectedRunDiagnostic();
+          clearExperimentSummary();
+          renderActivitySummary(null);
+        }
+      } else if (state.runs.length > 0) {
+        // Default landing is the list view (Plan/Setup), not auto-opening
+        // a run. Researchers usually start from Setup/Sweep, not from a
+        // random previous run's detail page.
+        setShellView('list', null);
+        renderSelectedRunDiagnostic();
+        clearExperimentSummary();
+        renderActivitySummary(null);
       } else {
+        setShellView('list', null);
         renderSelectedRunDiagnostic();
         clearExperimentSummary();
         renderActivitySummary(null);

@@ -34,7 +34,8 @@ format:
 	clang-format -i $(SRCS) $(HEADERS)
 
 format-ci:
-	clang-format $(SRCS) $(HEADERS) -output-replacements-xml | grep -c "<replacement " -q ; if [ $$? -ne 1 ]; then echo "error: run make format and then push it again"; exit 1; fi
+	clang-format --version
+	clang-format $(SRCS) $(HEADERS) -output-replacements-xml | grep -c "<replacement " -q ; if [ $$? -ne 1 ]; then echo "error: run make format and then push it again"; clang-format -i $(SRCS) $(HEADERS); git --no-pager diff | head -500; exit 1; fi
 
 tidy:
 	clang-tidy -header-filter="./quisp/(.|utils|rules|runtime|modules|test_utils)/.*.h" $(SRCS) -- $(COPTS) $(CXXFLAGS) $(TEST_INCLUDE)

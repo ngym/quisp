@@ -307,7 +307,7 @@ void StationaryQubit::gateCNOT(IStationaryQubit *target_qubit) {
   auto source_handle = makeHandle(*this);
   auto target_handle = makeHandle(*target);
   auto result = service.applyGate("CNOT", {source_handle, target_handle});
-  if (!result.success) throw cRuntimeError("StationaryQubit::gateCNOT failed");
+  if (!result.success) throw cRuntimeError("StationaryQubit::gateCNOT failed: %s", result.message.c_str());
 }
 
 // This is invoked whenever a photon is emitted out from this particular qubit.
@@ -323,6 +323,14 @@ void StationaryQubit::setBusy() {
 // This is called at the beginning of the simulation (in initialization() above), and whenever it is reinitialized via the RealTimeController.
 void StationaryQubit::setFree(bool consumed) {
   qubit_ref->setFree();
+  // Tell the physical backend that this slot is being recycled. For the qutip
+  // backend this partial-traces the qubit out of the persistent density matrix
+  // so the next H+CNOT on this slot does not pile a new photon on top of the
+  // residual state from the previous (often failed) Bell-pair attempt.
+  if (backend != nullptr) {
+    PhysicalServiceFacade service{backend};
+    service.releaseQubit(makeHandle(*this));
+  }
   is_busy = false;
   locked = false;
   locked_ruleset_id = -1;

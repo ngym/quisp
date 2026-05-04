@@ -29,6 +29,7 @@ class QutipBackend : public IPhysicalBackend {
   OperationResult measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) override;
   OperationResult generateEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) override;
   OperationResult applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) override;
+  void releaseQubit(const BackendContext& ctx, QubitHandle qubit) override;
 
  private:
   using EntanglementSetId = int64_t;

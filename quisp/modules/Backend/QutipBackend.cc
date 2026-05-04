@@ -1154,6 +1154,35 @@ OperationResult QutipBackend::generateEntanglement(const BackendContext& ctx, Qu
   return runEntanglement(ctx, source_qubit, target_qubit);
 }
 
+void QutipBackend::releaseQubit(const BackendContext& ctx, QubitHandle qubit) {
+  if (backend_ == nullptr) return;
+  // Look up the qubit's current entanglement set on the C++ side. If it isn't
+  // tracked, there is nothing the worker is holding for it either.
+  const auto key = qubitKey(qubit);
+  const auto mapped = qubit_entanglement_set_map_.find(key);
+  if (mapped == qubit_entanglement_set_map_.end()) {
+    return;
+  }
+  const auto entanglement_set_id = mapped->second;
+
+  // Send a noop op tagged with release_qubit_keys so the worker partial-traces
+  // this qubit out of the persistent density matrix. Without this, recycling
+  // the stationary qubit slot for a fresh Bell-pair attempt would silently
+  // tensor a new photon into the *previous* attempt's residual state.
+  PhysicalOperation release_operation;
+  release_operation.kind = "noop";
+  release_operation.targets = {};  // intentionally empty — qubit is referenced via release_qubit_keys
+  release_operation.entanglement_set_id = entanglement_set_id;
+  release_operation.entanglement_set_event = "release";
+  release_operation.payload = {
+      {"kind", "noop"},
+      {"release_qubit_keys", nlohmann::json::array({qubitHandleToJson(qubit)})},
+  };
+  (void)executeQutipWorker(ctx, release_operation);
+
+  detachTargetFromEntanglementSet(qubit);
+}
+
 OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
   if (backend_ == nullptr) {
     throw std::runtime_error("QutipBackend has no backend");

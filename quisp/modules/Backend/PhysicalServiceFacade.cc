@@ -216,6 +216,11 @@ OperationResult PhysicalServiceFacade::generateEntanglement(QubitHandle source_q
   return backend_->generateEntanglement(makeContext(), source_qubit, target_qubit);
 }
 
+void PhysicalServiceFacade::releaseQubit(QubitHandle qubit) {
+  if (!backend_) return;
+  backend_->releaseQubit(makeContext(), qubit);
+}
+
 OperationResult PhysicalServiceFacade::applyOperation(const PhysicalOperation& operation) {
   if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
   return backend_->applyOperation(makeContext(), operation);
@@ -229,7 +234,7 @@ uint32_t PhysicalServiceFacade::capabilities() const {
 EigenvalueResult PhysicalServiceFacade::measureX(QubitHandle qubit) {
   auto result = measure(qubit, MeasureBasis::X);
   if (!result.success) {
-    throw omnetpp::cRuntimeError("PhysicalServiceFacade::measureX: measurement failed");
+    throw omnetpp::cRuntimeError("PhysicalServiceFacade::measureX: measurement failed: %s", result.message.c_str());
   }
   return result.measured_plus ? EigenvalueResult::PLUS_ONE : EigenvalueResult::MINUS_ONE;
 }
@@ -237,7 +242,7 @@ EigenvalueResult PhysicalServiceFacade::measureX(QubitHandle qubit) {
 EigenvalueResult PhysicalServiceFacade::measureY(QubitHandle qubit) {
   auto result = measure(qubit, MeasureBasis::Y);
   if (!result.success) {
-    throw omnetpp::cRuntimeError("PhysicalServiceFacade::measureY: measurement failed");
+    throw omnetpp::cRuntimeError("PhysicalServiceFacade::measureY: measurement failed: %s", result.message.c_str());
   }
   return result.measured_plus ? EigenvalueResult::PLUS_ONE : EigenvalueResult::MINUS_ONE;
 }
@@ -245,7 +250,7 @@ EigenvalueResult PhysicalServiceFacade::measureY(QubitHandle qubit) {
 EigenvalueResult PhysicalServiceFacade::measureZ(QubitHandle qubit) {
   auto result = measure(qubit, MeasureBasis::Z);
   if (!result.success) {
-    throw omnetpp::cRuntimeError("PhysicalServiceFacade::measureZ: measurement failed");
+    throw omnetpp::cRuntimeError("PhysicalServiceFacade::measureZ: measurement failed: %s", result.message.c_str());
   }
   return result.measured_plus ? EigenvalueResult::PLUS_ONE : EigenvalueResult::MINUS_ONE;
 }

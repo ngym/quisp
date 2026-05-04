@@ -36,6 +36,11 @@ class PhysicalServiceFacade {
   OperationResult measure(QubitHandle qubit, MeasureBasis basis);
   OperationResult measureNoiseless(QubitHandle qubit, MeasureBasis basis, bool forced_plus);
   OperationResult generateEntanglement(QubitHandle source_qubit, QubitHandle target_qubit);
+  // Reset bookkeeping for a stationary qubit slot that QuISP is recycling
+  // (e.g. after a failed BSA attempt or after ES has consumed the pair).
+  // Forwarded to the underlying backend; only the qutip backend needs to do
+  // anything beyond the C++-side OMNeT bookkeeping the caller already did.
+  void releaseQubit(QubitHandle qubit);
 
   uint32_t capabilities() const;
   const std::string& backendName() const { return backend_name_; }

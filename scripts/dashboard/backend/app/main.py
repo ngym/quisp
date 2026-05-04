@@ -10,7 +10,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import time
 import uuid
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -409,6 +409,105 @@ def create_app(
             return snapshot.model_dump()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
+
+    @router.websocket("/runs/{run_id}/activity/stream")
+    async def activity_stream_ws(websocket: WebSocket, run_id: str):
+        # Phase 3-B WebSocket push for the Overview tab. Saves the
+        # client from polling /runs/{id}/activity every second; the
+        # server still polls the JSON log internally but only emits
+        # over the wire when the snapshot signature changes.
+        await websocket.accept()
+        store: RunStore = app.state.store
+        store.metrics.websocket_clients += 1
+        activity_aggregator: ActivityAggregator = app.state.activity_aggregator
+        last_signature: Optional[str] = None
+
+        async def fetch_run_meta() -> tuple[Optional[str], Optional[str]]:
+            try:
+                record = await simulation_runner.get_run(run_id)
+                run_status = record.status.value if hasattr(record.status, "value") else str(record.status)
+                return run_status, record.status_message
+            except KeyError:
+                return None, None
+
+        def merge_params(initial: dict, override: dict) -> dict:
+            merged = dict(initial or {})
+            merged.update(override or {})
+            return merged
+
+        params: Dict[str, Any] = {
+            "anchor_cursor": None,
+            "window_s": 1.0,
+            "lookback_s": 15.0,
+            "classes": None,
+            "focus": None,
+            "hops": 0,
+            "max_nodes": 3000,
+            "node_regex": None,
+        }
+        try:
+            try:
+                first_msg = await asyncio.wait_for(websocket.receive_json(), timeout=2.0)
+                params = merge_params(params, first_msg)
+            except asyncio.TimeoutError:
+                pass
+            except json.JSONDecodeError:
+                pass
+
+            while True:
+                run_status, status_message = await fetch_run_meta()
+                try:
+                    snapshot = await activity_aggregator.build_snapshot(
+                        run_id,
+                        anchor_cursor=params.get("anchor_cursor"),
+                        window_s=float(params.get("window_s", 1.0)),
+                        lookback_s=float(params.get("lookback_s", 15.0)),
+                        classes=flatten_event_types(params.get("classes")),
+                        focus=params.get("focus"),
+                        hops=int(params.get("hops", 0)),
+                        max_nodes=int(params.get("max_nodes", 3000)),
+                        node_regex=params.get("node_regex"),
+                        run_status=run_status,
+                        status_message=status_message,
+                    )
+                except KeyError:
+                    await websocket.close(code=4404)
+                    return
+                payload = snapshot.model_dump()
+                # Cheap signature: only push when something downstream
+                # would actually need to re-render.
+                totals = payload.get("global_totals") or {}
+                signature = "|".join(
+                    str(x) for x in [
+                        payload.get("anchor_cursor"),
+                        payload.get("live_edge_cursor"),
+                        payload.get("anchor_sim_time"),
+                        totals.get("total_count"),
+                        totals.get("active_node_count"),
+                        totals.get("active_edge_count"),
+                        len(payload.get("bins") or []),
+                    ]
+                )
+                if signature != last_signature:
+                    await websocket.send_json({"type": "activity", "payload": payload})
+                    last_signature = signature
+
+                # Try to read a parameter update from the client; otherwise
+                # tick on a 1s cadence (slower if the run is finished).
+                try:
+                    msg = await asyncio.wait_for(websocket.receive_json(), timeout=1.0 if run_status not in ("finished", "failed", "terminated") else 5.0)
+                    params = merge_params(params, msg)
+                except asyncio.TimeoutError:
+                    continue
+        except WebSocketDisconnect:
+            return
+        except Exception:  # noqa: BLE001
+            try:
+                await websocket.close(code=1011)
+            except RuntimeError:
+                pass
+        finally:
+            store.metrics.websocket_clients = max(0, store.metrics.websocket_clients - 1)
 
     @router.get("/runs/{run_id}/activity/summary")
     async def get_activity_summary(

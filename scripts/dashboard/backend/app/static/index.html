@@ -1283,6 +1283,9 @@
       activityPollTimer: null,
       lastActivitySignature: null,
       compareHiddenMetrics: new Set(),
+      activityWs: null,
+      activityWsRunId: null,
+      activityWsBackoffMs: 1000,
       monitorRateLastAtMs: null,
       monitorRateLastSimTime: null,
       replayRateLastAtMs: null,
@@ -3132,6 +3135,14 @@
       setSlot(ui.speedWrap, isReplay);
       setSlot(ui.goLiveBtn, !isResults);
       ui.eventList.dataset.mode = state.mode;
+      // WS push is wired only for the Overview tab; everything else
+      // either doesn't need live updates (Configuration) or has its
+      // own stream (Replay uses /stream events).
+      if (isMonitor && state.runId) {
+        connectActivityStream();
+      } else {
+        disconnectActivityStream('mode-change');
+      }
     }
 
     function renderActivitySummary(summary) {
@@ -3310,6 +3321,121 @@
       return payload;
     }
 
+    function applyActivityPayload(payload, source) {
+      const signature = activitySnapshotSignature(payload);
+      const unchanged = payload != null && signature && signature === state.lastActivitySignature;
+      state.activitySnapshot = payload || null;
+      if (payload) {
+        state.lastEventBatchAtMs = performance.now();
+        state.lastEventSource = source || 'activity';
+        state.lastEventBatchSize = Array.isArray(payload.bins)
+          ? payload.bins.reduce((acc, bin) => acc + Math.max(0, Math.round(Number(bin.events_per_s || 0) * Number(payload.window_s || 0))), 0)
+          : 0;
+        observeMonitorSimRate(payload);
+        if (payload.anchor_cursor != null) {
+          state.cursor = Number(payload.anchor_cursor);
+        }
+        if (payload.live_edge_cursor != null) {
+          state.maxSeenCursor = Math.max(state.maxSeenCursor, Number(payload.live_edge_cursor), Number(payload.anchor_cursor || 0));
+          ui.timeline.max = String(state.maxSeenCursor);
+        }
+        if (payload.anchor_sim_time != null) {
+          state.lastEventSimTime = Number(payload.anchor_sim_time);
+        }
+        state.lastEventTs = new Date().toISOString();
+        state.lastActivitySignature = signature || state.lastActivitySignature;
+      }
+      if (unchanged) {
+        updateKpis();
+        return;
+      }
+      syncCursorUi();
+      renderMonitorKeyMoments();
+      updateKpis();
+      requestRender();
+    }
+
+    function activityStreamRequestPayload() {
+      return {
+        window_s: state.monitorWindowS,
+        lookback_s: state.monitorLookbackS,
+        max_nodes: Number(ui.maxNodes && ui.maxNodes.value) || state.maxNodes,
+        hops: Number(ui.hopDepth && ui.hopDepth.value) || 0,
+        focus: (ui.focusNode && ui.focusNode.value.trim()) || null,
+        node_regex: (ui.nodeRegex && ui.nodeRegex.value.trim()) || null,
+        classes: monitorClassFilterParam(state.monitorClasses),
+        anchor_cursor: state.followLiveEdge ? null : state.cursor,
+      };
+    }
+
+    function disconnectActivityStream(reason) {
+      if (!state.activityWs) {
+        state.activityWsRunId = null;
+        return;
+      }
+      try {
+        state.activityWs.onclose = null;
+        state.activityWs.onerror = null;
+        state.activityWs.close();
+      } catch (_e) { /* ignore */ }
+      logUiAction('ui.activity_ws_close', { reason: reason || 'manual', run_id: state.activityWsRunId });
+      state.activityWs = null;
+      state.activityWsRunId = null;
+    }
+
+    function connectActivityStream() {
+      if (!state.runId) return;
+      if (state.activityWs && state.activityWsRunId === state.runId) {
+        // Re-send params on the existing connection so server picks up
+        // window/lookback/class changes without a reconnect.
+        try { state.activityWs.send(JSON.stringify(activityStreamRequestPayload())); }
+        catch (_e) { /* will reconnect via onerror */ }
+        return;
+      }
+      disconnectActivityStream('reconnect');
+      const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+      const url = `${protocol}://${location.host}${API_PREFIX}/runs/${encodeURIComponent(state.runId)}/activity/stream`;
+      let ws;
+      try { ws = new WebSocket(url); } catch (_e) { return; }
+      state.activityWs = ws;
+      state.activityWsRunId = state.runId;
+      ws.onopen = () => {
+        state.activityWsBackoffMs = 1000;
+        logUiAction('ui.activity_ws_open', { run_id: state.runId });
+        try { ws.send(JSON.stringify(activityStreamRequestPayload())); } catch (_e) { /* ignore */ }
+        // While the WS is alive we don't need the HTTP poll.
+        stopActivityPolling();
+      };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data && data.type === 'activity') {
+            applyActivityPayload(data.payload, 'ws');
+          }
+        } catch (_e) { /* ignore */ }
+      };
+      ws.onerror = () => {
+        logUiAction('ui.activity_ws_error', { run_id: state.runId });
+      };
+      ws.onclose = (event) => {
+        if (state.activityWs !== ws) return;
+        state.activityWs = null;
+        state.activityWsRunId = null;
+        logUiAction('ui.activity_ws_close', { reason: 'closed', code: event && event.code });
+        // Fall back to HTTP polling so the user keeps getting updates
+        // even if the WS endpoint goes away. Reconnect attempt with
+        // exponential backoff.
+        if (state.mode === 'overview' && state.runId) {
+          scheduleActivityPolling(true);
+          const delay = Math.min(state.activityWsBackoffMs, 30000);
+          state.activityWsBackoffMs = Math.min(state.activityWsBackoffMs * 2, 30000);
+          setTimeout(() => {
+            if (state.mode === 'overview' && state.runId) connectActivityStream();
+          }, delay);
+        }
+      };
+    }
+
     function activitySnapshotSignature(payload) {
       if (!payload) return null;
       const totals = payload.global_totals || {};
@@ -3332,6 +3458,11 @@
     function scheduleActivityPolling(immediate = false) {
       stopActivityPolling();
       if (state.mode !== 'overview' || !state.runId) {
+        return;
+      }
+      // WebSocket push is preferred when available; only fall back to
+      // HTTP polling once it disconnects.
+      if (state.activityWs && state.activityWsRunId === state.runId) {
         return;
       }
       const tick = async () => {
@@ -7040,6 +7171,9 @@
     function setShellView(view, runId) {
       const target = view === 'run' && runId ? 'run' : 'list';
       document.body.dataset.view = target;
+      if (target === 'list') {
+        disconnectActivityStream('view-list');
+      }
       const desiredHash = target === 'run' ? `#/run/${encodeURIComponent(runId)}` : '';
       if (location.hash !== desiredHash) {
         if (target === 'run') {

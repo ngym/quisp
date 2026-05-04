@@ -4401,8 +4401,20 @@
         ui.metricFreshness.textContent = '--';
       }
       const e2eHop = e2eRate && e2eRate.hop != null ? Number(e2eRate.hop) : null;
+      const e2eSource = e2eRate && e2eRate.source ? String(e2eRate.source) : null;
       if (e2eRate && e2eRate.value != null && e2eHop != null && e2eHop > 1) {
-        ui.metricFreshnessSub.textContent = `E2E (${e2eHop} hops): ${Number(e2eRate.value).toFixed(3)} /s`;
+        // Authoritative E2E (from RuleEngine swap-completion events) is
+        // the only one we can show without a caveat. Anything else is
+        // tagged so the researcher knows it's derived.
+        const sourceTag = e2eSource === 'swap_event'
+          ? ''
+          : e2eSource === 'link_quality_sample'
+            ? ' (from link tomography)'
+            : ' (heuristic by address distance)';
+        const completedNote = e2eRate.completed_count
+          ? ` · ${e2eRate.completed_count} pairs`
+          : '';
+        ui.metricFreshnessSub.textContent = `E2E (${e2eHop} hops): ${Number(e2eRate.value).toFixed(3)} /s${completedNote}${sourceTag}`;
       } else if (totalRate != null) {
         ui.metricFreshnessSub.textContent = `全link合計 ${Number(totalRate).toFixed(3)} /s · E2E未計測 (single-hop or no swap)`;
       } else if (linkRateMean != null) {

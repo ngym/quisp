@@ -5,11 +5,13 @@
 #include "RuleProtocolExecutionContext.h"
 
 #include <iterator>
+#include <sstream>
 
 #include "RuleEngine.h"
 
 #include <nlohmann/json.hpp>
 
+#include "modules/Logger/ILogger.h"
 #include "modules/QNIC.h"
 #include "rules/RuleSet.h"
 
@@ -135,6 +137,38 @@ void RuleProtocolExecutionContext::handleSwappingResult(messages::SwappingResult
   auto new_partner_addr = result->getNewPartner();
   std::vector<int> message_content = {sequence_number, correction_frame, new_partner_addr};
   engine_.runtimes.assignMessageToRuleSet(ruleset_id, shared_rule_tag, message_content);
+
+  // End-to-end completion log: when the post-swap partner matches one of the
+  // RuleSet's intended E2E partners, this swap was the FINAL step in the
+  // cascade — i.e. an Alice↔Bob entangled pair just became usable at this
+  // end node. Intermediate swaps (where new_partner is some hop in the middle
+  // of the chain) do not appear in `runtime->partners`, so they are filtered
+  // out here. Each E2E pair fires this event twice (once per end node); the
+  // dashboard aggregator dedupes by (sorted endpoints, ruleset_id, seq).
+  auto *runtime = engine_.runtimes.findById(ruleset_id);
+  if (runtime != nullptr) {
+    bool is_e2e_target = false;
+    for (const auto &partner : runtime->partners) {
+      if (partner.val == new_partner_addr) {
+        is_e2e_target = true;
+        break;
+      }
+    }
+    if (is_e2e_target) {
+      auto *event_logger = engine_.getLogger();
+      if (event_logger != nullptr) {
+        std::ostringstream payload;
+        payload << "{"
+                << "\"self_addr\": " << engine_.parentAddress
+                << ", \"partner_addr\": " << new_partner_addr
+                << ", \"ruleset_id\": " << ruleset_id
+                << ", \"shared_rule_tag\": " << shared_rule_tag
+                << ", \"sequence_number\": " << sequence_number
+                << "}";
+        event_logger->logEvent("bellpair_e2e_completed", payload.str());
+      }
+    }
+  }
 }
 
 void RuleProtocolExecutionContext::handleRuleSetForwarding(const messages::InternalRuleSetForwarding *pkt) {

@@ -25,6 +25,7 @@ class ExperimentAggregator:
         "link_fidelity",
         "link_bellpair_rate_per_s",
         "e2e_bellpair_rate_per_s",
+        "e2e_bellpair_completed_count",
         "photon_loss_rate_per_s",
         "photon_loss_share_pct",
         "bellpair_inventory_peak",
@@ -114,6 +115,12 @@ class ExperimentAggregator:
         # derive per-link and end-to-end rates without depending on
         # HardwareMonitor tomography samples (which graph_state skips).
         bellpair_count_by_pair: Dict[tuple, int] = defaultdict(int)
+        # Authoritative E2E completion log. Each (sorted_endpoint_pair,
+        # ruleset_id, sequence_number) triple uniquely identifies one
+        # completed end-to-end Bell pair. Both end nodes log the event
+        # so we dedupe via this set. Source: QuISP RuleEngine logs
+        # `bellpair_e2e_completed` on the final swap of a cascade.
+        e2e_completion_keys: set[tuple] = set()
         link_quality_latest: Dict[str, Dict[str, Any]] = {}
         timeseries_counts: Dict[str, Dict[int, float]] = defaultdict(lambda: defaultdict(float))
         timeseries_samples: Dict[str, Dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -189,6 +196,26 @@ class ExperimentAggregator:
                 timeseries_counts["photon_loss_rate"][self._bin_index(sim_time, bin_s)] += 1
                 continue
 
+            if event.event_type == "bellpair_e2e_completed":
+                self_addr = payload.get("self_addr")
+                partner_addr = payload.get("partner_addr")
+                ruleset_id = payload.get("ruleset_id")
+                seq = payload.get("sequence_number")
+                try:
+                    a = int(self_addr)
+                    b = int(partner_addr)
+                    pair = (min(a, b), max(a, b))
+                    is_lower_side = a < b
+                    e2e_completion_keys.add((pair, ruleset_id, seq))
+                except (TypeError, ValueError):
+                    is_lower_side = False
+                # Both end nodes fire this event for the same E2E pair, so
+                # only count the lower-addressed side toward the timeseries
+                # to avoid double-counting in rate sparklines / sweeps.
+                if is_lower_side:
+                    timeseries_counts["bellpair_e2e_completion_rate"][self._bin_index(sim_time, bin_s)] += 1
+                continue
+
             if event.event_type == "flying_qubit_emit":
                 flying_qubit_emit_count += 1
                 continue
@@ -251,18 +278,32 @@ class ExperimentAggregator:
         else:
             photon_loss_share_pct = None
 
-        # End-to-end BellPair rate: take the bucket at the largest observed
-        # hop distance (== max |node_id - partner_addr|). For a chain that
-        # is the post-swap virtual link between the two endpoints. For a
-        # single-hop run it collapses to per-link rate, which is fine.
+        # End-to-end BellPair rate. Order of preference:
+        #   1. bellpair_e2e_completed events (authoritative — emitted by
+        #      QuISP RuleEngine on the final swap of a cascade, tagged
+        #      with the requested partner address, dedupe by left/right).
+        #   2. link_quality_sample bucket at largest hop distance.
+        #   3. BellPairGenerated partition fallback (handled below for
+        #      backends that produce neither of the above).
         e2e_rate_value: Optional[float] = None
         e2e_hop: Optional[int] = None
-        if link_rate_by_hop:
+        e2e_source: Optional[str] = None
+        e2e_completion_count = len(e2e_completion_keys)
+        if e2e_completion_count > 0 and sim_span > 0:
+            e2e_rate_value = e2e_completion_count / sim_span
+            # Hop distance from the most-spread completed pair. This is
+            # the actual chain length the cascade traversed.
+            e2e_hop = max(
+                (hi - lo) for ((lo, hi), _, _) in e2e_completion_keys
+            ) if e2e_completion_keys else None
+            e2e_source = "swap_event"
+        elif link_rate_by_hop:
             max_hop = max(link_rate_by_hop.keys())
             samples = link_rate_by_hop[max_hop]
             if samples:
                 e2e_rate_value = sum(samples) / len(samples)
                 e2e_hop = max_hop
+                e2e_source = "link_quality_sample"
         link_rate_distribution = summarize_distribution(link_rate_samples).model_dump()
 
         # Fallback: derive per-link and end-to-end rates from the
@@ -290,6 +331,7 @@ class ExperimentAggregator:
                     if matching:
                         e2e_rate_value = sum(matching) / len(matching)
                         e2e_hop = pair_max_hop
+                        e2e_source = "bellpair_partition"
 
         return {
             "request_submitted_count": request_submitted_count,
@@ -311,6 +353,8 @@ class ExperimentAggregator:
             "link_bellpair_rate_per_s": link_rate_distribution,
             "e2e_bellpair_rate_per_s": e2e_rate_value,
             "e2e_bellpair_rate_hop": e2e_hop,
+            "e2e_bellpair_rate_source": e2e_source,
+            "e2e_bellpair_completed_count": e2e_completion_count,
             "failure_reason_breakdown": dict(sorted(failure_reason_breakdown.items())),
             "link_quality_latest": sorted(link_quality_latest.values(), key=lambda item: (item.get("partner_addr"), item.get("qnic_index"))),
             "timeseries_counts": timeseries_counts,
@@ -350,6 +394,11 @@ class ExperimentAggregator:
                 },
                 "flying_qubit_emit_count": {"kind": "scalar", "value": collected["flying_qubit_emit_count"], "unit": "count"},
                 "flying_qubit_sent_count": {"kind": "scalar", "value": collected["flying_qubit_sent_count"], "unit": "count"},
+                "e2e_bellpair_completed_count": {
+                    "kind": "scalar",
+                    "value": collected["e2e_bellpair_completed_count"],
+                    "unit": "count",
+                },
                 "link_fidelity": {"kind": "distribution", **collected["link_fidelity"], "unit": "ratio"},
                 "link_bellpair_rate_per_s": {"kind": "distribution", **collected["link_bellpair_rate_per_s"], "unit": "/s"},
                 "e2e_bellpair_rate_per_s": {
@@ -362,6 +411,13 @@ class ExperimentAggregator:
                     # virtual link. Front-end uses this to label E2E vs
                     # per-link transparently.
                     "hop": collected["e2e_bellpair_rate_hop"],
+                    # How the rate was derived: "swap_event" is authoritative
+                    # (emitted by RuleEngine on cascade-final swap);
+                    # "link_quality_sample" comes from HardwareMonitor;
+                    # "bellpair_partition" is the address-distance heuristic
+                    # used for graph_state runs without tomography.
+                    "source": collected["e2e_bellpair_rate_source"],
+                    "completed_count": collected["e2e_bellpair_completed_count"],
                 },
             },
             failure_reason_breakdown=collected["failure_reason_breakdown"],
@@ -371,6 +427,7 @@ class ExperimentAggregator:
                 "request_setup_success_rate",
                 "bellpair_inventory_total",
                 "bellpair_generation_rate",
+                "bellpair_e2e_completion_rate",
                 "photon_loss_rate",
                 "link_fidelity_avg",
             ],

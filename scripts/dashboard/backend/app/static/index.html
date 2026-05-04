@@ -213,11 +213,15 @@
     }
     .grid2 {
       display: grid;
-      grid-template-columns: 1fr 300px;
+      grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
       gap: 12px;
       margin-top: 12px;
       align-items: start;
     }
+    /* In list view the Experiment Results (run-only) is hidden, so let
+       Compare Runs use the full row width instead of looking like a
+       small sidebar with a lot of dead space to its left. */
+    body[data-view="list"] .grid2 { grid-template-columns: minmax(0, 1fr); }
     .split {
       display: grid;
       gap: 10px;
@@ -1008,7 +1012,10 @@
       <section class="panel">
         <div class="section-title">
           <span>Compare Runs <span class="info-icon" tabindex="0" role="img" aria-label="ヘルプ" title="`比較+` を押した run を最大5件まで比較できます。差分のあるパラメータがあれば自動でプロットが描かれます。">?</span></span>
-          <button id="refreshExperimentCompare" class="btn small">比較更新</button>
+          <div class="row" style="gap:6px;">
+            <button id="exportExperimentCompareCsv" class="btn small" title="比較対象の run と metric を CSV としてダウンロード">CSV出力</button>
+            <button id="refreshExperimentCompare" class="btn small">比較更新</button>
+          </div>
         </div>
         <div id="experimentCompareQueue" class="compare-tags"></div>
         <div id="experimentCompareSharedParams" class="muted compare-shared" hidden></div>
@@ -1209,6 +1216,7 @@
       refreshTemplates: document.getElementById('refreshTemplates'),
       refreshExperimentSummary: document.getElementById('refreshExperimentSummary'),
       refreshExperimentCompare: document.getElementById('refreshExperimentCompare'),
+      exportExperimentCompareCsv: document.getElementById('exportExperimentCompareCsv'),
       refreshRuns: document.getElementById('refreshRuns'),
       campaignDisplayName: document.getElementById('campaignDisplayName'),
       campaignSweepAdd: document.getElementById('campaignSweepAdd'),
@@ -2457,7 +2465,10 @@
         }
         const points = metric.points
           .filter((pt) => pt.y != null)
-          .map((pt) => `<circle class="data-point" cx="${xPos(pt.x).toFixed(2)}" cy="${yPos(pt.y).toFixed(2)}" r="3" fill="${metric.color}" stroke="${metric.color}" />`)
+          .map((pt) => {
+            const tip = `${metric.metric_id} = ${formatCompactNumber(pt.y)} @ ${axis.key} = ${formatCompactNumber(pt.x)}`;
+            return `<circle class="data-point" cx="${xPos(pt.x).toFixed(2)}" cy="${yPos(pt.y).toFixed(2)}" r="3" fill="${metric.color}" stroke="${metric.color}"><title>${escapeHtml(tip)}</title></circle>`;
+          })
           .join('');
         segments.push(`<path class="data-line" stroke="${metric.color}" d="${path.trim()}" />`);
         segments.push(points);
@@ -2490,6 +2501,72 @@
       if (abs < 1) return value.toFixed(3);
       if (abs < 100) return value.toFixed(2);
       return value.toFixed(1);
+    }
+
+    function csvEscapeCell(value) {
+      if (value == null) return '';
+      const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+      if (/[",\n]/.test(text)) {
+        return `"${text.replace(/"/g, '""')}"`;
+      }
+      return text;
+    }
+
+    function buildExperimentCompareCsv(response) {
+      if (!response || !Array.isArray(response.runs) || response.runs.length === 0) {
+        return null;
+      }
+      const runs = response.runs;
+      const allParamKeys = new Set();
+      for (const run of runs) {
+        for (const key of Object.keys(run.parameter_values || {})) allParamKeys.add(key);
+      }
+      const paramKeys = Array.from(allParamKeys).sort();
+      const metricRows = response.metric_rows || [];
+      const header = ['run_id', 'display_name', 'profile_id', 'status']
+        .concat(paramKeys.map((k) => `param:${k}`))
+        .concat(metricRows.flatMap((row) => {
+          const sample = runs.map((r) => row[r.run_id]).find((v) => v != null && v !== 'unavailable');
+          if (sample && typeof sample === 'object') {
+            return [`${row.metric_id}.mean`, `${row.metric_id}.p50`, `${row.metric_id}.p95`, `${row.metric_id}.p99`];
+          }
+          return [row.metric_id];
+        }));
+      const lines = [header.map(csvEscapeCell).join(',')];
+      for (const run of runs) {
+        const row = [run.run_id, run.display_name || '', run.profile_id || '', run.status || ''];
+        for (const k of paramKeys) {
+          row.push((run.parameter_values || {})[k]);
+        }
+        for (const metricRow of metricRows) {
+          const value = metricRow[run.run_id];
+          const sample = runs.map((r) => metricRow[r.run_id]).find((v) => v != null && v !== 'unavailable');
+          const isDistribution = sample && typeof sample === 'object';
+          if (isDistribution) {
+            if (value == null || value === 'unavailable' || typeof value !== 'object') {
+              row.push('', '', '', '');
+            } else {
+              row.push(value.mean ?? '', value.p50 ?? '', value.p95 ?? '', value.p99 ?? '');
+            }
+          } else {
+            row.push(value == null || value === 'unavailable' ? '' : value);
+          }
+        }
+        lines.push(row.map(csvEscapeCell).join(','));
+      }
+      return lines.join('\n') + '\n';
+    }
+
+    function downloadTextFile(filename, text, mimeType = 'text/plain') {
+      const blob = new Blob([text], { type: `${mimeType};charset=utf-8` });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
     async function refreshExperimentComparison() {
@@ -6102,6 +6179,19 @@
         flashButton(ui.refreshExperimentCompare, 'info');
         await refreshExperimentComparison();
       });
+
+      if (ui.exportExperimentCompareCsv) {
+        ui.exportExperimentCompareCsv.addEventListener('click', () => {
+          logUiAction('ui.export_compare_csv', { run_ids: state.experimentCompareRunIds.slice() });
+          const csv = buildExperimentCompareCsv(state.experimentComparison);
+          if (!csv) {
+            setActionFeedback('比較データがまだありません', 'warn');
+            return;
+          }
+          downloadTextFile(`compare_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`, csv, 'text/csv');
+          flashButton(ui.exportExperimentCompareCsv, 'success');
+        });
+      }
 
       ui.refreshRuns.addEventListener('click', async () => {
         logUiAction('ui.refresh_runs_click');

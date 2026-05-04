@@ -172,11 +172,24 @@ BSAClickResult BellStateAnalyzer::processIndistinguishPhotons(PhotonRecord &p, P
 }
 
 BSAClickResult BellStateAnalyzer::determineClickResult(const std::string& pattern) {
+  // Memory-photon entanglement on each side is |Φ⁺⟩ (built by H + CNOT). For
+  // |Φ⁺⟩_{M_A,P_A} ⊗ |Φ⁺⟩_{M_B,P_B} the swap-test identity gives
+  //     |Φ⁺⟩_{M_A,P_A} ⊗ |Φ⁺⟩_{M_B,P_B}
+  //         = (1/2) Σ_β |β⟩_{M_A,M_B} ⊗ |β⟩_{P_A,P_B}
+  // i.e. projecting the two photons onto Bell state |β⟩ leaves the two
+  // memories in the same Bell state |β⟩. Tomography compares against |Φ⁺⟩,
+  // so the right-side memory must be steered back to |Φ⁺⟩:
+  //   • paired-click ψ⁺ (dAh,dAv | dBh,dBv) ⇒ memories in ψ⁺
+  //       X_B|ψ⁺⟩ = (|00⟩+|11⟩)/√2 = |Φ⁺⟩          → apply X
+  //   • paired-click ψ⁻ (dAh,dBv | dAv,dBh) ⇒ memories in ψ⁻
+  //       Y_B|ψ⁻⟩ = -i (|00⟩+|11⟩)/√2 = -i|Φ⁺⟩    → apply Y (global phase OK)
+  // φ-like single clicks are linear-optic-indistinguishable (φ⁺ vs φ⁻) and
+  // are reported as failure.
   if (pattern == "dAh,dAv" || pattern == "dBh,dBv") {
-    return {true, PauliOperator::Z};
+    return {true, PauliOperator::X};
   }
   if (pattern == "dAh,dBv" || pattern == "dAv,dBh") {
-    return {true, PauliOperator::X};
+    return {true, PauliOperator::Y};
   }
   return {false, PauliOperator::I};
 }

@@ -524,33 +524,60 @@ OperationResult ErrorBasisBackend::applyDetection(const BackendContext& ctx, con
   std::string pattern = "none";
   bool measured_plus = false;
   if (!has_event) {
-    const auto rng_seed = keyFor(operation.targets.at(0));
     if (eventOccurs(ctx.seed, "detection_dark", dark_count)) {
       pattern = "none";
     } else if (eventOccurs(ctx.seed, "detection_vis", visibility)) {
-      const auto is_psi_plus = eventOccurs(ctx.seed, rng_seed + "/detection_plus", 0.5);
-      click_count = 2;
-      if (is_psi_plus) {
-        measured_plus = true;
-        if (eventOccurs(ctx.seed, rng_seed + "/detection_plus_pattern", 0.5)) {
-          pattern = "dAh,dAv";
-          histogram[0] = 1;
-          histogram[1] = 1;
-        } else {
-          pattern = "dBh,dBv";
-          histogram[2] = 1;
-          histogram[3] = 1;
-        }
+      // Bell-state measurement on the two photon qubits, expressed in the
+      // graph_state stabilizer formalism: CNOT(P_A→P_B); H(P_A); measure both
+      // in the computational basis. The two outcomes (m_a, m_b) tell us which
+      // photon-photon Bell state was projected:
+      //   (0,0) → |Φ⁺⟩, (1,0) → |Φ⁻⟩  ⇒ φ family — linear-optic BSAs cannot
+      //                                 distinguish these (both photons land
+      //                                 at the same detector port), so they
+      //                                 are reported as single-click failures.
+      //   (0,1) → |Ψ⁺⟩, (1,1) → |Ψ⁻⟩  ⇒ ψ family — paired clicks across
+      //                                 different detectors, success.
+      // Naturally yields the linear-optic 50% efficiency limit *and* keeps
+      // the photon measurements correlated with the memory-photon graph
+      // state, so the BellStateAnalyzer correction (X for ψ⁺, Y for ψ⁻)
+      // steers the memories back to |Φ⁺⟩.
+      auto* p_a = resolveQubit(operation.targets.at(0));
+      auto* p_b = resolveQubit(operation.targets.at(1));
+      if (p_a == nullptr || p_b == nullptr) {
+        pattern = "none";
       } else {
-        measured_plus = false;
-        if (eventOccurs(ctx.seed, rng_seed + "/detection_minus_pattern", 0.5)) {
-          pattern = "dAh,dBv";
-          histogram[0] = 1;
-          histogram[3] = 1;
+        p_a->noiselessCNOT(p_b);
+        p_a->noiselessH();
+        const auto m_a = p_a->noiselessMeasureZ();
+        const auto m_b = p_b->noiselessMeasureZ();
+        const bool a_minus = (m_a == quisp::backends::abstract::EigenvalueResult::MINUS_ONE);
+        const bool b_minus = (m_b == quisp::backends::abstract::EigenvalueResult::MINUS_ONE);
+        if (!b_minus) {
+          // φ family — failure (linear-optic indistinguishable single click)
+          click_count = 1;
+          if (!a_minus) {
+            pattern = "dAh";
+            histogram[0] = 1;
+          } else {
+            pattern = "dBh";
+            histogram[2] = 1;
+          }
         } else {
-          pattern = "dAv,dBh";
-          histogram[1] = 1;
-          histogram[2] = 1;
+          // ψ family — paired-click success
+          click_count = 2;
+          if (!a_minus) {
+            // Ψ⁺ → BSA correction X
+            measured_plus = true;
+            pattern = "dAh,dAv";
+            histogram[0] = 1;
+            histogram[1] = 1;
+          } else {
+            // Ψ⁻ → BSA correction Y
+            measured_plus = false;
+            pattern = "dAh,dBv";
+            histogram[0] = 1;
+            histogram[3] = 1;
+          }
         }
       }
     }

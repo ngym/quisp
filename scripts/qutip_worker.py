@@ -453,27 +453,48 @@ def _remove_entanglement_set_key(entanglement_set_id: int) -> None:
 
 
 def _remove_qubit_from_entanglement_set(operation: dict, entanglement_set_id: int) -> Optional[_EntanglementSetState]:
+  return _remove_qubits_from_entanglement_set(_operation_qubit_keys(operation), entanglement_set_id)
+
+
+def _remove_qubits_from_entanglement_set(
+    qubit_keys: list[tuple[int, int, int, int]],
+    entanglement_set_id: int,
+) -> Optional[_EntanglementSetState]:
+  """Partial-trace the listed qubits out of the persistent state.
+
+  Used after a measurement / detection collapses qubits to definite states,
+  or when the C++ side explicitly releases qubits from the set. Without this
+  the density matrix grows monotonically across an entanglement-swapping
+  cascade and quickly exhausts memory.
+  """
   state = _QUTIP_ENTANGLEMENT_SET_STATES.get(entanglement_set_id)
   if state is None:
     return None
-
-  target_keys = _operation_qubit_keys(operation)
-  if not target_keys:
+  if not qubit_keys:
     return state
 
-  target_key = target_keys[0]
-  try:
-    index = state.qubits.index(target_key)
-  except ValueError:
+  positions_to_remove: list[int] = []
+  for raw_key in qubit_keys:
+    coerced = raw_key if isinstance(raw_key, tuple) else _coerce_qubit_key(raw_key)
+    if coerced is None:
+      continue
+    try:
+      index = state.qubits.index(coerced)
+    except ValueError:
+      continue
+    if index not in positions_to_remove:
+      positions_to_remove.append(index)
+
+  if not positions_to_remove:
     return state
 
-  if len(state.qubits) <= 1:
+  if len(positions_to_remove) >= len(state.qubits):
     _remove_entanglement_set_key(entanglement_set_id)
     return None
 
-  remaining_indices = [i for i in range(len(state.qubits)) if i != index]
+  remaining_indices = [i for i in range(len(state.qubits)) if i not in positions_to_remove]
   state.density_matrix = state.density_matrix.ptrace(remaining_indices)
-  state.qubits.pop(index)
+  state.qubits = [state.qubits[i] for i in remaining_indices]
   return state
 
 
@@ -3274,7 +3295,17 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker collapsed detection state has zero norm"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
       entanglement_set_state.density_matrix = collapsed / collapsed_norm
 
-      response_meta = _entanglement_set_state_meta(entanglement_set_state, entanglement_set_id)
+      # Detected photons collapse to definite states and are absorbed by the
+      # detector — they no longer carry information for the rest of the chain.
+      # Partial-trace them out so subsequent swaps don't multiply the matrix
+      # size unnecessarily.
+      detection_target_keys = [_coerce_qubit_key(t) for t in operation_targets]
+      detection_target_keys = [k for k in detection_target_keys if k is not None]
+      post_release_state = entanglement_set_state
+      if detection_target_keys:
+        post_release_state = _remove_qubits_from_entanglement_set(detection_target_keys, entanglement_set_id) or entanglement_set_state
+
+      response_meta = _entanglement_set_state_meta(post_release_state, entanglement_set_id)
       response_meta.update(
         {
           "detection_success_probability": probability_success,
@@ -3493,6 +3524,74 @@ def _merge_entanglement_sets_for_operation(operation: dict, qutip: Any) -> None:
     target_state.qubits = list(target_state.qubits) + list(source_state.qubits)
 
 
+def _check_entanglement_set_size_limit(operation: dict, backend_config: dict) -> Optional[dict]:
+  """Reject the operation if its entanglement set would exceed the configured cap.
+
+  ``_validate_backend_limits`` checks per-operation qubit count, but after
+  ``_merge_entanglement_sets_for_operation`` and ``_ensure_entanglement_set_state``
+  the persistent set can hold many more qubits than any single op references —
+  that is exactly the path that blows up during entanglement-swapping cascades.
+  Failing fast here means a 2^n × 2^n density matrix is never built when
+  ``qutip_max_register_qubits`` says no.
+  """
+  if not isinstance(backend_config, dict):
+    return None
+  raw_limit = backend_config.get("qutip_max_register_qubits")
+  if raw_limit is None:
+    return None
+  try:
+    max_q = int(raw_limit)
+  except (TypeError, ValueError):
+    return None
+  if max_q <= 0:
+    return None
+  try:
+    eid = int(operation.get("entanglement_set_id", -1))
+  except (TypeError, ValueError):
+    return None
+
+  state = _QUTIP_ENTANGLEMENT_SET_STATES.get(eid)
+  existing_qubits = list(state.qubits) if state is not None else []
+  op_qubits = _operation_qubit_keys(operation)
+  added = [k for k in op_qubits if k not in existing_qubits]
+  projected = len(existing_qubits) + len(added)
+  if projected > max_q:
+    return _build_response(
+      False,
+      message=f"qutip backend config limit exceeded: entanglement_set_size={projected} > qutip_max_register_qubits={max_q}",
+      error_category="exceeded_limit",
+    )
+  return None
+
+
+def _release_qubits_post_operation(operation: dict) -> None:
+  """Honour an explicit `release_qubit_keys` payload from the C++ backend.
+
+  This complements the auto-trace performed by measurement / detection
+  handlers. It is meant for cases where the C++ side knows a qubit should
+  no longer be entangled (e.g. returned to the flying-qubit pool, freed
+  by a RuleSet, etc.) but the operation itself does not collapse it.
+  """
+  payload = operation.get("payload")
+  if not isinstance(payload, dict):
+    return
+  raw = payload.get("release_qubit_keys")
+  if not raw or not isinstance(raw, list):
+    return
+  try:
+    entanglement_set_id = int(operation.get("entanglement_set_id", -1))
+  except (TypeError, ValueError):
+    return
+  keys: list[tuple[int, int, int, int]] = []
+  for entry in raw:
+    coerced = _coerce_qubit_key(entry)
+    if coerced is not None:
+      keys.append(coerced)
+  if not keys:
+    return
+  _remove_qubits_from_entanglement_set(keys, entanglement_set_id)
+
+
 def run_operation(request: dict) -> dict:
   operation = _get_payload(request)
   kind = _canonicalize_kind(operation.get("kind", ""))
@@ -3520,6 +3619,9 @@ def run_operation(request: dict) -> dict:
     return _finalize_response(_qutip_unavailable_response(kind), trace, kind=kind, profile_error=profile_error, profile_meta=profile_meta)
   qutip_module = qutip_modules[0] if isinstance(qutip_modules, tuple) else qutip_modules
   _merge_entanglement_sets_for_operation(operation, qutip_module)
+  limit_after_merge = _check_entanglement_set_size_limit(operation, backend_config)
+  if limit_after_merge is not None:
+    return _finalize_response(limit_after_merge, trace, kind, profile_error, profile_meta)
   timeout_ms_raw = backend_config.get("qutip_worker_timeout_ms", 1000)
   try:
     timeout_ms = int(timeout_ms_raw or 1000)
@@ -3529,51 +3631,61 @@ def run_operation(request: dict) -> dict:
   if limit_error is not None:
     return _finalize_response(limit_error, trace, kind, profile_error, profile_meta)
 
+  response: Optional[dict] = None
   if kind == "unitary":
-    return _finalize_response(
+    response = _finalize_response(
       _run_with_timeout(_handle_unitary, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
       kind,
       profile_error,
       profile_meta,
     )
-  if kind == "measurement":
-    return _finalize_response(
+  elif kind == "measurement":
+    response = _finalize_response(
       _run_with_timeout(_handle_measurement, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
       kind,
       profile_error,
       profile_meta,
     )
-  if kind == "error_channel":
-    return _finalize_response(
+  elif kind == "error_channel":
+    response = _finalize_response(
       _run_with_timeout(_handle_error_channel, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
       kind,
       profile_error,
       profile_meta,
     )
-  if kind == "noise":
-    return _finalize_response(
+  elif kind == "noise":
+    response = _finalize_response(
       _run_with_timeout(_handle_noise, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
       kind,
       profile_error,
       profile_meta,
     )
-  if kind == "noop":
-    return _finalize_response(_handle_noop(), trace, kind, profile_error, profile_meta)
-  if _is_advanced_operation_kind(kind):
-    return _finalize_response(
+  elif kind == "noop":
+    response = _finalize_response(_handle_noop(), trace, kind, profile_error, profile_meta)
+  elif _is_advanced_operation_kind(kind):
+    response = _finalize_response(
       _run_with_timeout(_handle_advanced, operation, seed, timeout_ms, profile_meta=profile_meta, dim=profile_dim),
       trace,
       kind,
       profile_error,
       profile_meta,
     )
+  else:
+    response = _finalize_response(
+      _build_response(False, message=_categorize_error("unsupported_kind", f"qutip worker unknown operation kind: {kind}"), error_category="unsupported_kind"),
+      trace,
+      kind,
+      profile_error,
+      profile_meta,
+    )
 
-  response = _build_response(False, message=_categorize_error("unsupported_kind", f"qutip worker unknown operation kind: {kind}"), error_category="unsupported_kind")
-  return _finalize_response(response, trace, kind, profile_error, profile_meta)
+  if response.get("success"):
+    _release_qubits_post_operation(operation)
+  return response
 
 
 def main() -> int:

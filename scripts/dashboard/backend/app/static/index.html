@@ -800,6 +800,10 @@
             Experiment Profile
             <select id="experimentProfile"></select>
           </label>
+          <label title="このプロファイルで何を確かめたいか。フリーフォーマット。研究ノートに繋げるための短文を想定。ブラウザにローカル保存(プロファイルごと)。">
+            仮説 (任意)
+            <textarea id="studyHypothesis" rows="2" placeholder="例: graph_state バックエンドで N=5 リピータの BellPair Rate が p_emit に依らない理由を確認"></textarea>
+          </label>
           <div id="experimentSchemaStatus" class="help">Structured experiment schema unavailable</div>
           <label>
             Template
@@ -1252,6 +1256,7 @@
       simConfig: document.getElementById('simConfig'),
       simRunName: document.getElementById('simRunName'),
       experimentProfile: document.getElementById('experimentProfile'),
+      studyHypothesis: document.getElementById('studyHypothesis'),
       experimentSchemaStatus: document.getElementById('experimentSchemaStatus'),
       experimentCoreFields: document.getElementById('experimentCoreFields'),
       experimentAdvancedSection: document.getElementById('experimentAdvancedSection'),
@@ -6117,7 +6122,24 @@
           configName: ui.simConfig.value,
           profileId: ui.experimentProfile.value || null,
         });
+        syncHypothesisFromProfile();
       });
+
+      if (ui.studyHypothesis) {
+        let hypothesisSaveTimer = null;
+        ui.studyHypothesis.addEventListener('input', () => {
+          if (hypothesisSaveTimer) clearTimeout(hypothesisSaveTimer);
+          hypothesisSaveTimer = setTimeout(() => {
+            const profileId = ui.experimentProfile && ui.experimentProfile.value;
+            if (!profileId) return;
+            saveHypothesisForProfile(profileId, ui.studyHypothesis.value);
+            logUiAction('ui.study_hypothesis_saved', {
+              profile_id: profileId,
+              length: (ui.studyHypothesis.value || '').length,
+            });
+          }, 350);
+        });
+      }
 
       if (ui.campaignSweepAdd) {
         ui.campaignSweepAdd.addEventListener('click', () => {
@@ -6733,6 +6755,54 @@
     }
 
     const VALID_SECTIONS = ['studies', 'library', 'settings'];
+    const STUDY_HYPOTHESIS_KEY = 'quisp-dashboard-study-hypotheses';
+
+    function loadStudyHypothesisMap() {
+      try {
+        const raw = window.localStorage.getItem(STUDY_HYPOTHESIS_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch (_e) {
+        return {};
+      }
+    }
+
+    function saveStudyHypothesisMap(map) {
+      try {
+        window.localStorage.setItem(STUDY_HYPOTHESIS_KEY, JSON.stringify(map || {}));
+      } catch (_e) {
+        // localStorage may be disabled (private mode etc.); silently no-op.
+      }
+    }
+
+    function loadHypothesisForProfile(profileId) {
+      if (!profileId) return '';
+      const map = loadStudyHypothesisMap();
+      return typeof map[profileId] === 'string' ? map[profileId] : '';
+    }
+
+    function saveHypothesisForProfile(profileId, text) {
+      if (!profileId) return;
+      const map = loadStudyHypothesisMap();
+      const trimmed = String(text || '').trim();
+      if (trimmed) {
+        map[profileId] = trimmed;
+      } else {
+        delete map[profileId];
+      }
+      saveStudyHypothesisMap(map);
+    }
+
+    function syncHypothesisFromProfile() {
+      if (!ui.studyHypothesis) return;
+      const profileId = ui.experimentProfile && ui.experimentProfile.value;
+      ui.studyHypothesis.value = loadHypothesisForProfile(profileId);
+      ui.studyHypothesis.disabled = !profileId;
+      ui.studyHypothesis.placeholder = profileId
+        ? '例: graph_state バックエンドで N=5 リピータの BellPair Rate が p_emit に依らない理由を確認'
+        : 'プロファイルを選択すると仮説を保存できます';
+    }
 
     function setSection(name) {
       const target = VALID_SECTIONS.includes(name) ? name : 'studies';
@@ -6793,6 +6863,7 @@
         profileId: ui.experimentProfile.value || null,
       });
       renderExperimentCompareQueue();
+      syncHypothesisFromProfile();
       setSection(readSectionFromHash());
       const initialNav = readShellViewFromHash();
       if (initialNav.view === 'run' && initialNav.runId) {

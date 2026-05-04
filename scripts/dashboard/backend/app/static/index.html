@@ -3253,100 +3253,58 @@
         ui.metricStatusCard.dataset.level = status.tone;
       }
 
-      const freshness = state.lastEventBatchAtMs == null ? null : (performance.now() - state.lastEventBatchAtMs) / 1000;
       const run = state.selectedSimRun;
       const statusDetail = run && run.status_message && run.status_message !== run.status ? formatStatusMessageForUi(run.status_message) : null;
-      const visibleDensity = currentVisibleEventDensity();
-      const avgLiveSimRate = averageSample(state.liveSimRateSamples);
-      const avgReplaySimRate = averageSample(state.replaySimRateSamples);
-      const avgReplayEventRate = averageSample(state.replayEventRateSamples);
-      const activityTotals = state.activitySnapshot && state.activitySnapshot.global_totals ? state.activitySnapshot.global_totals : null;
-      const activeScaleText = activityTotals
-        ? `${activityTotals.active_node_count} nodes / ${activityTotals.active_edge_count} edges`
-        : '--';
-      const replayEventIndex = findReplayEventIndexByCursor(currentReplayDisplayCursor());
-      const replayEventTotal = replayTimelinePointsFiltered().length;
-      const replayCluster = currentReplayClusterInfo();
+      const visibleDensitySummary = state.activitySummary && state.activitySummary.visible_event_density;
 
+      // Fixed KPI labels — never reflow when switching Monitor/Replay/Results.
+      // The cards always describe "this run" (whole-run summary), so the
+      // header above the mode tabs no longer changes when the user clicks a
+      // tab. Mode-specific live metrics (sim進行倍率 / 実効再生倍率 /
+      // 再生イベント速度 / アクティブ規模) are surfaced inside each mode's
+      // own toolbar instead.
       ui.metricStatusLabel.textContent = '状態';
+      ui.metricFreshnessLabel.textContent = '終了時刻';
+      ui.metricEventRateLabel.textContent = '終了状況';
+      ui.metricRenderFpsLabel.textContent = '可視イベント密度 mean';
+      ui.metricRenderMsLabel.textContent = '可視イベント密度 p95';
       ui.metricSimTimeLabel.textContent = '現在sim時刻';
 
-      if (state.mode === 'results') {
-        ui.metricFreshnessLabel.textContent = '終了時刻';
-        ui.metricFreshness.textContent = state.lastEventTs ? formatRunTimeLabel(state.lastEventTs) : '--';
-        ui.metricFreshnessSub.textContent = statusDetail || formatFinishedStatusDetail(run);
-        ui.metricEventRateLabel.textContent = '終了状況';
-        ui.metricEventRate.textContent = truncateText(statusDetail || run?.status || '--', 22) || '--';
-        ui.metricEventRateSub.textContent = run ? runDisplayName(run) : '--';
-        ui.metricRenderFpsLabel.textContent = '可視イベント密度 mean';
-        ui.metricRenderFps.textContent = state.activitySummary && state.activitySummary.visible_event_density && state.activitySummary.visible_event_density.mean != null
-          ? `${Number(state.activitySummary.visible_event_density.mean).toFixed(2)} ev/sim-s`
-          : '--';
-        ui.metricRenderFpsSub.textContent = 'whole run';
-        ui.metricRenderMsLabel.textContent = '可視イベント密度 p95';
-        ui.metricRenderMs.textContent = state.activitySummary && state.activitySummary.visible_event_density && state.activitySummary.visible_event_density.p95 != null
-          ? `${Number(state.activitySummary.visible_event_density.p95).toFixed(2)} ev/sim-s`
-          : '--';
-        ui.metricRenderMsSub.textContent = 'whole run';
-      } else if (state.mode === 'monitor') {
-        ui.metricFreshnessLabel.textContent = (run && ['finished', 'failed', 'terminated'].includes(run.status)) ? '終了時刻' : 'データ鮮度';
-        if (run && ['finished', 'failed', 'terminated'].includes(run.status)) {
-          ui.metricFreshness.textContent = state.lastEventTs ? formatRunTimeLabel(state.lastEventTs) : '--';
-          ui.metricFreshnessSub.textContent = statusDetail || `last sim: ${formatSimTime(state.lastEventSimTime)}`;
-        } else {
-          ui.metricFreshness.textContent = freshness == null ? '--' : formatAgeSeconds(freshness);
-          ui.metricFreshnessSub.textContent = freshness == null ? '--' : `activity poll / ${state.monitorWindowS}s window`;
-        }
-        ui.metricEventRateLabel.textContent = 'sim進行倍率';
-        ui.metricEventRate.textContent = state.followLiveEdge && avgLiveSimRate != null ? `${avgLiveSimRate.toFixed(2)}x realtime` : '--';
-        ui.metricEventRateSub.textContent = state.followLiveEdge ? '5s observed' : 'historical inspection';
-        ui.metricRenderFpsLabel.textContent = '可視イベント密度';
-        ui.metricRenderFps.textContent = visibleDensity != null ? `${Number(visibleDensity).toFixed(2)} ev/sim-s` : '--';
-        ui.metricRenderFpsSub.textContent = `${state.monitorLookbackS}s lookback`;
-        ui.metricRenderMsLabel.textContent = 'アクティブ規模';
-        ui.metricRenderMs.textContent = activeScaleText;
-        ui.metricRenderMsSub.textContent = 'current view';
+      // Card 2: 終了時刻
+      if (state.lastEventTs) {
+        ui.metricFreshness.textContent = formatRunTimeLabel(state.lastEventTs) || '--';
       } else {
-        ui.metricFreshnessLabel.textContent = '表示イベント';
-        ui.metricFreshness.textContent = replayEventIndex != null && replayEventTotal
-          ? `${replayEventIndex + 1} / ${replayEventTotal}`
-          : '--';
-        ui.metricFreshnessSub.textContent = replayCluster
-          ? `cluster ${replayCluster.index + 1} / ${replayCluster.total}`
-          : `status: ${state.replayStatus}`;
-        ui.metricEventRateLabel.textContent = '実効sim再生倍率';
-        ui.metricEventRate.textContent = avgReplaySimRate != null ? `${avgReplaySimRate.toFixed(2)}x sim` : '--';
-        ui.metricEventRateSub.textContent = 'observed';
-        ui.metricRenderFpsLabel.textContent = '再生イベント速度';
-        ui.metricRenderFps.textContent = avgReplayEventRate != null ? `${avgReplayEventRate.toFixed(1)} ev/s` : '--';
-        ui.metricRenderFpsSub.textContent = 'observed';
-        ui.metricRenderMsLabel.textContent = '可視イベント密度';
-        ui.metricRenderMs.textContent = visibleDensity != null ? `${Number(visibleDensity).toFixed(2)} ev/sim-s` : '--';
-        ui.metricRenderMsSub.textContent = 'analysis window';
+        ui.metricFreshness.textContent = '--';
+      }
+      ui.metricFreshnessSub.textContent = (run && ['finished', 'failed', 'terminated'].includes(run.status))
+        ? (statusDetail || `last sim: ${formatSimTime(state.lastEventSimTime)}`)
+        : (run ? `status: ${run.status}` : '--');
+
+      // Card 3: 終了状況
+      ui.metricEventRate.textContent = truncateText(statusDetail || (run?.status ?? '--'), 22) || '--';
+      ui.metricEventRateSub.textContent = run ? runDisplayName(run) : '--';
+
+      // Card 4: 可視イベント密度 mean (whole run)
+      if (visibleDensitySummary && visibleDensitySummary.mean != null) {
+        ui.metricRenderFps.textContent = `${Number(visibleDensitySummary.mean).toFixed(2)} ev/sim-s`;
+        ui.metricRenderFpsSub.textContent = `whole run · samples ${visibleDensitySummary.count ?? 0}`;
+      } else {
+        ui.metricRenderFps.textContent = '--';
+        ui.metricRenderFpsSub.textContent = 'whole run';
       }
 
-      if (state.mode !== 'results' && run && ['finished', 'failed', 'terminated'].includes(run.status)) {
-        ui.metricFreshnessLabel.textContent = '終了時刻';
-        ui.metricFreshness.textContent = state.lastEventTs ? formatRunTimeLabel(state.lastEventTs) : '--';
-        ui.metricFreshnessSub.textContent = statusDetail || `last sim: ${formatSimTime(state.lastEventSimTime)}`;
+      // Card 5: 可視イベント密度 p95 (whole run)
+      if (visibleDensitySummary && visibleDensitySummary.p95 != null) {
+        ui.metricRenderMs.textContent = `${Number(visibleDensitySummary.p95).toFixed(2)} ev/sim-s`;
+        ui.metricRenderMsSub.textContent = visibleDensitySummary.p50 != null
+          ? `whole run · p50 ${Number(visibleDensitySummary.p50).toFixed(2)}`
+          : 'whole run';
+      } else {
+        ui.metricRenderMs.textContent = '--';
+        ui.metricRenderMsSub.textContent = 'whole run';
       }
 
-      const window = state.eventRateCounter.slice();
-      const eventRate = window.length > 1
-        ? window.reduce((acc, entry) => acc + entry.c, 0) / Math.max(1e-6, window[window.length - 1].t - window[0].t)
-        : 0;
-      if (state.mode === 'results') {
-        ui.metricStatusSub.textContent = status.sublabel;
-      } else if (state.mode === 'monitor' && eventRate > 0 && status.label === 'MONITOR') {
-        ui.metricStatusSub.textContent = `ingest ${eventRate.toFixed(1)} ev/s / backlog ${Math.max(0, Math.max(state.maxSeenCursor, Number(ui.timeline.max) || 0) - state.cursor)}`;
-      }
-
-      const avgFrameInterval = averageSample(state.frameIntervalSamples);
-      const renderFps = avgFrameInterval && avgFrameInterval > 0 ? 1000 / avgFrameInterval : null;
-      if (state.mode === 'monitor') {
-        ui.metricRenderMsSub.textContent = `current view / ${renderFps ? `${renderFps.toFixed(1)} fps draw` : 'draw idle'}`;
-      }
-
+      // Card 6: 現在sim時刻
       const currentSimTime = inferCurrentSimTime();
       ui.metricSimTime.textContent = formatSimTime(currentSimTime);
       if (state.mode === 'replay') {

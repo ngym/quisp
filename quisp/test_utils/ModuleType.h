@@ -22,10 +22,10 @@ class TestModuleType : public cModuleType {
   }
 
   cModule *createModuleObject() override { return nullptr; };
-  void addParametersAndGatesTo(cModule *module) override{};
-  void applyPatternAssignments(cComponent *component) override{};
-  void setupGateVectors(cModule *module) override{};
-  void buildInside(cModule *module) override{};
+  void addParametersAndGatesTo(cModule *module) override {};
+  void applyPatternAssignments(cComponent *component) override {};
+  void setupGateVectors(cModule *module) override {};
+  void buildInside(cModule *module) override {};
 
   // methods redefined from cComponentType
   cProperties *getProperties() const override { return props; };

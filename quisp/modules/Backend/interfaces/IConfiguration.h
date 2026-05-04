@@ -8,8 +8,8 @@ namespace quisp::backends::abstract {
  */
 class IConfiguration {
  public:
-  IConfiguration(){};
-  virtual ~IConfiguration(){};
+  IConfiguration() {};
+  virtual ~IConfiguration() {};
 };
 
 }  // namespace quisp::backends::abstract

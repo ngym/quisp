@@ -62,7 +62,7 @@ struct SummaryLinkStateAdvertisement {
   NodeAddr lsa_id;
   NodeAddr lsa_origin_id;
   int lsa_age;
-  SummaryLinkStateAdvertisement(NodeAddr _id, NodeAddr _origin_id, int _age) : lsa_id(_id), lsa_origin_id(_origin_id), lsa_age(_age){};
+  SummaryLinkStateAdvertisement(NodeAddr _id, NodeAddr _origin_id, int _age) : lsa_id(_id), lsa_origin_id(_origin_id), lsa_age(_age) {};
   SummaryLinkStateAdvertisement() = default;
 };
 

@@ -11,7 +11,7 @@ namespace modules {
 
 class IApplication : public cSimpleModule {
  public:
-  virtual ~IApplication(){};
+  virtual ~IApplication() {};
 };
 
 }  // namespace modules

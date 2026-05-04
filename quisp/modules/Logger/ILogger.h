@@ -21,7 +21,7 @@ namespace quisp::modules::Logger {
  */
 class ILogger {
  public:
-  virtual ~ILogger(){};
+  virtual ~ILogger() {};
   virtual void logPacket(const std::string& event_type, omnetpp::cMessage const* const msg) = 0;
   virtual void logQubitState(quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index, bool is_busy, bool is_allocated) = 0;
   virtual void logBellPairInfo(const std::string& event_type, int partner_addr, quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index) = 0;

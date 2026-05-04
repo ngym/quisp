@@ -18,8 +18,8 @@ class IQubit;
  */
 class IGraphStateBackend {
  public:
-  IGraphStateBackend(){};
-  virtual ~IGraphStateBackend(){};
+  IGraphStateBackend() {};
+  virtual ~IGraphStateBackend() {};
 
   virtual IQubit* createQubit(const IQubitId* id, std::unique_ptr<IConfiguration> conf) = 0;
   virtual IQubit* createQubit(const IQubitId* id) = 0;

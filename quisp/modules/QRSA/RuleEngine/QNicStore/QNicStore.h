@@ -18,7 +18,7 @@ using QNicIndex = int;
 class QNicStore : public IQNicStore {
  public:
   QNicStore(utils::ComponentProvider& provider, int number_of_emitter_qnics, int number_of_receiver_qnics, int number_of_passive_receiver_qnics, Logger::ILogger* logger = nullptr);
-  ~QNicStore(){};
+  ~QNicStore() {};
   int countNumFreeQubits(QNIC_type type, int qnic_index) override;
   int takeFreeQubitIndex(QNIC_type type, int qnic_index) override;
   int countNumAvailableQubits(QNIC_type type, int qnic_index) override;

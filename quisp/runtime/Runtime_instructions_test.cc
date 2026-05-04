@@ -125,9 +125,10 @@ TEST_F(RuntimeInstructionsTest, Increment) {
 TEST_F(RuntimeInstructionsTest, BEQ) {
   Label passed1{"passed1"}, passed2{"passed2"}, passed3{"passed3"}, passed4{"passed4"};
   Label l1{"l1"}, l2{"l2"}, l3{"l3"}, l4{"l4"};
-  Program p{"",
-            {
-                // clang-format off
+  Program p{
+      "",
+      {
+          // clang-format off
                 INSTR_BEQ_Label_RegId_int_{{passed1, r0, 0}},
                 INSTR_SET_RegId_int_{{r1, 2}},
                 INSTR_JMP_Label_{l1},
@@ -145,8 +146,8 @@ TEST_F(RuntimeInstructionsTest, BEQ) {
                 INSTR_JMP_Label_{l4},
                 INSTR_SET_RegId_int_{{r4, 3}, passed4},
                 INSTR_NOP_None_{{nullptr}, l4},
-                // clang-format on
-            }};
+          // clang-format on
+      }};
   execProgram(p);
   EXPECT_TRUE(checkRegisters({0, 3, 2, 2, 3}));
   EXPECT_EQ(runtime->return_code, ReturnCode::NONE);
@@ -155,10 +156,9 @@ TEST_F(RuntimeInstructionsTest, BEQ) {
 TEST_F(RuntimeInstructionsTest, BEZ) {
   Label passed1{"passed1"}, passed2{"passed2"};
   Label l1{"l1"}, l2{"l2"};
-  Program p{
-      "",
-      {
-          // clang-format off
+  Program p{"",
+            {
+                // clang-format off
                 INSTR_BEZ_Label_RegId_{{passed1,r0}},
                 INSTR_SET_RegId_int_{{r1, 2}},
                 INSTR_JMP_Label_{l1},
@@ -169,8 +169,8 @@ TEST_F(RuntimeInstructionsTest, BEZ) {
                 INSTR_JMP_Label_{l2},
                 INSTR_SET_RegId_int_{{r2, 3}, passed2},
                 INSTR_NOP_None_{{nullptr}, l2},
-          // clang-format on
-      }};
+                // clang-format on
+            }};
   execProgram(p);
   EXPECT_TRUE(checkRegisters({1, 3, 2, 0, 0}));
   EXPECT_EQ(runtime->return_code, ReturnCode::NONE);
@@ -179,10 +179,9 @@ TEST_F(RuntimeInstructionsTest, BEZ) {
 TEST_F(RuntimeInstructionsTest, BNZ) {
   Label passed1{"passed1"}, passed2{"passed2"};
   Label l1{"l1"}, l2{"l2"};
-  Program p{
-      "",
-      {
-          // clang-format off
+  Program p{"",
+            {
+                // clang-format off
                 INSTR_BNZ_Label_RegId_{{passed1,r0}},
                 INSTR_SET_RegId_int_{{r1, 2}},
                 INSTR_JMP_Label_{l1},
@@ -193,8 +192,8 @@ TEST_F(RuntimeInstructionsTest, BNZ) {
                 INSTR_JMP_Label_{l2},
                 INSTR_SET_RegId_int_{{r2, 3}, passed2},
                 INSTR_NOP_None_{{nullptr}, l2},
-          // clang-format on
-      }};
+                // clang-format on
+            }};
   execProgram(p);
   EXPECT_TRUE(checkRegisters({1, 2, 3, 0, 0}));
   EXPECT_EQ(runtime->return_code, ReturnCode::NONE);
@@ -203,9 +202,10 @@ TEST_F(RuntimeInstructionsTest, BNZ) {
 TEST_F(RuntimeInstructionsTest, BLT) {
   Label passed1{"passed1"}, passed2{"passed2"}, passed3{"passed3"};
   Label l1{"l1"}, l2{"l2"}, l3{"l3"};
-  Program p{"",
-            {
-                // clang-format off
+  Program p{
+      "",
+      {
+          // clang-format off
                 INSTR_BLT_Label_RegId_int_{{passed1, r0, 0}}, // same value
                 INSTR_SET_RegId_int_{{r1, 2}},
                 INSTR_JMP_Label_{l1},
@@ -219,8 +219,8 @@ TEST_F(RuntimeInstructionsTest, BLT) {
                 INSTR_JMP_Label_{l3},
                 INSTR_SET_RegId_int_{{r3, 3}, passed3},
                 INSTR_NOP_None_{{nullptr}, l3},
-                // clang-format on
-            }};
+          // clang-format on
+      }};
   execProgram(p);
   EXPECT_TRUE(checkRegisters({0, 2, 3, 2, 0}));
   EXPECT_EQ(runtime->return_code, ReturnCode::NONE);

@@ -68,7 +68,7 @@ std::ostream& operator<<(std::ostream& stream, const ReturnCode& value);
 
 /// @brief internal class to describe QNode's address.
 struct QNodeAddr {
-  QNodeAddr() : val(-1){};
+  QNodeAddr() : val(-1) {};
   QNodeAddr(int val);
   int val;
 };
@@ -81,7 +81,7 @@ bool operator==(const QNodeAddr& a, const QNodeAddr& b);
  * in a runtime::Program. Be careful, this is not used for RuleEngine or QNIC.
  */
 struct QubitId {
-  QubitId() : val(-1){};
+  QubitId() : val(-1) {};
   QubitId(int val);
   /// @brief hash function for unordered map
   size_t operator()(const QubitId&) const;

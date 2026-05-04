@@ -4258,6 +4258,14 @@
       return { label: 'IDLE', sublabel: cursorSummary, tone: 'idle' };
     }
 
+    function readSummaryMetricMean(metricId) {
+      const summary = state.experimentSummary;
+      const m = summary && summary.metric_summaries ? summary.metric_summaries[metricId] : null;
+      if (!m) return null;
+      if (m.kind === 'distribution') return m.mean ?? null;
+      return m.value ?? null;
+    }
+
     function updateKpis() {
       const status = computeViewerStatus();
       ui.metricStatus.textContent = status.label;
@@ -4266,64 +4274,78 @@
         ui.metricStatusCard.dataset.level = status.tone;
       }
 
-      const run = state.selectedSimRun;
-      const statusDetail = run && run.status_message && run.status_message !== run.status ? formatStatusMessageForUi(run.status_message) : null;
-      const visibleDensitySummary = state.activitySummary && state.activitySummary.visible_event_density;
-
-      // Fixed KPI labels — never reflow when switching Monitor/Replay/Results.
-      // The cards always describe "this run" (whole-run summary), so the
-      // header above the mode tabs no longer changes when the user clicks a
-      // tab. Mode-specific live metrics (sim進行倍率 / 実効再生倍率 /
-      // 再生イベント速度 / アクティブ規模) are surfaced inside each mode's
-      // own toolbar instead.
+      // The KPI strip used to surface the dashboard's own operational
+      // metadata (last event timestamp, internal event-density rate)
+      // even though researchers care first about the actual experiment
+      // results. The strip is rebuilt to be the run's headline science
+      // numbers; the operational metadata moves to the Configuration
+      // tab where it belongs.
       ui.metricStatusLabel.textContent = '状態';
-      ui.metricFreshnessLabel.textContent = '終了時刻';
-      ui.metricEventRateLabel.textContent = '終了状況';
-      ui.metricRenderFpsLabel.textContent = '可視イベント密度 mean';
-      ui.metricRenderMsLabel.textContent = '可視イベント密度 p95';
+      ui.metricFreshnessLabel.textContent = 'BellPair Rate';
+      ui.metricEventRateLabel.textContent = 'Fidelity Mean';
+      ui.metricRenderFpsLabel.textContent = 'Photon Loss';
+      ui.metricRenderMsLabel.textContent = 'Inventory Peak';
       ui.metricSimTimeLabel.textContent = '現在sim時刻';
 
-      // Card 2: 終了時刻
-      if (state.lastEventTs) {
-        ui.metricFreshness.textContent = formatRunTimeLabel(state.lastEventTs) || '--';
+      const summary = state.experimentSummary;
+      const run = state.selectedSimRun;
+      const backend = selectedBackendType(summary);
+
+      // Card 2: BellPair Rate (per second, whole run)
+      const bellRate = readSummaryMetricMean('bellpair_generation_rate_per_s');
+      if (bellRate != null) {
+        ui.metricFreshness.textContent = `${Number(bellRate).toFixed(3)} /s`;
+        ui.metricFreshnessSub.textContent = 'whole run';
       } else {
         ui.metricFreshness.textContent = '--';
+        ui.metricFreshnessSub.textContent = summary ? 'no BellPair samples' : 'run summary unavailable';
       }
-      ui.metricFreshnessSub.textContent = (run && ['finished', 'failed', 'terminated'].includes(run.status))
-        ? (statusDetail || `last sim: ${formatSimTime(state.lastEventSimTime)}`)
-        : (run ? `status: ${run.status}` : '--');
 
-      // Card 3: 終了状況
-      ui.metricEventRate.textContent = truncateText(statusDetail || (run?.status ?? '--'), 22) || '--';
-      ui.metricEventRateSub.textContent = run ? runDisplayName(run) : '--';
+      // Card 3: Fidelity Mean (distribution mean)
+      const fidelityMetric = summary && summary.metric_summaries ? summary.metric_summaries.link_fidelity : null;
+      if (fidelityMetric && distributionAllNull(fidelityMetric)) {
+        ui.metricEventRate.textContent = '--';
+        ui.metricEventRateSub.textContent = fidelityUnavailableHint(summary);
+      } else if (fidelityMetric && fidelityMetric.mean != null) {
+        ui.metricEventRate.textContent = Number(fidelityMetric.mean).toFixed(4);
+        ui.metricEventRateSub.textContent = fidelityMetric.p95 != null ? `p95 ${Number(fidelityMetric.p95).toFixed(4)}` : 'no p95';
+      } else {
+        ui.metricEventRate.textContent = '--';
+        ui.metricEventRateSub.textContent = backend === 'graph_state' ? fidelityUnavailableHint(summary) : 'unavailable';
+      }
 
-      // Card 4: 可視イベント密度 mean (whole run)
-      if (visibleDensitySummary && visibleDensitySummary.mean != null) {
-        ui.metricRenderFps.textContent = `${Number(visibleDensitySummary.mean).toFixed(2)} ev/sim-s`;
-        ui.metricRenderFpsSub.textContent = `whole run · samples ${visibleDensitySummary.count ?? 0}`;
+      // Card 4: Photon Loss Rate (per second)
+      const photonLoss = readSummaryMetricMean('photon_loss_rate_per_s');
+      if (photonLoss != null) {
+        ui.metricRenderFps.textContent = `${Number(photonLoss).toFixed(3)} /s`;
+        ui.metricRenderFpsSub.textContent = 'whole run';
       } else {
         ui.metricRenderFps.textContent = '--';
-        ui.metricRenderFpsSub.textContent = 'whole run';
+        ui.metricRenderFpsSub.textContent = summary ? 'no photon loss data' : 'run summary unavailable';
       }
 
-      // Card 5: 可視イベント密度 p95 (whole run)
-      if (visibleDensitySummary && visibleDensitySummary.p95 != null) {
-        ui.metricRenderMs.textContent = `${Number(visibleDensitySummary.p95).toFixed(2)} ev/sim-s`;
-        ui.metricRenderMsSub.textContent = visibleDensitySummary.p50 != null
-          ? `whole run · p50 ${Number(visibleDensitySummary.p50).toFixed(2)}`
+      // Card 5: Inventory Peak (count)
+      const inventoryPeak = readSummaryMetricMean('bellpair_inventory_peak');
+      if (inventoryPeak != null) {
+        ui.metricRenderMs.textContent = `${Number(inventoryPeak)} count`;
+        const inventoryMean = readSummaryMetricMean('bellpair_inventory_mean');
+        ui.metricRenderMsSub.textContent = inventoryMean != null
+          ? `mean ${Number(inventoryMean).toFixed(2)}`
           : 'whole run';
       } else {
         ui.metricRenderMs.textContent = '--';
-        ui.metricRenderMsSub.textContent = 'whole run';
+        ui.metricRenderMsSub.textContent = summary ? 'no inventory data' : 'run summary unavailable';
       }
 
-      // Card 6: 現在sim時刻
+      // Card 6: 現在sim時刻 — keep run progress visible
       const currentSimTime = inferCurrentSimTime();
       ui.metricSimTime.textContent = formatSimTime(currentSimTime);
       if (state.mode === 'replay') {
         ui.metricSimTimeSub.textContent = 'replay clock';
+      } else if (run && ['finished', 'failed', 'terminated'].includes(run.status)) {
+        ui.metricSimTimeSub.textContent = `終了時刻: ${state.lastEventTs ? truncateText(formatRunTimeLabel(state.lastEventTs) || state.lastEventTs, 22) : '--'}`;
       } else {
-        ui.metricSimTimeSub.textContent = `last ts: ${state.lastEventTs ? truncateText(formatRunTimeLabel(state.lastEventTs) || state.lastEventTs, 26) : '--'}`;
+        ui.metricSimTimeSub.textContent = `last ts: ${state.lastEventTs ? truncateText(formatRunTimeLabel(state.lastEventTs) || state.lastEventTs, 22) : '--'}`;
       }
     }
 

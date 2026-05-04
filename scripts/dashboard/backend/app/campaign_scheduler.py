@@ -46,7 +46,21 @@ class CampaignScheduler:
         campaign.refresh_status()
         if campaign.status in {CampaignStatus.FINISHED, CampaignStatus.FAILED, CampaignStatus.CANCELLED}:
             campaign.finished_at = time.time()
-        return self.campaign_store.update_campaign(campaign)
+        updated = self.campaign_store.update_campaign(campaign)
+        # A spec just freed a concurrency slot. Try to start the next
+        # queued spec(s) of this campaign right now — otherwise they'd
+        # sit forever waiting for someone to call tick() (no periodic
+        # background loop runs).
+        if updated.status not in {CampaignStatus.PAUSED, CampaignStatus.CANCELLED, CampaignStatus.FINISHED, CampaignStatus.FAILED}:
+            try:
+                await self._start_available_specs(updated)
+            except Exception:  # noqa: BLE001
+                # _start_available_specs can fail (template missing,
+                # quisp binary gone, etc.) without taking down the
+                # whole terminal-state callback. The next tick() call
+                # will retry.
+                pass
+        return updated
 
     async def pause_campaign(self, campaign_id: str) -> Campaign:
         campaign = self.campaign_store.get_campaign(campaign_id)

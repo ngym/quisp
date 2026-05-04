@@ -164,6 +164,27 @@
     .compare-plot .data-point { stroke-width: 1; }
     .table-lite tr.compare-param-row td { color: #c9d8ff; font-size: 11px; }
     .table-lite tr.compare-param-row td:first-child { color: #9bdfff; }
+    .info-icon {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      margin-left: 4px;
+      border-radius: 50%;
+      border: 1px solid rgba(155, 223, 255, 0.45);
+      color: #9bdfff;
+      font-size: 10px;
+      font-weight: 600;
+      text-align: center;
+      line-height: 12px;
+      cursor: help;
+      user-select: none;
+      vertical-align: middle;
+      transition: background-color 120ms ease, color 120ms ease;
+    }
+    .info-icon:hover {
+      background-color: rgba(155, 223, 255, 0.2);
+      color: #ffffff;
+    }
     .canvasWrap {
       height: min(72vh, 720px);
       position: relative;
@@ -723,19 +744,18 @@
             <input id="simWorkdir" type="text" placeholder="例: /tmp/quisp" />
           </label>
           <details id="rawOverridesSection" class="exp-collapsible">
-            <summary>Raw Overrides</summary>
+            <summary>Raw Overrides <span class="info-icon" tabindex="0" role="img" aria-label="ヘルプ" title="キーは英数字・*・ピリオド・アンダースコア・ブラケット・ハイフンのみ使用可能です。">?</span></summary>
             <label>
               Overrides（key=value, 改行区切り）
-              <textarea id="simOverrides" placeholder='e.g. scheduler.precision=1\nchannels[0].bit_error_prob=0.01'></textarea>
-              <div class="help">キーは英数字・`*`・ピリオド・アンダースコア・ブラケット・ハイフンのみ使用可能です。</div>
+              <textarea id="simOverrides" placeholder='e.g. scheduler.precision=1\nchannels[0].bit_error_prob=0.01' title="例: scheduler.precision=1, channels[0].bit_error_prob=0.01"></textarea>
             </label>
           </details>
           <div class="row">
-            <button id="startSimRun" class="btn">起動</button>
-            <button id="stopSimRun" class="btn">選択中を停止</button>
-            <button id="refreshSimRuns" class="btn">ジョブ更新</button>
+            <button id="startSimRun" class="btn" title="設定したパラメータで 1 run をキュー投入する。">起動</button>
+            <button id="stopSimRun" class="btn" title="左の実行ジョブで選択した run を停止する。">選択中を停止</button>
+            <button id="refreshSimRuns" class="btn" title="ジョブ一覧を再取得する。">ジョブ更新</button>
+            <span class="info-icon" tabindex="0" role="img" aria-label="ヘルプ" title="起動は /api/sim/runs でキュー登録され、同じ run_id が可視化対象として /api/runs にも出ます。">?</span>
           </div>
-          <p class="help">起動は `/api/sim/runs` でキュー登録され、同じrun_idが可視化対象として `/api/runs` にも出ます。</p>
         </div>
 
         <div class="section-title">
@@ -791,7 +811,9 @@
           <button id="toggleEdges" class="btn">エッジ描画: 表示</button>
           <button id="zoomIn" class="btn">ズーム+</button>
           <button id="zoomOut" class="btn">ズーム-</button>
-          <p class="help">パネル左でフォーカス/ホップ/正規表現を設定すると表示サブネットを切り替えます。<br/>ノードは10000件以上でも描画可否を保つため、画面外は自動でスキップします。</p>
+          <div class="row" style="justify-content:flex-end;">
+            <span class="info-icon" tabindex="0" role="img" aria-label="ヘルプ" title="フォーカス/ホップ/正規表現を設定すると表示サブネットが切り替わります。10000ノード以上でも描画可否を保つため、画面外は自動でスキップされます。">?</span>
+          </div>
         </div>
       </aside>
 
@@ -958,11 +980,10 @@
       </section>
       <section class="panel">
         <div class="section-title">
-          <span>Compare Runs</span>
+          <span>Compare Runs <span class="info-icon" tabindex="0" role="img" aria-label="ヘルプ" title="`比較+` を押した run を最大5件まで比較できます。差分のあるパラメータがあれば自動でプロットが描かれます。">?</span></span>
           <button id="refreshExperimentCompare" class="btn small">比較更新</button>
         </div>
         <div id="experimentCompareQueue" class="compare-tags"></div>
-        <div class="help">`比較+` を押した run を最大5件まで比較します。</div>
         <div id="experimentCompareSharedParams" class="muted compare-shared" hidden></div>
         <div id="experimentComparePlot" class="compare-plot" hidden></div>
         <div class="list">
@@ -1698,7 +1719,11 @@
     function renderExperimentField(definition, container, currentValues) {
       const wrapper = document.createElement('label');
       wrapper.dataset.paramId = definition.id;
-      wrapper.innerHTML = `<span>${definition.label}${definition.unit ? ` (${definition.unit})` : ''}</span>`;
+      const helpText = definition.help_text || '';
+      const helpIcon = helpText
+        ? ` <span class="info-icon" tabindex="0" role="img" aria-label="ヘルプ" title="${escapeHtml(helpText)}">?</span>`
+        : '';
+      wrapper.innerHTML = `<span>${escapeHtml(definition.label)}${definition.unit ? ` (${escapeHtml(definition.unit)})` : ''}${helpIcon}</span>`;
       let input;
       const value = Object.prototype.hasOwnProperty.call(currentValues, definition.id)
         ? currentValues[definition.id]
@@ -1735,13 +1760,10 @@
       }
       input.dataset.expParamId = definition.id;
       input.dataset.expParamType = definition.type;
+      // Mirror the help text onto the input itself so the OS-level
+      // tooltip surfaces it on focus / hover for keyboard users too.
+      if (helpText) input.title = helpText;
       wrapper.appendChild(input);
-      if (definition.help_text) {
-        const help = document.createElement('div');
-        help.className = 'help';
-        help.textContent = definition.help_text;
-        wrapper.appendChild(help);
-      }
       container.appendChild(wrapper);
     }
 

@@ -38,7 +38,10 @@ enum class MeasureBasis { Z, X, Y, Bell };
 struct OperationResult {
   // Indicates whether backend execution itself succeeded (not a physical transmission success).
   bool success = false;
-  // Approximate fidelity metadata reported by backend.
+  // Channel-level (state-independent) process fidelity reported by the backend.
+  // Computed once per (kind, parameters) and cached on the worker side, so the
+  // value is cheap to obtain and reflects the operation's intrinsic quality
+  // rather than the post-collapse state of any particular invocation.
   double fidelity_estimate = 1.0;
 
   // Lifecycle / availability flags.

@@ -863,6 +863,9 @@ def _build_response(
     discard_reason = "expired"
   response = {
       "success": success,
+      # Placeholder; ``run_operation`` overwrites this on success with the
+      # cached process fidelity. Failure responses keep the 1.0 default so
+      # downstream consumers can rely on the field being present and numeric.
       "fidelity_estimate": 1.0,
       "discarded": discarded,
       "photon_lost": photon_lost,
@@ -881,10 +884,11 @@ def _build_response(
   if "backend_class" in fields:
     response["backend_class"] = fields.pop("backend_class")
   response["operation_model"] = _normalize_operation_model(operation_model)
-  fidelity_estimate = fields.pop("fidelity_estimate", response["fidelity_estimate"])
-  if isinstance(fidelity_estimate, (int, float)) and math.isfinite(float(fidelity_estimate)):
-    fidelity_estimate = max(0.0, min(1.0, float(fidelity_estimate)))
-    response["fidelity_estimate"] = fidelity_estimate
+  # ``fidelity_estimate`` is owned by ``run_operation``: it computes the
+  # cached process fidelity for the op and stamps it on the response after
+  # successful dispatch. Any value passed in via kwargs would silently
+  # shadow that, so we drop it here.
+  fields.pop("fidelity_estimate", None)
   response.update(fields)
   if meta is not None:
     response["meta"] = dict(meta)
@@ -1449,7 +1453,6 @@ def _calculate_qutip_noise_fidelity(
     tlist = [0.0, duration]
     result = qutip.mesolve(qutip.qeye(base.shape[0]), base, tlist, collapse_ops, [])
     final_state = result.states[-1] if result.states else base
-    fidelity = float(_fast_fidelity_estimate(base, final_state))
     return True, fidelity, f"qutip worker applied {noise_kind} with duration={duration}", {"effective_probability": p, "rate": rate}
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker {noise_kind} evolution failed: {exc}"), {}
@@ -1510,7 +1513,6 @@ def _calculate_qutip_loss_fidelity(
     tlist = [0.0, max(duration, 1.0)]
     result = qutip.mesolve(qutip.qeye(state.shape[0]), state, tlist, collapse_ops, [])
     final_state = result.states[-1] if result.states else state
-    fidelity = float(_fast_fidelity_estimate(state, final_state))
     return True, fidelity, f"qutip worker applied loss with duration={duration}", {"effective_probability": p, "rate": rate}
   except Exception as exc:
     return (
@@ -1564,7 +1566,6 @@ def _calculate_qutip_reset_fidelity(
     rho_t = collapse_ops[0] * rho0 * collapse_ops[0].dag()
     for op in collapse_ops[1:]:
       rho_t = rho_t + op * rho0 * op.dag()
-    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, min(1.0, max(0.0, fidelity)), "qutip worker applied reset to ground using qutip Kraus map"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker reset map failed: {exc}")
@@ -1605,7 +1606,6 @@ def _calculate_qutip_phase_fidelity(qutip: Any, operation: dict, duration: float
     rho0 = state * state.dag()
     U = (embed * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied phase evolution axis={axis_normalized} with angle={angle} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker phase evolution failed: {exc}")
@@ -1660,7 +1660,6 @@ def _calculate_qutip_coupled_phase_fidelity(
     rho0 = state * state.dag()
     U = (hamiltonian * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied {mode_normalized} with coeff={coeff} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker {mode_normalized} evolution failed: {exc}")
@@ -1696,7 +1695,6 @@ def _calculate_qutip_hamiltonian_fidelity(qutip: Any, operation: dict, duration:
     state = _basis_state_from_targets(qutip, n_targets, dim)
     rho0 = state * state.dag()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied hamiltonian with expr={expression} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker hamiltonian evolution failed: {exc}")
@@ -1731,7 +1729,6 @@ def _calculate_qutip_lindblad_fidelity(qutip: Any, operation: dict, duration: fl
     tlist = [0.0, duration]
     result = qutip.mesolve(qutip.qeye(state.shape[0]), state, tlist, collapse_ops, [])
     final_state = result.states[-1] if result.states else state
-    fidelity = float(_fast_fidelity_estimate(state, final_state))
     return True, fidelity, f"qutip worker applied lindblad with {len(collapse_ops)} collapse operator(s) for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker lindblad evolution failed: {exc}")
@@ -1760,7 +1757,6 @@ def _calculate_qutip_kerr_fidelity(qutip: Any, operation: dict, duration: float,
     rho0 = state * state.dag()
     U = (-1j * hamiltonian * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied kerr with chi={chi} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker kerr evolution failed: {exc}")
@@ -1790,7 +1786,6 @@ def _calculate_qutip_cross_kerr_fidelity(qutip: Any, operation: dict, duration: 
     rho0 = state * state.dag()
     U = (-1j * hamiltonian * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied cross_kerr with chi={chi} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker cross_kerr evolution failed: {exc}")
@@ -1906,7 +1901,6 @@ def _calculate_qutip_unitary_fidelity(qutip: Any, operation: dict, dim: int = 2)
     state = _basis_state_from_targets(qutip, n_targets, dim=max(2, int(dim)))
     rho0 = state * state.dag()
     rho_t = op * rho0 * op.dag()
-    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, message
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker unitary evolution failed: {exc}")
@@ -1950,7 +1944,6 @@ def _calculate_qutip_beam_splitter_fidelity(qutip: Any, operation: dict, duratio
     rho0 = state * state.dag()
     U = (-1j * hamiltonian * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied beam_splitter with theta={theta} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker beam_splitter evolution failed: {exc}")
@@ -1983,10 +1976,8 @@ def _handle_unitary(operation: dict, seed: int, dim: int = 2, profile_meta: Opti
   if not apply_success or evolved_state is None:
     return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply unitary on entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
   entanglement_set_state.density_matrix = evolved_state
-  fidelity = float(_fast_fidelity_estimate(previous_state, evolved_state)) if previous_state is not None else 1.0
   response = _build_response(
       True,
-      fidelity_estimate=fidelity,
       message=message,
       meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id),
   )
@@ -2057,7 +2048,6 @@ def _handle_measurement(operation: dict, seed: int, dim: int = 2, profile_meta: 
       True,
       measured_plus=measured_plus,
       branch_probability=branch_probability,
-      fidelity_estimate=branch_probability,
       meta=meta,
       message=f"qutip worker measured {basis} in entanglement-set {entanglement_set_id}",
   )
@@ -2117,16 +2107,11 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
       return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply loss in entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
     previous_state = entanglement_set_state.density_matrix
     entanglement_set_state.density_matrix = evolved_state
-    try:
-      fidelity = float(_fast_fidelity_estimate(previous_state, evolved_state))
-    except Exception:
-      fidelity = _effective_probability(1.0 - _effective_probability(p, 0.0), 1.0)
     response = _build_response(
         True,
         discarded=False,
         photon_lost=photon_lost,
         discard_reason="photon_loss" if photon_lost else "",
-        fidelity_estimate=fidelity,
         message=f"qutip worker applied loss in entanglement-set with p={_effective_probability(p, 0.0)}",
         meta=meta,
     )
@@ -2155,13 +2140,8 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
       return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply noise in entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
     previous_state = entanglement_set_state.density_matrix
     entanglement_set_state.density_matrix = evolved_state
-    try:
-      fidelity = float(_fast_fidelity_estimate(previous_state, evolved_state))
-    except Exception:
-      fidelity = 1.0
     response = _build_response(
       True,
-      fidelity_estimate=fidelity,
       message=f"qutip worker applied {canonical_noise_kind} in entanglement-set",
     )
     response = _attach_profile_metadata(response, profile_meta)
@@ -2244,13 +2224,8 @@ def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta
         return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply error_channel noise"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
       entanglement_set_state.density_matrix = evolved_state
 
-    try:
-      fidelity = float(_fast_fidelity_estimate(previous_state, entanglement_set_state.density_matrix))
-    except Exception:
-      fidelity = 1.0
     return _build_response(
       True,
-      fidelity_estimate=fidelity,
       discarded=False,
       photon_lost=has_photon_lost,
       discard_reason=discard_reason if has_photon_lost else "",
@@ -2649,11 +2624,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
         ),
       )
     entanglement_set_state.density_matrix = evolved
-    try:
-      fidelity = float(_fast_fidelity_estimate(previous_state, evolved))
-    except Exception:
-      fidelity = 1.0
-    response = _build_response(True, fidelity_estimate=fidelity, message=message)
+    response = _build_response(True, message=message)
     return _finalize(response)
 
   def _apply_entanglement_set_kraus(
@@ -2686,12 +2657,8 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
     if not success_apply or evolved_state is None:
       return _invalid_payload("qutip worker failed to apply advanced operation on entanglement-set")
     entanglement_set_state.density_matrix = evolved_state
-    try:
-      fidelity = float(_fast_fidelity_estimate(previous_state, evolved_state))
-    except Exception:
-      fidelity = 1.0
 
-    response = _build_response(True, fidelity_estimate=fidelity, message=message or f"qutip worker applied {kind} in entanglement-set")
+    response = _build_response(True, message=message or f"qutip worker applied {kind} in entanglement-set")
     if isinstance(meta, dict):
       response_meta = dict(response.get("meta") or {})
       response_meta.update(meta)
@@ -2878,7 +2845,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
 
     response = _build_response(
       True,
-      fidelity_estimate=1.0,
       message=success_message,
     )
     response_meta = response.get("meta")
@@ -3058,7 +3024,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       return _finalize(
         _build_response(
           True,
-          fidelity_estimate=1.0,
           message="qutip worker applied zero-duration lindblad with identity effect",
         ),
       )
@@ -3086,13 +3051,9 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
 
     previous_state = entanglement_set_state.density_matrix
     entanglement_set_state.density_matrix = rho_t
-    try:
-      fidelity = float(_fast_fidelity_estimate(previous_state, rho_t))
-    except Exception:
-      fidelity = 1.0
 
     return _finalize(
-      _build_response(True, fidelity_estimate=fidelity, message=f"qutip worker applied lindblad with {len(collapse_ops)} collapse operator(s) for duration={duration}"),
+      _build_response(True, message=f"qutip worker applied lindblad with {len(collapse_ops)} collapse operator(s) for duration={duration}"),
     )
 
   def _handle_event_kind(kind_for_handler: str) -> dict:
@@ -3354,7 +3315,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
           outcome=selected_outcome,
           branch_probability=branch_probability,
           measured_plus=measured_plus,
-          fidelity_estimate=branch_probability,
           meta=response_meta,
           message=f"qutip worker simulated detection ({selected_event}) with efficiency={efficiency}, dark_count={dark_count}",
         ),
@@ -3365,7 +3325,6 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       return _finalize(
         _build_response(
           True,
-          fidelity_estimate=_simple_fidelity_decay(strength, duration),
           message=f"qutip worker simulated {kind_for_handler} with strength={strength}",
         ),
       )
@@ -3524,16 +3483,152 @@ def _merge_entanglement_sets_for_operation(operation: dict, qutip: Any) -> None:
     target_state.qubits = list(target_state.qubits) + list(source_state.qubits)
 
 
-def _fast_fidelity_estimate(_rho_a: Any, _rho_b: Any) -> float:
-  """Drop-in replacement for ``qutip.metrics.fidelity`` used as response metadata.
+_PROCESS_FIDELITY_CACHE: dict[tuple, float] = {}
 
-  ``qutip.metrics.fidelity`` calls ``scipy.linalg.sqrtm`` twice; on the small
-  rank-deficient density matrices we deal with it is the dominant per-op
-  cost and floods stderr with ``LinAlgWarning: Matrix is singular``. Since
-  ``OperationResult.fidelity_estimate`` is never read by the QuISP C++ side,
-  returning a constant is correct and ~1000× faster.
+_PROCESS_FIDELITY_PAYLOAD_KEYS = (
+    "p",
+    "strength",
+    "rate",
+    "gamma",
+    "visibility",
+    "efficiency",
+    "dark_count",
+    "duration",
+    "theta",
+    "coupling",
+    "channel_loss_rate",
+    "attenuation_db_per_km",
+    "channel_length_km",
+    "length_km",
+    "distance_km",
+)
+
+
+def _process_fidelity_cache_key(kind: str, payload: dict, params: list, dim: int) -> tuple:
+  payload_part: list[tuple[str, Any]] = []
+  if isinstance(payload, dict):
+    for name in _PROCESS_FIDELITY_PAYLOAD_KEYS:
+      if name not in payload:
+        continue
+      value = payload[name]
+      try:
+        payload_part.append((name, round(float(value), 9)))
+      except (TypeError, ValueError):
+        payload_part.append((name, repr(value)))
+  param_part: list[Any] = []
+  if isinstance(params, list):
+    for value in params:
+      try:
+        param_part.append(round(float(value), 9))
+      except (TypeError, ValueError):
+        param_part.append(repr(value))
+  return (kind, tuple(payload_part), tuple(param_part), int(dim))
+
+
+def _process_fidelity_param(payload: dict, params: list, default: float = 0.0) -> float:
+  if isinstance(params, list) and params:
+    try:
+      return max(0.0, min(1.0, float(params[0])))
+    except (TypeError, ValueError):
+      pass
+  if isinstance(payload, dict):
+    for name in ("p", "strength", "rate", "gamma"):
+      if name in payload:
+        try:
+          return max(0.0, min(1.0, float(payload[name])))
+        except (TypeError, ValueError):
+          pass
+  return max(0.0, min(1.0, float(default)))
+
+
+def _process_fidelity_analytic(kind: str, payload: dict, params: list, dim: int) -> Optional[float]:
+  """Closed-form process fidelity for the channels we know how to score."""
+  if kind in {"unitary", "noop"}:
+    return 1.0
+
+  p = _process_fidelity_param(payload, params, 0.0)
+
+  # Single Pauli-error channels: probability p of applying the labelled Pauli.
+  if kind in {"bitflip", "phaseflip", "x_error", "z_error", "y_error"}:
+    return 1.0 - p
+
+  # Depolarising channel for a d-level system mixes in I/d with weight p.
+  if kind in {"depolarizing", "depolarizing_channel"}:
+    d = max(2, int(dim))
+    return max(0.0, 1.0 - p * (d - 1) / d)
+
+  # Amplitude damping / thermal relaxation: F ≈ 1 - γ/2 to leading order.
+  if kind in {"amplitude_damping", "thermal_relaxation"}:
+    return max(0.0, 1.0 - p / 2.0)
+
+  # Photon loss / dephasing channels: same leading-order form.
+  if kind in {"loss", "loss_channel", "attenuation", "attenuation_channel", "dephasing", "dephase", "decoherence"}:
+    return max(0.0, 1.0 - p / 2.0)
+
+  # Idealised reset: maps every input to |0>, so the channel-averaged
+  # fidelity against the input state is 1/2.
+  if kind == "reset":
+    return 0.5
+
+  # Detection / HOM interference are sampled-outcome ops; report the visibility
+  # / efficiency product as a best-effort channel-quality proxy.
+  if kind == "detection":
+    eff = _process_fidelity_param(payload, [], 1.0) if False else 1.0
+    if isinstance(payload, dict):
+      try:
+        eff = max(0.0, min(1.0, float(payload.get("efficiency", 1.0))))
+      except (TypeError, ValueError):
+        eff = 1.0
+      try:
+        vis = max(0.0, min(1.0, float(payload.get("visibility", 1.0))))
+      except (TypeError, ValueError):
+        vis = 1.0
+      try:
+        dark = max(0.0, min(1.0, float(payload.get("dark_count", 0.0))))
+      except (TypeError, ValueError):
+        dark = 0.0
+    else:
+      eff, vis, dark = 1.0, 1.0, 0.0
+    return max(0.0, min(1.0, eff * vis * (1.0 - dark)))
+  if kind in {"hom_interference"}:
+    if isinstance(payload, dict):
+      try:
+        return max(0.0, min(1.0, float(payload.get("visibility", 1.0))))
+      except (TypeError, ValueError):
+        return 1.0
+    return 1.0
+
+  # Hamiltonian / Lindblad / kerr-style evolutions are state- and operator-
+  # dependent in general; without a specific formula we report 1.0 (the
+  # noiseless ideal) and let the caller annotate further if needed.
+  return None
+
+
+def _process_fidelity_for(kind: str, payload: dict, params: list, dim: int = 2) -> float:
+  """Channel-level process fidelity, cached by (kind, parameters).
+
+  Process fidelity is a property of the CPTP map itself and does not depend
+  on the input state, so the value is stable across operations of the same
+  kind with the same parameters. Computing it once and caching avoids any
+  per-op qutip math while still letting downstream consumers read a
+  meaningful fidelity in ``OperationResult.fidelity_estimate``.
   """
-  return 1.0
+  canonical = _canonicalize_kind(kind)
+  if canonical in {"unitary", "noop"}:
+    return 1.0
+
+  key = _process_fidelity_cache_key(canonical, payload or {}, params or [], dim)
+  cached = _PROCESS_FIDELITY_CACHE.get(key)
+  if cached is not None:
+    return cached
+
+  fidelity = _process_fidelity_analytic(canonical, payload or {}, params or [], dim)
+  if fidelity is None:
+    fidelity = 1.0
+  fidelity = max(0.0, min(1.0, float(fidelity)))
+  _PROCESS_FIDELITY_CACHE[key] = fidelity
+  return fidelity
+
 
 
 def _check_entanglement_set_size_limit(operation: dict, backend_config: dict) -> Optional[dict]:
@@ -3697,6 +3792,16 @@ def run_operation(request: dict) -> dict:
 
   if response.get("success"):
     _release_qubits_post_operation(operation)
+    response["fidelity_estimate"] = _process_fidelity_for(
+        kind,
+        operation.get("payload", {}),
+        operation.get("params", []),
+        profile_dim,
+    )
+  else:
+    # Keep the field present so consumers can rely on its type, but don't
+    # claim a fidelity for an op that never applied.
+    response.setdefault("fidelity_estimate", 1.0)
   return response
 
 

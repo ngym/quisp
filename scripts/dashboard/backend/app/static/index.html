@@ -750,6 +750,16 @@
     body[data-mode="results"][data-view="run"] #replaySeekPanel,
     body[data-mode="results"][data-view="run"] .layout > aside.panel { display: none; }
     body[data-mode="results"][data-view="run"] #configurationView { display: block !important; }
+    /* List view doesn't have a run loaded, so the Replay-time chrome
+       (再生 / 停止 / カーソル先頭 / 速度 / GO LIVE / cursor) carries
+       no useful state. Take it out entirely so the topbar is calm. */
+    body[data-view="list"] #playBtn,
+    body[data-view="list"] #pauseBtn,
+    body[data-view="list"] #resetBtn,
+    body[data-view="list"] #goLiveBtn,
+    body[data-view="list"] #speedWrap,
+    body[data-view="list"] #liveSeekStatus,
+    body[data-view="list"] #cursorLabel { display: none !important; }
   </style>
 </head>
 <body data-view="list" data-section="studies">

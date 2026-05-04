@@ -734,6 +734,19 @@
     body[data-section="library"][data-view="list"] .grid2,
     body[data-section="settings"][data-view="list"] .layout,
     body[data-section="settings"][data-view="list"] .grid2 { display: none; }
+
+    /* Run-detail mode visibility:
+       - Overview (state.mode === 'monitor' for now): canvas + Experiment Results
+       - Replay: canvas + replay seek + event list (hide Experiment Results)
+       - Configuration (state.mode === 'results' for now): hide canvas, show config view
+    */
+    body[data-mode="replay"][data-view="run"] .grid2,
+    body[data-mode="results"][data-view="run"] .grid2 { display: none; }
+    body[data-mode="results"][data-view="run"] .canvasWrap,
+    body[data-mode="results"][data-view="run"] #eventList,
+    body[data-mode="results"][data-view="run"] #monitorToolbar,
+    body[data-mode="results"][data-view="run"] #replayToolbar { display: none; }
+    body[data-mode="results"][data-view="run"] #configurationView { display: block !important; }
   </style>
 </head>
 <body data-view="list" data-section="studies">
@@ -981,9 +994,9 @@
 
       <main class="panel split run-only">
         <div class="modebar">
-          <button id="monitorModeBtn" class="mode-tab" data-active="true" title="Topology + LIVE event stream. Running の run なら自動でライブ更新する。">Topology</button>
-          <button id="replayModeBtn" class="mode-tab" data-active="false">Replay</button>
-          <button id="resultsModeBtn" class="mode-tab" data-active="false">Results</button>
+          <button id="monitorModeBtn" class="mode-tab" data-active="true" title="この run の俯瞰: Topology + KPI + Experiment Results を一画面で。Running 中は自動的にライブ更新。">Overview</button>
+          <button id="replayModeBtn" class="mode-tab" data-active="false" title="event 単位のステップ実行。デバッグ向け。">Replay</button>
+          <button id="resultsModeBtn" class="mode-tab" data-active="false" title="この run の設定 (parameter_values / overrides / 物理仮定) を確認">Configuration</button>
         </div>
         <section class="campaign-workspace" data-testid="experiments-workspace" aria-label="Experiments workspace">
           <div class="section-title">
@@ -1083,8 +1096,26 @@
           </label>
         </div>
         <div id="resultsToolbar" class="toolbar-row" hidden>
-          <button id="resultsReplayBtn" class="btn small">Replay で開く</button>
+          <span class="muted">Configuration: この run を起動した設定の確認 (read-only)</span>
         </div>
+        <section id="configurationView" class="panel" hidden style="margin-top:8px;">
+          <div class="section-title"><span>Parameter Values</span></div>
+          <table class="table-lite" style="width:100%;">
+            <thead><tr><th style="width:40%;">Key</th><th>Value</th></tr></thead>
+            <tbody id="configParameterValuesBody"><tr><td colspan="2" class="muted">run を選択してください</td></tr></tbody>
+          </table>
+          <div class="section-title" style="margin-top:14px;"><span>Resolved Overrides</span></div>
+          <table class="table-lite" style="width:100%;">
+            <thead><tr><th style="width:40%;">Key</th><th>Value</th></tr></thead>
+            <tbody id="configOverridesBody"><tr><td colspan="2" class="muted">--</td></tr></tbody>
+          </table>
+          <div class="section-title" style="margin-top:14px;"><span>Physical model assumptions</span></div>
+          <div id="configPhysicalNotes" class="warning-banner" hidden></div>
+          <div class="section-title" style="margin-top:14px;"><span>Run metadata</span></div>
+          <table class="table-lite" style="width:100%;">
+            <tbody id="configMetadataBody"><tr><td colspan="2" class="muted">--</td></tr></tbody>
+          </table>
+        </section>
         <div class="canvasWrap">
           <canvas id="topologyCanvas"></canvas>
           <div class="overlay">
@@ -2954,16 +2985,87 @@
       }
     }
 
+    function renderConfigurationView() {
+      // Read-only view of how the current run was launched. Backed by
+      // the experiment_summary surfaced by /api/sim/runs/{id}/summary.
+      const paramBody = document.getElementById('configParameterValuesBody');
+      const overrideBody = document.getElementById('configOverridesBody');
+      const metaBody = document.getElementById('configMetadataBody');
+      const physicalNotes = document.getElementById('configPhysicalNotes');
+      const summary = state.experimentSummary;
+      const run = state.selectedSimRun;
+      const renderKv = (tbody, entries, emptyText) => {
+        if (!tbody) return;
+        const list = Array.from(entries || []);
+        if (!list.length) {
+          tbody.innerHTML = `<tr><td colspan="2" class="muted">${escapeHtml(emptyText)}</td></tr>`;
+          return;
+        }
+        tbody.innerHTML = list
+          .sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+          .map(([k, v]) => {
+            const display = v == null
+              ? '<span class="muted">null</span>'
+              : `<span class="mono" style="word-break:break-all;">${escapeHtml(typeof v === 'object' ? JSON.stringify(v) : String(v))}</span>`;
+            return `<tr><td class="mono">${escapeHtml(k)}</td><td>${display}</td></tr>`;
+          })
+          .join('');
+      };
+      renderKv(
+        paramBody,
+        Object.entries((summary && summary.parameter_values) || {}),
+        'run を選択するか、結果更新を押してください'
+      );
+      renderKv(
+        overrideBody,
+        Object.entries((run && run.resolved_overrides) || (summary && summary.resolved_overrides) || {}),
+        'override 無し'
+      );
+      renderKv(
+        metaBody,
+        [
+          ['run_id', run && run.run_id],
+          ['display_name', run && run.display_name],
+          ['profile_id', run && run.experiment_profile_id],
+          ['template_id', run && run.template_id],
+          ['config_name', run && run.config_name],
+          ['status', run && run.status],
+          ['exit_code', run && run.exit_code],
+          ['started_at', run && run.started_at],
+          ['finished_at', run && run.finished_at],
+          ['event_count', run && run.event_count],
+          ['campaign_id', run && run.tags && run.tags.campaign_id],
+        ].filter(([, v]) => v != null && v !== ''),
+        'run 情報なし'
+      );
+      if (physicalNotes) {
+        const warnings = summary ? buildExperimentWarnings(summary) : [];
+        if (warnings.length) {
+          physicalNotes.innerHTML = `<ul>${warnings.map((msg) => `<li>${msg}</li>`).join('')}</ul>`;
+          physicalNotes.hidden = false;
+        } else {
+          physicalNotes.hidden = true;
+          physicalNotes.innerHTML = '';
+        }
+      }
+    }
+
     function renderModeUi() {
-      const isMonitor = state.mode === 'monitor';
+      const isMonitor = state.mode === 'monitor';      // shown as Overview tab
       const isReplay = state.mode === 'replay';
-      const isResults = state.mode === 'results';
+      const isResults = state.mode === 'results';      // shown as Configuration tab
+      // Surface the active mode on <body> so CSS can hide / show the
+      // grid2 (Experiment Results) and the configurationView accordingly.
+      document.body.dataset.mode = state.mode || 'monitor';
       ui.monitorModeBtn.dataset.active = String(isMonitor);
       ui.replayModeBtn.dataset.active = String(isReplay);
       ui.resultsModeBtn.dataset.active = String(isResults);
       ui.monitorToolbar.hidden = !isMonitor;
       ui.replayToolbar.hidden = !isReplay;
       ui.resultsToolbar.hidden = !isResults;
+      const configurationView = document.getElementById('configurationView');
+      if (configurationView) configurationView.hidden = !isResults;
+      if (isResults) renderConfigurationView();
       // Mode-specific topbar controls keep their slots reserved across
       // modes so the header doesn't reflow when switching tabs. Buttons
       // are visually hidden + non-interactive when their mode is inactive.
@@ -5948,10 +6050,11 @@
       await Promise.all([refreshExperimentSummary(runId), loadReplayTimeline()]);
       if (run && ['queued', 'starting', 'running'].includes(run.status)) {
         await setViewerMode('monitor', { followLiveEdge: true });
-      } else if (run && ['finished', 'failed', 'terminated'].includes(run.status)) {
-        await setViewerMode('results');
       } else {
-        await setViewerMode('replay');
+        // Both finished and "no run" states default to Overview
+        // (state.mode='monitor'). Configuration is opened explicitly
+        // from the tab; users no longer land on a Results-only screen.
+        await setViewerMode('monitor', { followLiveEdge: true });
       }
     }
 

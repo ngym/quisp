@@ -12,7 +12,7 @@ import time
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -36,6 +36,7 @@ from .sim_models import (
 from .sim_store import SimulationRunStore
 from .simulation_runner import SimulationRunner
 from .store import RunStore
+from .study_store import StudyStore
 
 
 def _build_project_root() -> Path:
@@ -170,6 +171,8 @@ def create_app(
     )
     app.state.campaign_store = campaign_store
     app.state.campaign_scheduler = campaign_scheduler
+    # Studies-side annotations (hypothesis / notes per profile).
+    app.state.study_store = StudyStore(root=workspace_root / "scripts" / "dashboard" / "studies")
 
     @app.middleware("http")
     async def audit_api(request: Request, call_next):
@@ -716,6 +719,22 @@ def create_app(
         response = aggregator.compare(summaries, list(request.metric_ids or []))
         response.warnings.extend(warnings)
         return response.model_dump()
+
+    @router.get("/studies/{profile_id}")
+    async def get_study(profile_id: str):
+        study_store: StudyStore = app.state.study_store
+        try:
+            return study_store.get(profile_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    @router.put("/studies/{profile_id}")
+    async def put_study(profile_id: str, payload: dict = Body(default_factory=dict)):
+        study_store: StudyStore = app.state.study_store
+        try:
+            return study_store.upsert(profile_id, payload or {})
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @router.get("/metrics")
     async def get_metrics():

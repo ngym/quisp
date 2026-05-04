@@ -65,11 +65,11 @@ class HardwareMonitorTestTarget : public quisp::modules::HardwareMonitor {
 };
 
 TEST(HardwareMonitorTestTarget, Init) {
-  auto *sim = prepareSimulation();
+  auto* sim = prepareSimulation();
   auto* mock_routing_daemon = new MockRoutingDaemon;
   auto* mock_qubit = new MockQubit;
   EXPECT_CALL(*mock_routing_daemon, getNumEndNodes()).WillOnce(Return(1));
-  auto *c = new HardwareMonitorTestTarget(mock_qubit, mock_routing_daemon);
+  auto* c = new HardwareMonitorTestTarget(mock_qubit, mock_routing_daemon);
   sim->registerComponent(c);
   c->initialize(0);
   ASSERT_EQ(c->par("address").intValue(), 123);

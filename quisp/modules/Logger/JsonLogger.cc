@@ -1,6 +1,6 @@
 #include "JsonLogger.h"
-#include <sstream>
 #include <iomanip>
+#include <sstream>
 #include "messages/connection_setup_messages_m.h"
 
 namespace quisp::modules::Logger {

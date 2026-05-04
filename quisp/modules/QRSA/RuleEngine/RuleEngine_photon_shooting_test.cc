@@ -69,9 +69,7 @@ class RuleEngineTestTarget : public quisp::modules::RuleEngine {
   }
   // setter function for allResorces[qnic_type][qnic_index]
   void setQubitBusyInQnic(int qnic_type, int qnic_index, int qubit_index) { qnic_store->setQubitBusy(QNIC_type(qnic_type), qnic_index, qubit_index, true); };
-  int getNumAvailableQubitsInQnic(int qnic_type, int qnic_index) {
-    return qnic_store->countNumAvailableQubits(QNIC_type(qnic_type), qnic_index);
-  }
+  int getNumAvailableQubitsInQnic(int qnic_type, int qnic_index) { return qnic_store->countNumAvailableQubits(QNIC_type(qnic_type), qnic_index); }
 };
 
 TEST(RuleEnginePhotonShootingTest, RequestEmissionWithoutFreeQubit) {

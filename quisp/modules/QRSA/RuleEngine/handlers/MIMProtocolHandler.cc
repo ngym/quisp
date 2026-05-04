@@ -21,11 +21,11 @@ void MIMProtocolHandler::registerHandlers(RuleEngine& engine) {
   };
 
   register_handler(EventType::BSM_RESULT, EventProtocol::MIM_v1, [&engine](const core::events::RuleEvent& event) {
-    engine.protocolExecutionContext().handleLinkGenerationResult(std::get<messages::CombinedBSAresults *>(event.payload));
+    engine.protocolExecutionContext().handleLinkGenerationResult(std::get<messages::CombinedBSAresults*>(event.payload));
   });
 
   register_handler(EventType::BSM_TIMING, EventProtocol::MIM_v1, [&engine](const core::events::RuleEvent& event) {
-    auto *notification_packet = std::get<messages::BSMTimingNotification *>(event.payload);
+    auto* notification_packet = std::get<messages::BSMTimingNotification*>(event.payload);
     auto type = notification_packet->getQnicType();
     auto qnic_index = notification_packet->getQnicIndex();
     engine.stopOnGoingPhotonEmission(type, qnic_index);

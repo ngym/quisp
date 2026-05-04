@@ -5,9 +5,9 @@
 
 #include <string>
 
+#include <sstream>
 #include "ConnectionManager.h"
 #include "RuleSetGenerator.h"
-#include <sstream>
 
 namespace {
 
@@ -81,11 +81,9 @@ void ConnectionManager::initialize() {
  * The catch-all handler for messages received.  Needs to confirm the packet type and call the appropriate lower-level handler.
  * \param msg pointer to the cMessage itself
  */
-void ConnectionManager::handleMessage(cMessage *msg) {
-  handleIncomingControlMessage(msg);
-}
+void ConnectionManager::handleMessage(cMessage *msg) { handleIncomingControlMessage(msg); }
 
-ConnectionManager::DecodedConnectionManagerEvent ConnectionManager::decodeIncomingMessage(omnetpp::cMessage* msg) const {
+ConnectionManager::DecodedConnectionManagerEvent ConnectionManager::decodeIncomingMessage(omnetpp::cMessage *msg) const {
   ConnectionManager::DecodedConnectionManagerEvent event;
   event.raw = msg;
 
@@ -123,7 +121,7 @@ ConnectionManager::DecodedConnectionManagerEvent ConnectionManager::decodeIncomi
   return event;
 }
 
-bool ConnectionManager::isKnownSelfTimingMessage(const omnetpp::cMessage* msg, int& qnic_index) const {
+bool ConnectionManager::isKnownSelfTimingMessage(const omnetpp::cMessage *msg, int &qnic_index) const {
   if (!msg || !msg->isSelfMessage()) {
     qnic_index = -1;
     return false;
@@ -139,7 +137,7 @@ bool ConnectionManager::isKnownSelfTimingMessage(const omnetpp::cMessage* msg, i
   return false;
 }
 
-void ConnectionManager::dispatchInternalEvent(const DecodedConnectionManagerEvent& ev) {
+void ConnectionManager::dispatchInternalEvent(const DecodedConnectionManagerEvent &ev) {
   if (!ev.raw) {
     return;
   }
@@ -155,7 +153,7 @@ void ConnectionManager::dispatchInternalEvent(const DecodedConnectionManagerEven
   handleUnknownControlMessage(ev);
 }
 
-void ConnectionManager::dispatchProtocolMessage(const DecodedConnectionManagerEvent& ev) {
+void ConnectionManager::dispatchProtocolMessage(const DecodedConnectionManagerEvent &ev) {
   if (!ev.raw) {
     return;
   }
@@ -191,7 +189,7 @@ void ConnectionManager::dispatchProtocolMessage(const DecodedConnectionManagerEv
   handleUnknownControlMessage(ev);
 }
 
-void ConnectionManager::handleIncomingControlMessage(cMessage* msg) {
+void ConnectionManager::handleIncomingControlMessage(cMessage *msg) {
   auto decoded = decodeIncomingMessage(msg);
 
   if (decoded.channel == ConnectionManagerEventChannel::InternalTimer) {
@@ -209,7 +207,7 @@ void ConnectionManager::handleIncomingControlMessage(cMessage* msg) {
 
 void ConnectionManager::handleSelfTiming(int qnic_address) { initiateApplicationRequest(qnic_address); }
 
-void ConnectionManager::handleProtocolSetupRequest(ConnectionSetupRequest* msg) {
+void ConnectionManager::handleProtocolSetupRequest(ConnectionSetupRequest *msg) {
   int actual_dst = msg->getActual_destAddr();
   int actual_src = msg->getActual_srcAddr();
 
@@ -226,7 +224,7 @@ void ConnectionManager::handleProtocolSetupRequest(ConnectionSetupRequest* msg) 
   }
 }
 
-void ConnectionManager::handleProtocolSetupResponse(ConnectionSetupResponse* msg) {
+void ConnectionManager::handleProtocolSetupResponse(ConnectionSetupResponse *msg) {
   int initiator_addr = msg->getActual_destAddr();
   int responder_addr = msg->getActual_srcAddr();
 
@@ -241,7 +239,7 @@ void ConnectionManager::handleProtocolSetupResponse(ConnectionSetupResponse* msg
   delete msg;
 }
 
-void ConnectionManager::handleProtocolRejectSetup(RejectConnectionSetupRequest* msg) {
+void ConnectionManager::handleProtocolRejectSetup(RejectConnectionSetupRequest *msg) {
   int actual_src = msg->getActual_srcAddr();
 
   if (actual_src == my_address) {
@@ -252,8 +250,8 @@ void ConnectionManager::handleProtocolRejectSetup(RejectConnectionSetupRequest* 
   delete msg;
 }
 
-void ConnectionManager::handleUnknownControlMessage(const DecodedConnectionManagerEvent& ev) {
-  auto* msg = ev.raw;
+void ConnectionManager::handleUnknownControlMessage(const DecodedConnectionManagerEvent &ev) {
+  auto *msg = ev.raw;
   if (logger) {
     const auto event_number = omnetpp::getSimulation() ? omnetpp::getSimulation()->getEventNumber() : 0;
     const auto simtime = omnetpp::simTime();
@@ -282,9 +280,7 @@ void ConnectionManager::handleUnknownControlMessage(const DecodedConnectionManag
   handleUnknownControlMessage(msg);
 }
 
-void ConnectionManager::handleUnknownControlMessage(cMessage* msg) {
-  delete msg;
-}
+void ConnectionManager::handleUnknownControlMessage(cMessage *msg) { delete msg; }
 
 PurType ConnectionManager::parsePurType(const std::string &pur_type) {
   if (pur_type == "SINGLE_SELECTION_X_PURIFICATION") {
@@ -323,9 +319,7 @@ PurType ConnectionManager::parsePurType(const std::string &pur_type) {
   return PurType::INVALID;
 }
 
-bool ConnectionManager::isLegacyConnectionSessionResponse(ConnectionSetupResponse *pk) {
-  return pk->getConnection_session_id() <= 0;
-}
+bool ConnectionManager::isLegacyConnectionSessionResponse(ConnectionSetupResponse *pk) { return pk->getConnection_session_id() <= 0; }
 
 bool ConnectionManager::shouldAcceptConnectionSetupResponse(ConnectionSetupResponse *pk) {
   if (isLegacyConnectionSessionResponse(pk)) {
@@ -608,13 +602,9 @@ void ConnectionManager::logExperimentSetupAccepted(ConnectionSetupResponse *pk) 
   }
   std::ostringstream payload;
   payload << "{"
-          << "\"node_id\": " << my_address
-          << ", \"src_addr\": " << pk->getActual_srcAddr()
-          << ", \"dst_addr\": " << pk->getActual_destAddr()
-          << ", \"connection_session_id\": " << pk->getConnection_session_id()
-          << ", \"connection_attempt\": " << pk->getConnection_attempt()
-          << ", \"ruleset_id\": " << pk->getRuleSet_id()
-          << "}";
+          << "\"node_id\": " << my_address << ", \"src_addr\": " << pk->getActual_srcAddr() << ", \"dst_addr\": " << pk->getActual_destAddr()
+          << ", \"connection_session_id\": " << pk->getConnection_session_id() << ", \"connection_attempt\": " << pk->getConnection_attempt()
+          << ", \"ruleset_id\": " << pk->getRuleSet_id() << "}";
   logger->logEvent("experiment_request_setup_accepted", payload.str());
 }
 
@@ -624,12 +614,9 @@ void ConnectionManager::logExperimentSetupRejected(RejectConnectionSetupRequest 
   }
   std::ostringstream payload;
   payload << "{"
-          << "\"node_id\": " << my_address
-          << ", \"src_addr\": " << pk->getActual_srcAddr()
-          << ", \"dst_addr\": " << pk->getActual_destAddr()
-          << ", \"connection_session_id\": " << pk->getConnection_session_id()
-          << ", \"connection_attempt\": " << pk->getConnection_attempt()
-          << ", \"reason\": \"" << (reason ? reason : "unknown") << "\""
+          << "\"node_id\": " << my_address << ", \"src_addr\": " << pk->getActual_srcAddr() << ", \"dst_addr\": " << pk->getActual_destAddr()
+          << ", \"connection_session_id\": " << pk->getConnection_session_id() << ", \"connection_attempt\": " << pk->getConnection_attempt() << ", \"reason\": \""
+          << (reason ? reason : "unknown") << "\""
           << "}";
   logger->logEvent("experiment_request_setup_rejected", payload.str());
 }

@@ -10,8 +10,8 @@
 #include "modules/QRSA/HardwareMonitor/IHardwareMonitor.h"
 #include "modules/QRSA/RoutingDaemon/IRoutingDaemon.h"
 #include "rules/Action.h"
-#include "test_utils/TestUtils.h"
 #include "test_utils/Logger.h"
+#include "test_utils/TestUtils.h"
 
 using json = nlohmann::json;
 namespace {
@@ -38,7 +38,7 @@ class Strategy : public quisp_test::TestComponentProviderStrategy {
   int getNodeAddr() override { return 5; };
   IRoutingDaemon *getRoutingDaemon() override { return routing_daemon; }
   IHardwareMonitor *getHardwareMonitor() override { return hardware_monitor; }
-  quisp::modules::Logger::ILogger* getLogger() override { return logger_.get(); }
+  quisp::modules::Logger::ILogger *getLogger() override { return logger_.get(); }
   IRoutingDaemon *routing_daemon = nullptr;
   IHardwareMonitor *hardware_monitor = nullptr;
   std::unique_ptr<quisp::modules::Logger::ILogger> logger_;
@@ -46,7 +46,7 @@ class Strategy : public quisp_test::TestComponentProviderStrategy {
 
 class ConnectionManagerEventLogger : public quisp::modules::Logger::ILogger {
  public:
-  void logPacket(const std::string& event_type, omnetpp::cMessage const* const msg) override {
+  void logPacket(const std::string &event_type, omnetpp::cMessage const *const msg) override {
     (void)event_type;
     (void)msg;
   }
@@ -57,20 +57,20 @@ class ConnectionManagerEventLogger : public quisp::modules::Logger::ILogger {
     (void)is_busy;
     (void)is_allocated;
   }
-  void logBellPairInfo(const std::string& event_type, int partner_addr, quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index) override {
+  void logBellPairInfo(const std::string &event_type, int partner_addr, quisp::modules::QNIC_type qnic_type, int qnic_index, int qubit_index) override {
     (void)event_type;
     (void)partner_addr;
     (void)qnic_type;
     (void)qnic_index;
     (void)qubit_index;
   }
-  void logEvent(const std::string& event_type, const std::string& event_payload_json) override {
+  void logEvent(const std::string &event_type, const std::string &event_payload_json) override {
     last_event_type = event_type;
     last_payload = event_payload_json;
     log_event_count++;
   }
-  void setModule(omnetpp::cModule const* const mod) override {(void)mod;}
-  void setQNodeAddress(int addr) override {(void)addr;}
+  void setModule(omnetpp::cModule const *const mod) override { (void)mod; }
+  void setQNodeAddress(int addr) override { (void)addr; }
 
   int log_event_count = 0;
   std::string last_event_type;
@@ -80,33 +80,30 @@ class ConnectionManagerEventLogger : public quisp::modules::Logger::ILogger {
 class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
  public:
   using quisp::modules::ConnectionManager::connection_setup_buffer;
-  using quisp::modules::ConnectionManager::isQnicBusy;
-  using quisp::modules::ConnectionManager::par;
-  using quisp::modules::ConnectionManager::decodeIncomingMessage;
-  using quisp::modules::ConnectionManager::dispatchInternalEvent;
-  using quisp::modules::ConnectionManager::dispatchProtocolMessage;
-  using quisp::modules::ConnectionManager::handleIncomingControlMessage;
-  using quisp::modules::ConnectionManager::request_send_timing;
   using quisp::modules::ConnectionManager::ConnectionManagerEventChannel;
   using quisp::modules::ConnectionManager::ConnectionManagerProtocolType;
   using quisp::modules::ConnectionManager::ConnectionManagerSelfTimingStatus;
   using quisp::modules::ConnectionManager::DecodedConnectionManagerEvent;
+  using quisp::modules::ConnectionManager::decodeIncomingMessage;
+  using quisp::modules::ConnectionManager::dispatchInternalEvent;
+  using quisp::modules::ConnectionManager::dispatchProtocolMessage;
+  using quisp::modules::ConnectionManager::handleIncomingControlMessage;
+  using quisp::modules::ConnectionManager::isQnicBusy;
+  using quisp::modules::ConnectionManager::logExperimentSetupAccepted;
+  using quisp::modules::ConnectionManager::logExperimentSetupRejected;
+  using quisp::modules::ConnectionManager::par;
   using quisp::modules::ConnectionManager::parsePurType;
   using quisp::modules::ConnectionManager::purification_type;
   using quisp::modules::ConnectionManager::releaseQnic;
+  using quisp::modules::ConnectionManager::request_send_timing;
   using quisp::modules::ConnectionManager::reserved_qnics;
   using quisp::modules::ConnectionManager::reserveQnic;
-  using quisp::modules::ConnectionManager::logExperimentSetupAccepted;
-  using quisp::modules::ConnectionManager::logExperimentSetupRejected;
   using quisp::modules::ConnectionManager::respondToRequest;
   using quisp::modules::ConnectionManager::respondToRequest_deprecated;
   using quisp::modules::ConnectionManager::storeRuleSet;
   using quisp::modules::ConnectionManager::storeRuleSetForApplication;
-  bool shouldAcceptConnectionSetupResponseForTest(quisp::messages::ConnectionSetupResponse *pk) {
-    return shouldAcceptConnectionSetupResponse(pk);
-  }
-  ConnectionManagerTestTarget(IRoutingDaemon *routing_daemon, IHardwareMonitor *hardware_monitor,
-                              std::unique_ptr<quisp::modules::Logger::ILogger> logger = {})
+  bool shouldAcceptConnectionSetupResponseForTest(quisp::messages::ConnectionSetupResponse *pk) { return shouldAcceptConnectionSetupResponse(pk); }
+  ConnectionManagerTestTarget(IRoutingDaemon *routing_daemon, IHardwareMonitor *hardware_monitor, std::unique_ptr<quisp::modules::Logger::ILogger> logger = {})
       : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
     setComponentType(new module_type::TestModuleType("test cm"));
     setParInt(this, "address", 5);
@@ -121,8 +118,7 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
 
     this->provider.setStrategy(std::make_unique<Strategy>(routing_daemon, hardware_monitor, std::move(logger)));
   }
-  ConnectionManagerTestTarget()
-      : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
+  ConnectionManagerTestTarget() : quisp::modules::ConnectionManager(), toRouterGate(new TestGate(this, "RouterPort$o")) {
     setComponentType(new module_type::TestModuleType("test cm"));
     setParInt(this, "address", 5);
     setParInt(this, "total_number_of_qnics", 10);
@@ -137,8 +133,7 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
   }
   void receiveMessageForTest(cMessage *msg) { ConnectionManager::handleMessage(msg); }
   void send(cMessage *msg, const char *gatename, int gateindex = -1) override {
-    if (strcmp(gatename, "RouterPort$o") == 0 || strcmp(gatename, "RouterPort") == 0 || strcmp(gatename, "RouterPort$o[0]") == 0 ||
-        strncmp(gatename, "RouterPort$o[", 13) == 0) {
+    if (strcmp(gatename, "RouterPort$o") == 0 || strcmp(gatename, "RouterPort") == 0 || strcmp(gatename, "RouterPort$o[0]") == 0 || strncmp(gatename, "RouterPort$o[", 13) == 0) {
       if (!toRouterGate) {
         toRouterGate = new TestGate(this, "RouterPort$o");
       }
@@ -157,8 +152,7 @@ class ConnectionManagerTestTarget : public quisp::modules::ConnectionManager {
     cSimpleModule::send(msg, outputgate);
   }
   cGate *gate(const char *gatename, int index = -1) override {
-    if (strcmp(gatename, "RouterPort$o") != 0 && strcmp(gatename, "RouterPort") != 0 && strcmp(gatename, "RouterPort$o[0]") != 0 &&
-        strncmp(gatename, "RouterPort$o[", 13) != 0) {
+    if (strcmp(gatename, "RouterPort$o") != 0 && strcmp(gatename, "RouterPort") != 0 && strcmp(gatename, "RouterPort$o[0]") != 0 && strncmp(gatename, "RouterPort$o[", 13) != 0) {
       throw cRuntimeError("unknown gate called");
     }
     if (!toRouterGate) {
@@ -191,31 +185,31 @@ class ConnectionManagerDispatchTestTarget : public ConnectionManagerTestTarget {
   int protocol_reject_calls = 0;
   int unknown_calls = 0;
   ConnectionManagerProtocolType last_protocol = ConnectionManagerProtocolType::Unknown;
-  cMessage* last_message = nullptr;
+  cMessage *last_message = nullptr;
 
   void handleSelfTiming(int qnic_address) override {
     self_timing_calls++;
     self_timing_qnic_index = qnic_address;
   }
-  void handleProtocolSetupRequest(ConnectionSetupRequest* msg) override {
+  void handleProtocolSetupRequest(ConnectionSetupRequest *msg) override {
     protocol_request_calls++;
     last_protocol = ConnectionManagerProtocolType::SetupRequest;
     last_message = msg;
     delete msg;
   }
-  void handleProtocolSetupResponse(ConnectionSetupResponse* msg) override {
+  void handleProtocolSetupResponse(ConnectionSetupResponse *msg) override {
     protocol_response_calls++;
     last_protocol = ConnectionManagerProtocolType::SetupResponse;
     last_message = msg;
     delete msg;
   }
-  void handleProtocolRejectSetup(RejectConnectionSetupRequest* msg) override {
+  void handleProtocolRejectSetup(RejectConnectionSetupRequest *msg) override {
     protocol_reject_calls++;
     last_protocol = ConnectionManagerProtocolType::RejectSetupRequest;
     last_message = msg;
     delete msg;
   }
-  void handleUnknownControlMessage(cMessage* msg) override {
+  void handleUnknownControlMessage(cMessage *msg) override {
     unknown_calls++;
     last_message = msg;
     delete msg;
@@ -995,8 +989,7 @@ TEST(ConnectionManagerTest, StoreRuleSetForApplicationForwardsOnlyFirstMessagePe
   EXPECT_NE(connection_manager->gate("RouterPort$o"), nullptr);
   connection_manager->storeRuleSetForApplication(resp_first);
   EXPECT_EQ(connection_manager->toRouterGate->messages.size(), 1);
-  auto *forwarded_first =
-      dynamic_cast<InternalRuleSetForwarding_Application *>(connection_manager->toRouterGate->messages.back());
+  auto *forwarded_first = dynamic_cast<InternalRuleSetForwarding_Application *>(connection_manager->toRouterGate->messages.back());
   ASSERT_NE(forwarded_first, nullptr);
   EXPECT_EQ(forwarded_first->getRuleSet_id(), 31);
   EXPECT_EQ(forwarded_first->getApplication_type(), 7);
@@ -1007,8 +1000,7 @@ TEST(ConnectionManagerTest, StoreRuleSetForApplicationForwardsOnlyFirstMessagePe
 
   connection_manager->storeRuleSetForApplication(resp_later);
   EXPECT_EQ(connection_manager->toRouterGate->messages.size(), 2);
-  auto *forwarded_later =
-      dynamic_cast<InternalRuleSetForwarding_Application *>(connection_manager->toRouterGate->messages.back());
+  auto *forwarded_later = dynamic_cast<InternalRuleSetForwarding_Application *>(connection_manager->toRouterGate->messages.back());
   ASSERT_NE(forwarded_later, nullptr);
   EXPECT_EQ(forwarded_later->getRuleSet_id(), 33);
 

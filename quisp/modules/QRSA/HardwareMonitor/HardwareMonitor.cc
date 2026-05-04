@@ -418,14 +418,9 @@ void HardwareMonitor::finish() {
     if (auto *event_logger = provider.getLogger()) {
       std::ostringstream payload;
       payload << "{"
-              << "\"node_id\": " << my_address
-              << ", \"partner_addr\": " << partner_address
-              << ", \"qnic_index\": " << qnic
-              << ", \"distance_km\": " << dis
-              << ", \"link_cost\": " << link_cost
-              << ", \"fidelity\": " << fidelity
-              << ", \"bellpair_per_sec\": " << tomography_runningtime_holder[qnic][partner_address].Bellpair_per_sec
-              << "}";
+              << "\"node_id\": " << my_address << ", \"partner_addr\": " << partner_address << ", \"qnic_index\": " << qnic << ", \"distance_km\": " << dis
+              << ", \"link_cost\": " << link_cost << ", \"fidelity\": " << fidelity
+              << ", \"bellpair_per_sec\": " << tomography_runningtime_holder[qnic][partner_address].Bellpair_per_sec << "}";
       event_logger->logEvent("experiment_link_quality_sample", payload.str());
       delete event_logger;
     }

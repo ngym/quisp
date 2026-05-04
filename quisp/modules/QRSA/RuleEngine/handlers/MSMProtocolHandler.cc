@@ -15,12 +15,12 @@ using EventHandler = quisp::modules::RuleEngine::RuleEventHandler;
 
 core::events::ProtocolType MSMProtocolHandler::protocolSpec() const { return EventProtocol::MSM_v1; }
 
-void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
+void MSMProtocolHandler::registerHandlers(RuleEngine &engine) {
   auto register_handler = [&engine](EventType event_type, EventProtocol protocol_spec, EventHandler handler) {
     engine.registerRuleEventHandler(event_type, protocol_spec, std::move(handler));
   };
 
-  register_handler(EventType::EPPS_TIMING, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent& event) {
+  register_handler(EventType::EPPS_TIMING, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent &event) {
     auto *notification_packet = std::get<messages::EPPSTimingNotification *>(event.payload);
     auto partner_address = notification_packet->getOtherQnicParentAddr();
     auto partner_qnic_index = notification_packet->getOtherQnicIndex();
@@ -35,7 +35,7 @@ void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
     engine.scheduleMSMPhotonEmission(QNIC_RP, qnic_index, notification_packet);
   });
 
-  auto emit_photon_handler = [&engine](const core::events::RuleEvent& event) {
+  auto emit_photon_handler = [&engine](const core::events::RuleEvent &event) {
     auto *pk = std::get<messages::EmitPhotonRequest *>(event.payload);
     auto type = pk->getQnicType();
     auto qnic_index = pk->getQnicIndex();
@@ -79,17 +79,15 @@ void MSMProtocolHandler::registerHandlers(RuleEngine& engine) {
   register_handler(EventType::EMIT_PHOTON_REQUEST, EventProtocol::MIM_v1, emit_photon_handler);
   register_handler(EventType::EMIT_PHOTON_REQUEST, EventProtocol::MSM_v1, emit_photon_handler);
 
-  register_handler(EventType::SINGLE_CLICK_RESULT, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent& event) {
+  register_handler(EventType::SINGLE_CLICK_RESULT, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent &event) {
     engine.protocolExecutionContext().handleSingleClickResult(std::get<messages::SingleClickResult *>(event.payload));
   });
 
-  register_handler(EventType::MSM_RESULT, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent& event) {
-    engine.protocolExecutionContext().handleMSMResult(std::get<messages::MSMResult *>(event.payload));
-  });
+  register_handler(EventType::MSM_RESULT, EventProtocol::MSM_v1,
+                   [&engine](const core::events::RuleEvent &event) { engine.protocolExecutionContext().handleMSMResult(std::get<messages::MSMResult *>(event.payload)); });
 
-  register_handler(EventType::STOP_EMITTING, EventProtocol::MSM_v1, [&engine](const core::events::RuleEvent& event) {
-    engine.protocolExecutionContext().handleStopEmitting(std::get<messages::StopEmitting *>(event.payload));
-  });
+  register_handler(EventType::STOP_EMITTING, EventProtocol::MSM_v1,
+                   [&engine](const core::events::RuleEvent &event) { engine.protocolExecutionContext().handleStopEmitting(std::get<messages::StopEmitting *>(event.payload)); });
 }
 
 }  // namespace quisp::modules::handlers

@@ -1,7 +1,7 @@
 #include "PhysicalServiceFacade.h"
 
-#include <atomic>
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <cstdint>
 #include <map>
@@ -158,8 +158,7 @@ OperationResult PhysicalServiceFacade::applyNoise(QubitHandle qubit) {
   return backend_->applyNoise(makeContext(), qubit);
 }
 
-OperationResult PhysicalServiceFacade::applyErrorChannel(const std::vector<QubitHandle>& qubit_ids, const std::string& channel_profile_name,
-                                                      const nlohmann::json& params) {
+OperationResult PhysicalServiceFacade::applyErrorChannel(const std::vector<QubitHandle>& qubit_ids, const std::string& channel_profile_name, const nlohmann::json& params) {
   if (!backend_) throw std::runtime_error("PhysicalServiceFacade has no backend");
   PhysicalOperation operation;
   operation.kind = "error_channel";

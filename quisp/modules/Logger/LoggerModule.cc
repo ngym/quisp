@@ -1,20 +1,18 @@
 #include "LoggerModule.h"
-#include <set>
-#include <string>
 #include <modules/Logger/DisabledLogger.h>
-#include <nlohmann/json.hpp>
 #include <spdlog/async.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
+#include <nlohmann/json.hpp>
+#include <set>
+#include <string>
 #include "JsonLogger.h"
 
 namespace quisp::modules::Logger {
 
 namespace {
 
-bool isTopologyNode(omnetpp::cModule* module) {
-  return module != nullptr && module->hasPar("address");
-}
+bool isTopologyNode(omnetpp::cModule* module) { return module != nullptr && module->hasPar("address"); }
 
 omnetpp::cModule* toTopLevelTopologyNode(omnetpp::cModule* module, omnetpp::cModule* network) {
   while (module != nullptr && module != network) {

@@ -1,12 +1,12 @@
 #pragma once
 
-#include <cstdint>
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
-#include <nlohmann/json.hpp>
 #include <omnetpp/simtime_t.h>
+#include <nlohmann/json.hpp>
 
 namespace quisp::modules::backend {
 
@@ -93,7 +93,10 @@ class IPhysicalBackend {
   // Without this signal, the persistent qutip worker keeps the qubit in its
   // last density matrix and the next H+CNOT on the same slot grows the
   // entanglement set instead of starting from |0>.
-  virtual void releaseQubit(const BackendContext& ctx, QubitHandle qubit) { (void)ctx; (void)qubit; }
+  virtual void releaseQubit(const BackendContext& ctx, QubitHandle qubit) {
+    (void)ctx;
+    (void)qubit;
+  }
 
   virtual uint32_t capabilities() const = 0;
 

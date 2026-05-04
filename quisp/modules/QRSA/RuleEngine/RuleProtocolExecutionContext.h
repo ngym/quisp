@@ -16,7 +16,7 @@ class RuleEngine;
 
 class RuleProtocolExecutionContext {
  public:
-  explicit RuleProtocolExecutionContext(RuleEngine& engine);
+  explicit RuleProtocolExecutionContext(RuleEngine &engine);
 
   void handleSingleClickResult(messages::SingleClickResult *click_result);
   void handleMSMResult(messages::MSMResult *msm_result);
@@ -29,6 +29,6 @@ class RuleProtocolExecutionContext {
   void handleLinkTomographyRuleSet(const messages::LinkTomographyRuleSet *pkt);
 
  private:
-  RuleEngine& engine_;
+  RuleEngine &engine_;
 };
 }  // namespace quisp::modules

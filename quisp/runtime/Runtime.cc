@@ -205,8 +205,7 @@ bool Runtime::execProgramNoThrow(const Program& program, std::string* uncaught_e
       logRuntimeEvent("runtime_error", error_ss.str());
     }
     std::ostringstream ss;
-    ss << "\"return_code\": \"" << static_cast<int>(return_code)
-       << "\", \"program_name\": \"" << program.name << "\"";
+    ss << "\"return_code\": \"" << static_cast<int>(return_code) << "\", \"program_name\": \"" << program.name << "\"";
     logRuntimeEvent("runtime_uncaught_error", ss.str());
     if (uncaught_error_payload != nullptr) {
       *uncaught_error_payload = ss.str();
@@ -532,8 +531,8 @@ void Runtime::debugRuntimeState() {
     //// (partner's qnode addr, assigned RuleId) => [local half of the bell pair qubit record]
     auto& [partner_addr, rule_id] = key;
     auto locked = callback ? callback->isQubitLocked(qubit) : false;
-    ss << "  Qubit(qnic:" << qubit->getQNicIndex() << ", qubit_index:" << qubit->getQubitIndex() << "):" << partner_addr << " rule_id:" << rule_id
-       << ", locked:" << locked << ", busy:" << qubit->isBusy() << "\n";
+    ss << "  Qubit(qnic:" << qubit->getQNicIndex() << ", qubit_index:" << qubit->getQubitIndex() << "):" << partner_addr << " rule_id:" << rule_id << ", locked:" << locked
+       << ", busy:" << qubit->isBusy() << "\n";
   }
 
   ss << "\n--------named-qubits---------\n";
@@ -583,7 +582,7 @@ size_t Runtime::partnerCount() const { return partners.size(); }
 size_t Runtime::qubitCount() const { return qubits.size(); }
 size_t Runtime::messageQueueCount() const {
   size_t count = 0;
-  for (auto &&it : messages) {
+  for (auto&& it : messages) {
     count += it.second.size();
   }
   return count;

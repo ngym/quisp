@@ -10,9 +10,9 @@
 #include <string>
 
 #include "FlyingQubit_m.h"
-#include "modules/Backend/interfaces/IQubit.h"
 #include "modules/Backend/Backend.h"
 #include "modules/Backend/PhysicalServiceFacade.h"
+#include "modules/Backend/interfaces/IQubit.h"
 #include "modules/QNIC/StationaryQubit/QubitId.h"
 #include "omnetpp/cexception.h"
 
@@ -70,7 +70,7 @@ double clampDouble(double value, double min_value, double max_value) {
   return value;
 }
 
- nlohmann::json buildChannelErrorParams(const cDatarateChannel& channel) {
+nlohmann::json buildChannelErrorParams(const cDatarateChannel& channel) {
   nlohmann::json params = {
       {"channel_loss_rate", channel.par("channel_loss_rate").doubleValue()},
       {"channel_x_error_rate", channel.par("channel_x_error_rate").doubleValue()},
@@ -98,7 +98,7 @@ class QuantumChannel : public cDatarateChannel {
 
  protected:
   virtual void initialize() override;
-  virtual cChannel::Result processMessage(cMessage *msg, const SendOptions &options, simtime_t t) override;
+  virtual cChannel::Result processMessage(cMessage* msg, const SendOptions& options, simtime_t t) override;
 
  private:
   void validateParameters();
@@ -113,8 +113,8 @@ void QuantumChannel::initialize() {
   validateParameters();
 }
 
-cChannel::Result QuantumChannel::processMessage(cMessage *msg, const SendOptions &options, simtime_t t) {
-  auto* photon = dynamic_cast<FlyingQubit *>(msg);
+cChannel::Result QuantumChannel::processMessage(cMessage* msg, const SendOptions& options, simtime_t t) {
+  auto* photon = dynamic_cast<FlyingQubit*>(msg);
   if (photon == nullptr) {
     throw new cRuntimeError("something other than photonic qubit is sent through quantum channel");
   }

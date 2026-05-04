@@ -37,8 +37,8 @@ ProtocolType protocolFromEmitPhotonRequest(const EmitPhotonRequest *msg) {
 }
 
 template <typename MessageT>
-RuleEvent makeRuleEvent(RuleEventKind type, MessageT *msg, ::omnetpp::simtime_t now, bool keep_source_override, ProtocolType protocol_spec,
-                        ExecutionPath execution_path, std::string protocol_raw_value = "") {
+RuleEvent makeRuleEvent(RuleEventKind type, MessageT *msg, ::omnetpp::simtime_t now, bool keep_source_override, ProtocolType protocol_spec, ExecutionPath execution_path,
+                        std::string protocol_raw_value = "") {
   const auto is_internal = msg != nullptr && msg->isSelfMessage();
   std::string full_name = msg == nullptr ? "" : msg->getFullName();
   const auto msg_name = full_name.empty() ? (msg == nullptr ? "" : msg->getClassName()) : full_name;
@@ -57,12 +57,10 @@ RuleEvent makeRuleEvent(RuleEventKind type, MessageT *msg, ::omnetpp::simtime_t 
 
 std::optional<RuleEvent> translateByType(::omnetpp::cMessage *msg, ::omnetpp::simtime_t now) {
   if (dynamic_cast<CombinedBSAresults *>(msg) != nullptr) {
-    return makeRuleEvent(RuleEventKind::BSM_RESULT, dynamic_cast<CombinedBSAresults *>(msg), now, false, ProtocolType::MIM_v1,
-                         executionPathFromType(RuleEventKind::BSM_RESULT));
+    return makeRuleEvent(RuleEventKind::BSM_RESULT, dynamic_cast<CombinedBSAresults *>(msg), now, false, ProtocolType::MIM_v1, executionPathFromType(RuleEventKind::BSM_RESULT));
   }
   if (dynamic_cast<BSMTimingNotification *>(msg) != nullptr) {
-    return makeRuleEvent(RuleEventKind::BSM_TIMING, dynamic_cast<BSMTimingNotification *>(msg), now, false, ProtocolType::MIM_v1,
-                         executionPathFromType(RuleEventKind::BSM_TIMING));
+    return makeRuleEvent(RuleEventKind::BSM_TIMING, dynamic_cast<BSMTimingNotification *>(msg), now, false, ProtocolType::MIM_v1, executionPathFromType(RuleEventKind::BSM_TIMING));
   }
   if (dynamic_cast<EPPSTimingNotification *>(msg) != nullptr) {
     return makeRuleEvent(RuleEventKind::EPPS_TIMING, dynamic_cast<EPPSTimingNotification *>(msg), now, false, ProtocolType::MSM_v1,
@@ -74,42 +72,39 @@ std::optional<RuleEvent> translateByType(::omnetpp::cMessage *msg, ::omnetpp::si
                          executionPathFromType(RuleEventKind::EMIT_PHOTON_REQUEST));
   }
   if (dynamic_cast<LinkTomographyRuleSet *>(msg) != nullptr) {
-    return makeRuleEvent(RuleEventKind::LINK_TOMOGRAPHY_RULESET, dynamic_cast<LinkTomographyRuleSet *>(msg), now, false,
-                         ProtocolType::LinkTomography, executionPathFromType(RuleEventKind::LINK_TOMOGRAPHY_RULESET));
+    return makeRuleEvent(RuleEventKind::LINK_TOMOGRAPHY_RULESET, dynamic_cast<LinkTomographyRuleSet *>(msg), now, false, ProtocolType::LinkTomography,
+                         executionPathFromType(RuleEventKind::LINK_TOMOGRAPHY_RULESET));
   }
   if (dynamic_cast<MSMResult *>(msg) != nullptr) {
-    return makeRuleEvent(RuleEventKind::MSM_RESULT, dynamic_cast<MSMResult *>(msg), now, false, ProtocolType::MSM_v1,
-                         executionPathFromType(RuleEventKind::MSM_RESULT));
+    return makeRuleEvent(RuleEventKind::MSM_RESULT, dynamic_cast<MSMResult *>(msg), now, false, ProtocolType::MSM_v1, executionPathFromType(RuleEventKind::MSM_RESULT));
   }
   if (dynamic_cast<PurificationResult *>(msg) != nullptr) {
     auto *pkt = dynamic_cast<PurificationResult *>(msg);
     const auto protocol = protocol_from_int(pkt->getProtocol());
     auto protocol_raw_value = protocol == ProtocolType::Unknown ? std::to_string(pkt->getProtocol()) : "";
-    return makeRuleEvent(RuleEventKind::PURIFICATION_RESULT, pkt, now, false, protocol, executionPathFromType(RuleEventKind::PURIFICATION_RESULT),
-                         std::move(protocol_raw_value));
+    return makeRuleEvent(RuleEventKind::PURIFICATION_RESULT, pkt, now, false, protocol, executionPathFromType(RuleEventKind::PURIFICATION_RESULT), std::move(protocol_raw_value));
   }
   if (dynamic_cast<SingleClickResult *>(msg) != nullptr) {
     return makeRuleEvent(RuleEventKind::SINGLE_CLICK_RESULT, dynamic_cast<SingleClickResult *>(msg), now, false, ProtocolType::MSM_v1,
                          executionPathFromType(RuleEventKind::SINGLE_CLICK_RESULT));
   }
   if (dynamic_cast<StopEmitting *>(msg) != nullptr) {
-    return makeRuleEvent(RuleEventKind::STOP_EMITTING, dynamic_cast<StopEmitting *>(msg), now, false, ProtocolType::MSM_v1,
-                         executionPathFromType(RuleEventKind::STOP_EMITTING));
+    return makeRuleEvent(RuleEventKind::STOP_EMITTING, dynamic_cast<StopEmitting *>(msg), now, false, ProtocolType::MSM_v1, executionPathFromType(RuleEventKind::STOP_EMITTING));
   }
   if (dynamic_cast<SwappingResult *>(msg) != nullptr) {
     return makeRuleEvent(RuleEventKind::SWAPPING_RESULT, dynamic_cast<SwappingResult *>(msg), now, false, ProtocolType::Swapping,
                          executionPathFromType(RuleEventKind::SWAPPING_RESULT));
   }
   if (dynamic_cast<InternalRuleSetForwarding *>(msg) != nullptr) {
-    return makeRuleEvent(RuleEventKind::RULESET_FORWARDING, dynamic_cast<InternalRuleSetForwarding *>(msg), now, false,
-                         ProtocolType::ConnectionManagement, executionPathFromType(RuleEventKind::RULESET_FORWARDING));
+    return makeRuleEvent(RuleEventKind::RULESET_FORWARDING, dynamic_cast<InternalRuleSetForwarding *>(msg), now, false, ProtocolType::ConnectionManagement,
+                         executionPathFromType(RuleEventKind::RULESET_FORWARDING));
   }
   if (dynamic_cast<InternalRuleSetForwarding_Application *>(msg) != nullptr) {
     auto *pkt = dynamic_cast<InternalRuleSetForwarding_Application *>(msg);
     const auto protocol = protocol_from_message_hint(pkt->getApplication_type());
     auto protocol_raw_value = protocol == ProtocolType::Unknown ? std::to_string(pkt->getApplication_type()) : "";
-    return makeRuleEvent(RuleEventKind::RULESET_FORWARDING_APPLICATION, pkt, now, false, protocol,
-                         executionPathFromType(RuleEventKind::RULESET_FORWARDING_APPLICATION), std::move(protocol_raw_value));
+    return makeRuleEvent(RuleEventKind::RULESET_FORWARDING_APPLICATION, pkt, now, false, protocol, executionPathFromType(RuleEventKind::RULESET_FORWARDING_APPLICATION),
+                         std::move(protocol_raw_value));
   }
   return std::nullopt;
 }
@@ -149,56 +144,40 @@ RuleEvent makeUnknownRuleEvent(::omnetpp::cMessage *msg, omnetpp::simtime_t now)
 }
 }  // namespace
 
-RuleEventBus::RuleEventBus() {
-  registerDefaultTranslators();
-}
+RuleEventBus::RuleEventBus() { registerDefaultTranslators(); }
 
-void RuleEventBus::registerTranslator(const std::string &message_class_name, RuleEventTranslator translator) {
-  translators[message_class_name] = std::move(translator);
-}
+void RuleEventBus::registerTranslator(const std::string &message_class_name, RuleEventTranslator translator) { translators[message_class_name] = std::move(translator); }
 
 void RuleEventBus::registerDefaultTranslators() {
   registerTranslator(messageClassName<CombinedBSAresults>(),
-                    translatorFor<CombinedBSAresults>(RuleEventKind::BSM_RESULT, ProtocolType::MIM_v1, executionPathFromType(RuleEventKind::BSM_RESULT)));
+                     translatorFor<CombinedBSAresults>(RuleEventKind::BSM_RESULT, ProtocolType::MIM_v1, executionPathFromType(RuleEventKind::BSM_RESULT)));
   registerTranslator(messageClassName<BSMTimingNotification>(),
-                    translatorFor<BSMTimingNotification>(RuleEventKind::BSM_TIMING, ProtocolType::MIM_v1,
-                                                         executionPathFromType(RuleEventKind::BSM_TIMING)));
+                     translatorFor<BSMTimingNotification>(RuleEventKind::BSM_TIMING, ProtocolType::MIM_v1, executionPathFromType(RuleEventKind::BSM_TIMING)));
   registerTranslator(messageClassName<EPPSTimingNotification>(),
-                    translatorFor<EPPSTimingNotification>(RuleEventKind::EPPS_TIMING, ProtocolType::MSM_v1,
-                                                         executionPathFromType(RuleEventKind::EPPS_TIMING)));
-  registerTranslator(
-      messageClassName<EmitPhotonRequest>(),
-      [](::omnetpp::cMessage *msg, ::omnetpp::simtime_t now) -> std::optional<RuleEvent> {
-        if (auto *emit_request = dynamic_cast<EmitPhotonRequest *>(msg)) {
-          return std::optional{
-              makeRuleEvent(RuleEventKind::EMIT_PHOTON_REQUEST, emit_request, now, true, protocolFromEmitPhotonRequest(emit_request),
-                           executionPathFromType(RuleEventKind::EMIT_PHOTON_REQUEST))};
-        }
-        return std::nullopt;
-      });
-  registerTranslator(messageClassName<LinkTomographyRuleSet>(),
-                    translatorFor<LinkTomographyRuleSet>(RuleEventKind::LINK_TOMOGRAPHY_RULESET, ProtocolType::LinkTomography,
-                                                         executionPathFromType(RuleEventKind::LINK_TOMOGRAPHY_RULESET)));
-  registerTranslator(messageClassName<MSMResult>(),
-                    translatorFor<MSMResult>(RuleEventKind::MSM_RESULT, ProtocolType::MSM_v1,
-                                              executionPathFromType(RuleEventKind::MSM_RESULT)));
+                     translatorFor<EPPSTimingNotification>(RuleEventKind::EPPS_TIMING, ProtocolType::MSM_v1, executionPathFromType(RuleEventKind::EPPS_TIMING)));
+  registerTranslator(messageClassName<EmitPhotonRequest>(), [](::omnetpp::cMessage *msg, ::omnetpp::simtime_t now) -> std::optional<RuleEvent> {
+    if (auto *emit_request = dynamic_cast<EmitPhotonRequest *>(msg)) {
+      return std::optional{makeRuleEvent(RuleEventKind::EMIT_PHOTON_REQUEST, emit_request, now, true, protocolFromEmitPhotonRequest(emit_request),
+                                         executionPathFromType(RuleEventKind::EMIT_PHOTON_REQUEST))};
+    }
+    return std::nullopt;
+  });
+  registerTranslator(messageClassName<LinkTomographyRuleSet>(), translatorFor<LinkTomographyRuleSet>(RuleEventKind::LINK_TOMOGRAPHY_RULESET, ProtocolType::LinkTomography,
+                                                                                                     executionPathFromType(RuleEventKind::LINK_TOMOGRAPHY_RULESET)));
+  registerTranslator(messageClassName<MSMResult>(), translatorFor<MSMResult>(RuleEventKind::MSM_RESULT, ProtocolType::MSM_v1, executionPathFromType(RuleEventKind::MSM_RESULT)));
   registerTranslator(messageClassName<PurificationResult>(),
-                    translatorFor<PurificationResult>(RuleEventKind::PURIFICATION_RESULT, ProtocolType::Purification,
-                                                     executionPathFromType(RuleEventKind::PURIFICATION_RESULT)));
+                     translatorFor<PurificationResult>(RuleEventKind::PURIFICATION_RESULT, ProtocolType::Purification, executionPathFromType(RuleEventKind::PURIFICATION_RESULT)));
   registerTranslator(messageClassName<SingleClickResult>(),
-                    translatorFor<SingleClickResult>(RuleEventKind::SINGLE_CLICK_RESULT, ProtocolType::MSM_v1,
-                                                     executionPathFromType(RuleEventKind::SINGLE_CLICK_RESULT)));
-  registerTranslator(messageClassName<InternalRuleSetForwarding>(),
-                    translatorFor<InternalRuleSetForwarding>(RuleEventKind::RULESET_FORWARDING, ProtocolType::ConnectionManagement,
-                                                             executionPathFromType(RuleEventKind::RULESET_FORWARDING)));
+                     translatorFor<SingleClickResult>(RuleEventKind::SINGLE_CLICK_RESULT, ProtocolType::MSM_v1, executionPathFromType(RuleEventKind::SINGLE_CLICK_RESULT)));
+  registerTranslator(messageClassName<InternalRuleSetForwarding>(), translatorFor<InternalRuleSetForwarding>(RuleEventKind::RULESET_FORWARDING, ProtocolType::ConnectionManagement,
+                                                                                                             executionPathFromType(RuleEventKind::RULESET_FORWARDING)));
   registerTranslator(messageClassName<InternalRuleSetForwarding_Application>(),
-                    translatorFor<InternalRuleSetForwarding_Application>(RuleEventKind::RULESET_FORWARDING_APPLICATION, ProtocolType::Unknown,
-                                                                         executionPathFromType(RuleEventKind::RULESET_FORWARDING_APPLICATION)));
+                     translatorFor<InternalRuleSetForwarding_Application>(RuleEventKind::RULESET_FORWARDING_APPLICATION, ProtocolType::Unknown,
+                                                                          executionPathFromType(RuleEventKind::RULESET_FORWARDING_APPLICATION)));
   registerTranslator(messageClassName<StopEmitting>(),
-                    translatorFor<StopEmitting>(RuleEventKind::STOP_EMITTING, ProtocolType::MSM_v1, executionPathFromType(RuleEventKind::STOP_EMITTING)));
+                     translatorFor<StopEmitting>(RuleEventKind::STOP_EMITTING, ProtocolType::MSM_v1, executionPathFromType(RuleEventKind::STOP_EMITTING)));
   registerTranslator(messageClassName<SwappingResult>(),
-                    translatorFor<SwappingResult>(RuleEventKind::SWAPPING_RESULT, ProtocolType::Swapping,
-                                                  executionPathFromType(RuleEventKind::SWAPPING_RESULT)));
+                     translatorFor<SwappingResult>(RuleEventKind::SWAPPING_RESULT, ProtocolType::Swapping, executionPathFromType(RuleEventKind::SWAPPING_RESULT)));
 }
 
 RuleEvent RuleEventBus::toRuleEvent(::omnetpp::cMessage *msg, ::omnetpp::simtime_t now) {
@@ -217,22 +196,17 @@ RuleEvent RuleEventBus::toRuleEvent(::omnetpp::cMessage *msg, ::omnetpp::simtime
   return makeUnknownRuleEvent(msg, now);
 }
 
-void RuleEventBus::publish(::omnetpp::cMessage *msg, ::omnetpp::simtime_t now) {
-  publish(toRuleEvent(msg, now));
-}
+void RuleEventBus::publish(::omnetpp::cMessage *msg, ::omnetpp::simtime_t now) { publish(toRuleEvent(msg, now)); }
 
-void RuleEventBus::publish(const RuleEvent &event) {
-  event_queue.push_back(event);
-}
+void RuleEventBus::publish(const RuleEvent &event) { event_queue.push_back(event); }
 
 std::vector<RuleEvent> RuleEventBus::drain(::omnetpp::simtime_t now) {
-  std::sort(event_queue.begin(), event_queue.end(),
-            [](const RuleEvent &lhs, const RuleEvent &rhs) {
-              if (lhs.time != rhs.time) {
-                return lhs.time < rhs.time;
-              }
-              return lhs.event_number < rhs.event_number;
-            });
+  std::sort(event_queue.begin(), event_queue.end(), [](const RuleEvent &lhs, const RuleEvent &rhs) {
+    if (lhs.time != rhs.time) {
+      return lhs.time < rhs.time;
+    }
+    return lhs.event_number < rhs.event_number;
+  });
   std::vector<RuleEvent> events;
   auto it = event_queue.begin();
   for (; it != event_queue.end() && it->time <= now; ++it) {

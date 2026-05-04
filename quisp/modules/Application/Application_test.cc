@@ -1,10 +1,10 @@
 #include "Application.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include <nlohmann/json.hpp>
 #include <messages/classical_messages.h>
 #include <omnetpp.h>
 #include <test_utils/TestUtils.h>
+#include <nlohmann/json.hpp>
 #include <unordered_map>
 
 namespace {
@@ -30,12 +30,12 @@ class Strategy : public quisp_test::TestComponentProviderStrategy {
 
 class AppTestTarget : public quisp::modules::Application {
  public:
+  using quisp::modules::Application::buildExperimentRequestPayload;
+  using quisp::modules::Application::createConnectionSetupRequest;
   using quisp::modules::Application::getParentModule;
   using quisp::modules::Application::id;
   using quisp::modules::Application::initialize;
   using quisp::modules::Application::par;
-  using quisp::modules::Application::buildExperimentRequestPayload;
-  using quisp::modules::Application::createConnectionSetupRequest;
 
   cGate *gate(const char *gatename, int index = -1) override {
     if (strcmp(gatename, "toRouter") != 0) {

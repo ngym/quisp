@@ -48,8 +48,6 @@ inline ProtocolType protocol_from_int(int protocol_hint) {
   return ProtocolType::Unknown;
 }
 
-inline ProtocolType protocol_from_message_hint(int application_type) {
-  return application_type == 0 ? ProtocolType::ConnectionManagement : ProtocolType::Unknown;
-}
+inline ProtocolType protocol_from_message_hint(int application_type) { return application_type == 0 ? ProtocolType::ConnectionManagement : ProtocolType::Unknown; }
 
 }  // namespace quisp::core::events

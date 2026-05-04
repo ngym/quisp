@@ -259,8 +259,8 @@ void InstructionVisitor::operator()(const INSTR_DEBUG_QubitId_& instruction) {
   std::ostringstream ss;
   ss << "\"qubit_id\": " << qubit_id.val << ", \"found\": " << (qubit_ref != nullptr ? "true" : "false");
   if (qubit_ref != nullptr) {
-    ss << ", \"qnic_type\": " << qubit_ref->getQNicType() << ", \"qnic_index\": " << qubit_ref->getQNicIndex() << ", \"qubit_index\": "
-       << qubit_ref->getQubitIndex() << ", \"is_busy\": " << (qubit_ref->isBusy() ? "true" : "false") << ", \"is_allocated\": " << (qubit_ref->isAllocated() ? "true" : "false");
+    ss << ", \"qnic_type\": " << qubit_ref->getQNicType() << ", \"qnic_index\": " << qubit_ref->getQNicIndex() << ", \"qubit_index\": " << qubit_ref->getQubitIndex()
+       << ", \"is_busy\": " << (qubit_ref->isBusy() ? "true" : "false") << ", \"is_allocated\": " << (qubit_ref->isAllocated() ? "true" : "false");
   }
   runtime->logRuntimeEvent("runtime_debug_qubit", ss.str());
 }

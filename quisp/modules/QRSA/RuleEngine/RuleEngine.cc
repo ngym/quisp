@@ -11,19 +11,19 @@
 #include <memory>
 #include <ostream>
 #include <sstream>
-#include <variant>
 #include <stdexcept>
 #include <utility>
+#include <variant>
 
 #include "QNicStore/QNicStore.h"
 #include "RuleProtocolExecutionContext.h"
+#include "RuleProtocolHandlerRegistrar.h"
 #include "RuntimeCallback.h"
 #include "messages/BSA_ipc_messages_m.h"
 #include "messages/QNode_ipc_messages_m.h"
 #include "messages/link_generation_messages_m.h"
 #include "modules/PhysicalConnection/BSA/types.h"
 #include "modules/QNIC.h"
-#include "RuleProtocolHandlerRegistrar.h"
 #include "omnetpp/csimulation.h"
 #include "omnetpp/errmsg.h"
 #include "omnetpp/simtime_t.h"
@@ -113,9 +113,7 @@ void RuleEngine::handleMessage(cMessage *msg) {
   }
 }
 
-void RuleEngine::registerRuleEventHandler(RuleEventKind event_type, RuleEventHandler handler) {
-  registerRuleEventHandler(event_type, ProtocolType::Unknown, std::move(handler));
-}
+void RuleEngine::registerRuleEventHandler(RuleEventKind event_type, RuleEventHandler handler) { registerRuleEventHandler(event_type, ProtocolType::Unknown, std::move(handler)); }
 
 void RuleEngine::registerRuleEventHandler(RuleEventKind event_type, ProtocolType protocol_spec, RuleEventHandler handler) {
   rule_event_handlers[{event_type, protocol_spec}] = std::move(handler);
@@ -129,9 +127,7 @@ void RuleEngine::registerRuleEventProtocolFallback(ProtocolType protocol_spec, R
   rule_protocol_fallback_handlers[static_cast<int>(protocol_spec)] = std::move(handler);
 }
 
-void RuleEngine::registerRuleEventHandlers() {
-  RuleProtocolHandlerRegistrar::registerDefaults(*this);
-}
+void RuleEngine::registerRuleEventHandlers() { RuleProtocolHandlerRegistrar::registerDefaults(*this); }
 
 void RuleEngine::logUnknownRuleEvent(const core::events::RuleEvent &event) {
   if (logger == nullptr) {
@@ -139,10 +135,9 @@ void RuleEngine::logUnknownRuleEvent(const core::events::RuleEvent &event) {
   }
   std::ostringstream ss;
   ss << "\"simtime\": " << event.time << ", \"event_number\": " << event.event_number << ", \"module\": \"" << getFullName()
-     << "\", \"event_type\": \"UNKNOWN\", \"protocol_spec\": \""
-     << to_string(event.protocol_spec) << "\", \"execution_path\": \"" << to_string(event.execution_path) << "\", \"protocol_raw_value\": \""
-     << event.protocol_raw_value << "\", \"msg_name\": \"" << event.msg_name << "\", \"msg_type\": \"" << event.msg_type << "\", \"qnode_addr\": "
-     << parentAddress << ", \"parentAddress\": " << parentAddress;
+     << "\", \"event_type\": \"UNKNOWN\", \"protocol_spec\": \"" << to_string(event.protocol_spec) << "\", \"execution_path\": \"" << to_string(event.execution_path)
+     << "\", \"protocol_raw_value\": \"" << event.protocol_raw_value << "\", \"msg_name\": \"" << event.msg_name << "\", \"msg_type\": \"" << event.msg_type
+     << "\", \"qnode_addr\": " << parentAddress << ", \"parentAddress\": " << parentAddress;
   logger->logEvent("unknown_rule_event", ss.str());
 }
 
@@ -151,11 +146,9 @@ void RuleEngine::logUnknownRuleProtocol(const core::events::RuleEvent &event) {
     return;
   }
   std::ostringstream ss;
-  ss << "\"simtime\": " << event.time << ", \"event_number\": " << event.event_number << ", \"module\": \"" << getFullName()
-     << "\", \"event_type\": \"" << to_string(event.type)
-     << "\", \"protocol_spec\": \"" << to_string(event.protocol_spec) << "\", \"execution_path\": \""
-     << to_string(event.execution_path) << "\", \"protocol_raw_value\": \"" << event.protocol_raw_value << "\", \"msg_name\": \""
-     << event.msg_name << "\", \"msg_type\": \"" << event.msg_type << "\", \"qnode_addr\": " << parentAddress
+  ss << "\"simtime\": " << event.time << ", \"event_number\": " << event.event_number << ", \"module\": \"" << getFullName() << "\", \"event_type\": \"" << to_string(event.type)
+     << "\", \"protocol_spec\": \"" << to_string(event.protocol_spec) << "\", \"execution_path\": \"" << to_string(event.execution_path) << "\", \"protocol_raw_value\": \""
+     << event.protocol_raw_value << "\", \"msg_name\": \"" << event.msg_name << "\", \"msg_type\": \"" << event.msg_type << "\", \"qnode_addr\": " << parentAddress
      << ", \"parentAddress\": " << parentAddress;
   logger->logEvent("unknown_rule_protocol", ss.str());
 }
@@ -174,8 +167,7 @@ void RuleEngine::dispatchRuleEvent(const core::events::RuleEvent &event) {
     return;
   }
 
-  if (const auto type_fallback_it = rule_event_type_fallback_handlers.find(static_cast<int>(event.type));
-      type_fallback_it != rule_event_type_fallback_handlers.end()) {
+  if (const auto type_fallback_it = rule_event_type_fallback_handlers.find(static_cast<int>(event.type)); type_fallback_it != rule_event_type_fallback_handlers.end()) {
     type_fallback_it->second(event);
     if (should_log_unknown_protocol) {
       logUnknownRuleProtocol(event);
@@ -200,13 +192,9 @@ void RuleEngine::dispatchRuleEvent(const core::events::RuleEvent &event) {
   return;
 }
 
-void RuleEngine::handleRuleEvent(const core::events::RuleEvent &event) {
-  dispatchRuleEvent(event);
-}
+void RuleEngine::handleRuleEvent(const core::events::RuleEvent &event) { dispatchRuleEvent(event); }
 
-RuleProtocolExecutionContext& RuleEngine::protocolExecutionContext() {
-  return *protocol_execution_context;
-}
+RuleProtocolExecutionContext &RuleEngine::protocolExecutionContext() { return *protocol_execution_context; }
 
 void RuleEngine::schedulePhotonEmission(QNIC_type type, int qnic_index, BSMTimingNotification *notification) {
   auto first_photon_emit_time = getEmitTimeFromBSMNotification(notification);
@@ -260,35 +248,21 @@ void RuleEngine::freeFailedEntanglementAttemptQubits(QNIC_type type, int qnic_in
   emitted_indices.clear();
 }
 
-void RuleEngine::handleSingleClickResult(SingleClickResult *click_result) {
-  protocol_execution_context->handleSingleClickResult(click_result);
-}
+void RuleEngine::handleSingleClickResult(SingleClickResult *click_result) { protocol_execution_context->handleSingleClickResult(click_result); }
 
-void RuleEngine::handleMSMResult(MSMResult *msm_result) {
-  protocol_execution_context->handleMSMResult(msm_result);
-}
+void RuleEngine::handleMSMResult(MSMResult *msm_result) { protocol_execution_context->handleMSMResult(msm_result); }
 
-void RuleEngine::handleLinkGenerationResult(CombinedBSAresults *bsa_result) {
-  protocol_execution_context->handleLinkGenerationResult(bsa_result);
-}
+void RuleEngine::handleLinkGenerationResult(CombinedBSAresults *bsa_result) { protocol_execution_context->handleLinkGenerationResult(bsa_result); }
 
-void RuleEngine::handleStopEmitting(StopEmitting *stop_emit) {
-  protocol_execution_context->handleStopEmitting(stop_emit);
-}
+void RuleEngine::handleStopEmitting(StopEmitting *stop_emit) { protocol_execution_context->handleStopEmitting(stop_emit); }
 
-void RuleEngine::handlePurificationResult(PurificationResult *result) {
-  protocol_execution_context->handlePurificationResult(result);
-}
+void RuleEngine::handlePurificationResult(PurificationResult *result) { protocol_execution_context->handlePurificationResult(result); }
 
-void RuleEngine::handleSwappingResult(SwappingResult *result) {
-  protocol_execution_context->handleSwappingResult(result);
-}
+void RuleEngine::handleSwappingResult(SwappingResult *result) { protocol_execution_context->handleSwappingResult(result); }
 
 // Invoked whenever a new resource (entangled with neighbor) has been created.
 // Allocates those resources to a particular ruleset, from top to bottom (all of it).
-void RuleEngine::ResourceAllocation(int qnic_type, int qnic_index) {
-  runtimes.allocateResources(bell_pair_store, static_cast<QNIC_type>(qnic_type), qnic_index);
-}
+void RuleEngine::ResourceAllocation(int qnic_type, int qnic_index) { runtimes.allocateResources(bell_pair_store, static_cast<QNIC_type>(qnic_type), qnic_index); }
 
 void RuleEngine::executeAllRuleSets() { runtimes.exec(); }
 

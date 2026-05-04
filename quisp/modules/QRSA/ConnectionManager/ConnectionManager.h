@@ -9,8 +9,8 @@
 
 #include <omnetpp.h>
 #include <queue>
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #include "IConnectionManager.h"
 
@@ -65,7 +65,7 @@ class ConnectionManager : public IConnectionManager, public Logger::LoggerBase {
     ConnectionManagerProtocolType protocol_type = ConnectionManagerProtocolType::Unknown;
     ConnectionManagerSelfTimingStatus self_timing_status = ConnectionManagerSelfTimingStatus::NotSelfMessage;
     int self_timing_qnic_index = -1;
-    omnetpp::cMessage* raw = nullptr;
+    omnetpp::cMessage *raw = nullptr;
   };
 
  public:
@@ -95,17 +95,17 @@ class ConnectionManager : public IConnectionManager, public Logger::LoggerBase {
 
   void initialize() override;
   void handleMessage(cMessage *msg) override;
-  virtual DecodedConnectionManagerEvent decodeIncomingMessage(omnetpp::cMessage* msg) const;
-  virtual bool isKnownSelfTimingMessage(const omnetpp::cMessage* msg, int& qnic_index) const;
-  virtual void dispatchInternalEvent(const DecodedConnectionManagerEvent& ev);
-  virtual void dispatchProtocolMessage(const DecodedConnectionManagerEvent& ev);
-  virtual void handleUnknownControlMessage(const DecodedConnectionManagerEvent& ev);
+  virtual DecodedConnectionManagerEvent decodeIncomingMessage(omnetpp::cMessage *msg) const;
+  virtual bool isKnownSelfTimingMessage(const omnetpp::cMessage *msg, int &qnic_index) const;
+  virtual void dispatchInternalEvent(const DecodedConnectionManagerEvent &ev);
+  virtual void dispatchProtocolMessage(const DecodedConnectionManagerEvent &ev);
+  virtual void handleUnknownControlMessage(const DecodedConnectionManagerEvent &ev);
   virtual void handleSelfTiming(int qnic_address);
-  virtual void handleProtocolSetupRequest(messages::ConnectionSetupRequest* msg);
-  virtual void handleProtocolSetupResponse(messages::ConnectionSetupResponse* msg);
-  virtual void handleProtocolRejectSetup(messages::RejectConnectionSetupRequest* msg);
-  virtual void handleUnknownControlMessage(cMessage* msg);
-  virtual void handleIncomingControlMessage(cMessage* msg);
+  virtual void handleProtocolSetupRequest(messages::ConnectionSetupRequest *msg);
+  virtual void handleProtocolSetupResponse(messages::ConnectionSetupResponse *msg);
+  virtual void handleProtocolRejectSetup(messages::RejectConnectionSetupRequest *msg);
+  virtual void handleUnknownControlMessage(cMessage *msg);
+  virtual void handleIncomingControlMessage(cMessage *msg);
 
   void respondToRequest(messages::ConnectionSetupRequest *pk);
   void respondToRequest_deprecated(messages::ConnectionSetupRequest *pk);

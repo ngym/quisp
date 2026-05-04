@@ -21,11 +21,11 @@ using quisp::modules::backend::QubitHandle;
 namespace quisp::modules {
 
 namespace {
-QubitHandle makeHandle(const quisp::backends::IQubit* qubit) {
+QubitHandle makeHandle(const quisp::backends::IQubit *qubit) {
   if (qubit == nullptr) throw std::runtime_error("BellStateAnalyzer::makeHandle: null qubit");
-  const auto* id = qubit->getId();
+  const auto *id = qubit->getId();
   if (id == nullptr) throw std::runtime_error("BellStateAnalyzer::makeHandle: qubit has no id");
-  const auto* qid = dynamic_cast<const quisp::modules::qubit_id::QubitId*>(id);
+  const auto *qid = dynamic_cast<const quisp::modules::qubit_id::QubitId *>(id);
   if (qid == nullptr) throw std::runtime_error("BellStateAnalyzer::makeHandle: unsupported qubit id type");
   return QubitHandle{qid->node_addr, qid->qnic_index, qid->qnic_type, qid->qubit_addr};
 }
@@ -148,10 +148,8 @@ BSAClickResult BellStateAnalyzer::processIndistinguishPhotons(PhotonRecord &p, P
   auto q_handle = makeHandle(q.qubit_ref);
   PhysicalServiceFacade service{backend};
 
-  const auto hom_result = service.applyHomInterference({p_handle, q_handle},
-                                                      {{"collection_efficiency", collection_efficiency},
-                                                       {"detection_efficiency", detection_efficiency},
-                                                       {"darkcount_probability", darkcount_probability}});
+  const auto hom_result = service.applyHomInterference(
+      {p_handle, q_handle}, {{"collection_efficiency", collection_efficiency}, {"detection_efficiency", detection_efficiency}, {"darkcount_probability", darkcount_probability}});
   if (!hom_result.success) {
     discardPhoton(p);
     discardPhoton(q);
@@ -159,8 +157,7 @@ BSAClickResult BellStateAnalyzer::processIndistinguishPhotons(PhotonRecord &p, P
   }
 
   const auto detection_result = service.applyDetection(
-      {p_handle, q_handle},
-      {{"efficiency", detection_efficiency * collection_efficiency}, {"dark_count", darkcount_probability}, {"visibility", detection_efficiency}});
+      {p_handle, q_handle}, {{"efficiency", detection_efficiency * collection_efficiency}, {"dark_count", darkcount_probability}, {"visibility", detection_efficiency}});
   auto pattern = detection_result.outcome_pattern;
   if (pattern.empty()) pattern = "none";
   pattern_count[pattern]++;
@@ -171,7 +168,7 @@ BSAClickResult BellStateAnalyzer::processIndistinguishPhotons(PhotonRecord &p, P
   return click_result;
 }
 
-BSAClickResult BellStateAnalyzer::determineClickResult(const std::string& pattern) {
+BSAClickResult BellStateAnalyzer::determineClickResult(const std::string &pattern) {
   // Memory-photon entanglement on each side is |Φ⁺⟩ (built by H + CNOT). For
   // |Φ⁺⟩_{M_A,P_A} ⊗ |Φ⁺⟩_{M_B,P_B} the swap-test identity gives
   //     |Φ⁺⟩_{M_A,P_A} ⊗ |Φ⁺⟩_{M_B,P_B}
@@ -220,7 +217,7 @@ void BellStateAnalyzer::finish() {
   std::cout << "  pairs=" << pair_count << "\n";
   std::cout << "  indistinguishable_pairs=" << indistinguishable_pair_count << "\n";
   std::cout << "  pattern_counts:\n";
-  for (const auto& pattern_pair : pattern_count) {
+  for (const auto &pattern_pair : pattern_count) {
     std::cout << "    " << pattern_pair.first << ": " << pattern_pair.second << "\n";
   }
 }

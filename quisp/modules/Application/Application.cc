@@ -185,14 +185,9 @@ void Application::generateTraffic() {
 std::string Application::buildExperimentRequestPayload(const ConnectionSetupRequest *pk) const {
   std::ostringstream payload;
   payload << "{"
-          << "\"node_id\": " << my_address
-          << ", \"application_id\": " << pk->getApplicationId()
-          << ", \"src_addr\": " << pk->getActual_srcAddr()
-          << ", \"dst_addr\": " << pk->getActual_destAddr()
-          << ", \"connection_session_id\": " << pk->getConnection_session_id()
-          << ", \"connection_attempt\": " << pk->getConnection_attempt()
-          << ", \"requested_bell_pairs\": " << pk->getNum_measure()
-          << "}";
+          << "\"node_id\": " << my_address << ", \"application_id\": " << pk->getApplicationId() << ", \"src_addr\": " << pk->getActual_srcAddr()
+          << ", \"dst_addr\": " << pk->getActual_destAddr() << ", \"connection_session_id\": " << pk->getConnection_session_id()
+          << ", \"connection_attempt\": " << pk->getConnection_attempt() << ", \"requested_bell_pairs\": " << pk->getNum_measure() << "}";
   return payload.str();
 }
 

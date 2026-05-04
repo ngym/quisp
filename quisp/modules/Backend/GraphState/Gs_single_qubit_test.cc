@@ -1,5 +1,5 @@
-#include <modules/Backend/Backends.h>
 #include <gtest/gtest.h>
+#include <modules/Backend/Backends.h>
 #include <test_utils/TestUtils.h>
 #include <Eigen/Eigen>
 #include <memory>

@@ -60,91 +60,83 @@ TEST_F(RuleEventBusTestFixture, ConvertsKnownMessagesToRuleEvents) {
   auto events = bus.drain(now);
   ASSERT_EQ(events.size(), 12);
 
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::BSM_RESULT && std::holds_alternative<CombinedBSAresults *>(e.payload);
-            }),
+  EXPECT_EQ(
+      std::count_if(events.begin(), events.end(), [](const RuleEvent& e) { return e.type == RuleEventKind::BSM_RESULT && std::holds_alternative<CombinedBSAresults*>(e.payload); }),
+      1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) { return e.type == RuleEventKind::BSM_TIMING && std::holds_alternative<BSMTimingNotification*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::BSM_TIMING && std::holds_alternative<BSMTimingNotification *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) { return e.type == RuleEventKind::EPPS_TIMING && std::holds_alternative<EPPSTimingNotification*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::EPPS_TIMING && std::holds_alternative<EPPSTimingNotification *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) { return e.type == RuleEventKind::EMIT_PHOTON_REQUEST && std::holds_alternative<EmitPhotonRequest*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::EMIT_PHOTON_REQUEST && std::holds_alternative<EmitPhotonRequest *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) { return e.type == RuleEventKind::RULESET_FORWARDING && std::holds_alternative<InternalRuleSetForwarding*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::RULESET_FORWARDING && std::holds_alternative<InternalRuleSetForwarding *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) {
+                            return e.type == RuleEventKind::RULESET_FORWARDING && e.protocol_spec == ProtocolType::ConnectionManagement &&
+                                   e.execution_path == ExecutionPath::Forwarding && e.protocol_raw_value.empty();
+                          }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::RULESET_FORWARDING && e.protocol_spec == ProtocolType::ConnectionManagement &&
-                     e.execution_path == ExecutionPath::Forwarding && e.protocol_raw_value.empty();
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) {
+                            return e.type == RuleEventKind::RULESET_FORWARDING_APPLICATION && std::holds_alternative<InternalRuleSetForwarding_Application*>(e.payload);
+                          }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::RULESET_FORWARDING_APPLICATION &&
-                     std::holds_alternative<InternalRuleSetForwarding_Application *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) {
+                            return e.type == RuleEventKind::RULESET_FORWARDING_APPLICATION && e.protocol_spec == ProtocolType::ConnectionManagement &&
+                                   e.protocol_raw_value.empty() && e.execution_path == ExecutionPath::Forwarding;
+                          }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::RULESET_FORWARDING_APPLICATION &&
-                     e.protocol_spec == ProtocolType::ConnectionManagement && e.protocol_raw_value.empty() &&
-                     e.execution_path == ExecutionPath::Forwarding;
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) { return e.type == RuleEventKind::LINK_TOMOGRAPHY_RULESET && std::holds_alternative<LinkTomographyRuleSet*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::LINK_TOMOGRAPHY_RULESET && std::holds_alternative<LinkTomographyRuleSet *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) {
+                            return e.type == RuleEventKind::LINK_TOMOGRAPHY_RULESET && e.protocol_spec == ProtocolType::LinkTomography &&
+                                   e.execution_path == ExecutionPath::EntanglementLifecycle && e.protocol_raw_value.empty();
+                          }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::LINK_TOMOGRAPHY_RULESET &&
-                     e.protocol_spec == ProtocolType::LinkTomography && e.execution_path == ExecutionPath::EntanglementLifecycle &&
-                     e.protocol_raw_value.empty();
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) { return e.type == RuleEventKind::MSM_RESULT && std::holds_alternative<MSMResult*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::MSM_RESULT && std::holds_alternative<MSMResult *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) {
+                            return e.type == RuleEventKind::MSM_RESULT && e.protocol_spec == ProtocolType::MSM_v1 && e.execution_path == ExecutionPath::EntanglementLifecycle;
+                          }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::MSM_RESULT &&
-                     e.protocol_spec == ProtocolType::MSM_v1 && e.execution_path == ExecutionPath::EntanglementLifecycle;
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) { return e.type == RuleEventKind::PURIFICATION_RESULT && std::holds_alternative<PurificationResult*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::PURIFICATION_RESULT && std::holds_alternative<PurificationResult *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) {
+                            return e.type == RuleEventKind::PURIFICATION_RESULT && e.protocol_spec == ProtocolType::Purification &&
+                                   e.execution_path == ExecutionPath::EntanglementLifecycle;
+                          }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::PURIFICATION_RESULT &&
-                     e.protocol_spec == ProtocolType::Purification && e.execution_path == ExecutionPath::EntanglementLifecycle;
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) { return e.type == RuleEventKind::SINGLE_CLICK_RESULT && std::holds_alternative<SingleClickResult*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::SINGLE_CLICK_RESULT && std::holds_alternative<SingleClickResult *>(e.payload);
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) {
+                            return e.type == RuleEventKind::SINGLE_CLICK_RESULT && e.protocol_spec == ProtocolType::MSM_v1 &&
+                                   e.execution_path == ExecutionPath::EntanglementLifecycle;
+                          }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::SINGLE_CLICK_RESULT && e.protocol_spec == ProtocolType::MSM_v1 &&
-                     e.execution_path == ExecutionPath::EntanglementLifecycle;
-            }),
+  EXPECT_EQ(
+      std::count_if(events.begin(), events.end(), [](const RuleEvent& e) { return e.type == RuleEventKind::STOP_EMITTING && std::holds_alternative<StopEmitting*>(e.payload); }),
+      1);
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) { return e.type == RuleEventKind::SWAPPING_RESULT && std::holds_alternative<SwappingResult*>(e.payload); }),
             1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::STOP_EMITTING && std::holds_alternative<StopEmitting *>(e.payload);
-            }),
-            1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::SWAPPING_RESULT && std::holds_alternative<SwappingResult *>(e.payload);
-            }),
-            1);
-  EXPECT_EQ(std::count_if(events.begin(), events.end(), [](const RuleEvent& e) {
-              return e.type == RuleEventKind::SWAPPING_RESULT &&
-                     e.protocol_spec == ProtocolType::Swapping && e.execution_path == ExecutionPath::EntanglementLifecycle;
-            }),
+  EXPECT_EQ(std::count_if(events.begin(), events.end(),
+                          [](const RuleEvent& e) {
+                            return e.type == RuleEventKind::SWAPPING_RESULT && e.protocol_spec == ProtocolType::Swapping &&
+                                   e.execution_path == ExecutionPath::EntanglementLifecycle;
+                          }),
             1);
 }
 
@@ -180,7 +172,7 @@ TEST_F(RuleEventBusTestFixture, KnownMessageMetadataIsPopulated) {
   auto events = bus.drain(now);
   ASSERT_EQ(events.size(), 12);
 
-  for (const auto &event : events) {
+  for (const auto& event : events) {
     EXPECT_EQ(event.time, now);
     EXPECT_GE(event.event_number, 0);
     EXPECT_FALSE(event.msg_name.empty());
@@ -316,15 +308,13 @@ TEST_F(RuleEventBusTestFixture, UnknownMessageAndNullMessageAreHandled) {
 
 TEST_F(RuleEventBusTestFixture, SupportsTranslatorRegistrationOverride) {
   RuleEventBus bus;
-  bus.registerTranslator(
-      "omnetpp::cMessage", [](cMessage *msg, simtime_t now) -> std::optional<RuleEvent> {
-        if (msg == nullptr) {
-          return std::nullopt;
-        }
-        return RuleEvent{
-            RuleEventKind::STOP_EMITTING, RuleEventChannel::EXTERNAL, false, now, 99, ProtocolType::Unknown, ExecutionPath::Unknown, "",
-            std::monostate{}, msg->getFullName(), msg->getClassName()};
-      });
+  bus.registerTranslator("omnetpp::cMessage", [](cMessage* msg, simtime_t now) -> std::optional<RuleEvent> {
+    if (msg == nullptr) {
+      return std::nullopt;
+    }
+    return RuleEvent{RuleEventKind::STOP_EMITTING, RuleEventChannel::EXTERNAL, false, now, 99, ProtocolType::Unknown, ExecutionPath::Unknown, "", std::monostate{},
+                     msg->getFullName(),           msg->getClassName()};
+  });
 
   cMessage raw("raw");
   auto converted = bus.toRuleEvent(&raw, SimTime(10));

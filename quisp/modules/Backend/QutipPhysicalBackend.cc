@@ -2,28 +2,28 @@
 
 #include <algorithm>
 #include <cctype>
-#include <cmath>
 #include <cerrno>
+#include <cmath>
 #include <csignal>
+#include <cstdlib>
 #include <cstring>
+#include <fstream>
 #include <iostream>
+#include <limits>
 #include <map>
 #include <set>
-#include <fstream>
-#include <limits>
 #include <sstream>
 #include <stdexcept>
-#include <cstdlib>
 #include <unordered_map>
 #include <unordered_set>
 
 #include <nlohmann/json.hpp>
 
-#include "omnetpp.h"
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include "omnetpp.h"
 
 namespace quisp::modules::backend {
 
@@ -134,8 +134,7 @@ std::string normalizeErrorChannelProfile(const std::string& profile) {
   if (normalized == "loss" || normalized == "loss_channel" || normalized == "attenuation" || normalized == "attenuation_channel") {
     return "loss_channel";
   }
-  if (normalized == "flip" || normalized == "flip_channel" || normalized == "x_error" || normalized == "xerror" || normalized == "bit_flip" ||
-      normalized == "bitflip") {
+  if (normalized == "flip" || normalized == "flip_channel" || normalized == "x_error" || normalized == "xerror" || normalized == "bit_flip" || normalized == "bitflip") {
     return "flip_channel";
   }
   if (normalized == "phaseflip" || normalized == "phase_flip" || normalized == "phase_error" || normalized == "z_error" || normalized == "zerror") {
@@ -157,9 +156,7 @@ double extractErrorRate(const nlohmann::json& payload, const std::vector<std::st
 
 }  // namespace
 
-std::string QutipPhysicalBackend::qubitKey(const QubitHandle& qubit) const {
-  return qubitHandleKey(qubit);
-}
+std::string QutipPhysicalBackend::qubitKey(const QubitHandle& qubit) const { return qubitHandleKey(qubit); }
 
 int64_t QutipPhysicalBackend::nextEntanglementSetId() const {
   const auto id = next_entanglement_set_id_;
@@ -393,17 +390,11 @@ std::string parseNoiseFromPayload(const PhysicalOperation& operation) {
   return "dephasing";
 }
 
-bool isStationaryQubitHandle(const QubitHandle& qubit) {
-  return qubit.node_id >= 0 && qubit.qnic_index >= 0 && qubit.qnic_type >= 0 && qubit.qubit_index >= 0;
-}
+bool isStationaryQubitHandle(const QubitHandle& qubit) { return qubit.node_id >= 0 && qubit.qnic_index >= 0 && qubit.qnic_type >= 0 && qubit.qubit_index >= 0; }
 
-bool isFlyingQubitHandle(const QubitHandle& qubit) {
-  return qubit.node_id == -1 && qubit.qnic_index == -1 && qubit.qnic_type == -1 && qubit.qubit_index >= 0;
-}
+bool isFlyingQubitHandle(const QubitHandle& qubit) { return qubit.node_id == -1 && qubit.qnic_index == -1 && qubit.qnic_type == -1 && qubit.qubit_index >= 0; }
 
-bool validateQubitHandle(const QubitHandle& qubit) {
-  return isStationaryQubitHandle(qubit) || isFlyingQubitHandle(qubit);
-}
+bool validateQubitHandle(const QubitHandle& qubit) { return isStationaryQubitHandle(qubit) || isFlyingQubitHandle(qubit); }
 
 bool hasValidTargets(const std::vector<QubitHandle>& targets) {
   if (targets.empty()) {
@@ -984,7 +975,7 @@ OperationResult QutipPhysicalBackend::runMeasurement(const BackendContext& ctx, 
 }
 
 OperationResult QutipPhysicalBackend::runNoise(const BackendContext& ctx, QubitHandle qubit, const std::string& noise_kind, const nlohmann::json& noise_payload,
-                                      const std::vector<double>& params) const {
+                                               const std::vector<double>& params) const {
   if (!validateQubitHandle(qubit)) {
     return unsupported("qutip backend noise operation received invalid qubit handle");
   }
@@ -1107,9 +1098,7 @@ OperationResult QutipPhysicalBackend::executeQutipWorker(const BackendContext& c
   return result;
 }
 
-OperationResult QutipPhysicalBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) {
-  return runNoise(ctx, qubit, "dephasing", {});
-}
+OperationResult QutipPhysicalBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) { return runNoise(ctx, qubit, "dephasing", {}); }
 
 OperationResult QutipPhysicalBackend::applyGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
   return runUnitary(ctx, gate, qubits, "");
@@ -1119,9 +1108,7 @@ OperationResult QutipPhysicalBackend::applyNoiselessGate(const BackendContext& c
   return runUnitary(ctx, gate, qubits, "noiseless");
 }
 
-OperationResult QutipPhysicalBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
-  return runMeasurement(ctx, qubit, basis, false);
-}
+OperationResult QutipPhysicalBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) { return runMeasurement(ctx, qubit, basis, false); }
 
 OperationResult QutipPhysicalBackend::measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
   auto result = runMeasurement(ctx, qubit, basis, true);

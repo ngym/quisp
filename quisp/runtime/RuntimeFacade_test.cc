@@ -1,10 +1,10 @@
 #include <gtest/gtest.h>
 
+#include "RuleSet.h"
 #include "RuntimeFacade.h"
 #include "RuntimeStateStore.h"
-#include "RuleSet.h"
-#include "test.h"
 #include "modules/QRSA/RuleEngine/QubitRecord/QubitRecord.h"
+#include "test.h"
 
 namespace {
 using namespace quisp::runtime;
@@ -15,12 +15,8 @@ using namespace testing;
 
 class RuntimeFacadeTest : public testing::Test {
  protected:
-  void SetUp() {
-    facade = new RuntimeFacade(std::make_unique<MockRuntimeCallback>());
-  }
-  void TearDown() {
-    delete facade;
-  }
+  void SetUp() { facade = new RuntimeFacade(std::make_unique<MockRuntimeCallback>()); }
+  void TearDown() { delete facade; }
 
   RuntimeFacade* facade;
 };

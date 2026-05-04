@@ -4,39 +4,37 @@
  */
 #include "StationaryQubit.h"
 
-#include <algorithm>
-#include <sstream>
 #include <FlyingQubit_m.h>
 #include <messages/classical_messages.h>
 #include <omnetpp.h>
+#include <algorithm>
 #include <set>
+#include <sstream>
 #include <stdexcept>
-#include <vector>
 #include <unsupported/Eigen/KroneckerProduct>
 #include <unsupported/Eigen/MatrixFunctions>
-#include "modules/Backend/interfaces/IQubit.h"
+#include <vector>
 #include "modules/Backend/PhysicalServiceFacade.h"
+#include "modules/Backend/interfaces/IQubit.h"
 #include "omnetpp/cexception.h"
 
 using namespace Eigen;
 
 using quisp::messages::FlyingQubit;
+using quisp::modules::backend::PhysicalServiceFacade;
+using quisp::modules::backend::QubitHandle;
 using quisp::modules::qubit_id::QubitId;
 using quisp::types::EigenvalueResult;
 using quisp::types::MeasurementOutcome;
 using quisp::types::MeasureXResult;
 using quisp::types::MeasureYResult;
 using quisp::types::MeasureZResult;
-using quisp::modules::backend::PhysicalServiceFacade;
-using quisp::modules::backend::QubitHandle;
 
 namespace {
 
 QubitHandle makeHandle(const quisp::backends::IQubit* qubit);
 
-QubitHandle makeHandle(const quisp::modules::StationaryQubit& qubit) {
-  return makeHandle(qubit.getBackendQubitRef());
-}
+QubitHandle makeHandle(const quisp::modules::StationaryQubit& qubit) { return makeHandle(qubit.getBackendQubitRef()); }
 
 QubitHandle makeHandle(const quisp::backends::IQubit* qubit) {
   if (qubit == nullptr) throw cRuntimeError("StationaryQubit::makeHandle: null backend qubit");
@@ -101,9 +99,8 @@ std::string inferDestinationNodeId(quisp::modules::StationaryQubit* qubit) {
     return "";
   }
 
-  std::sort(peers.begin(), peers.end(), [](const omnetpp::cModule* left, const omnetpp::cModule* right) {
-    return left->par("address").intValue() < right->par("address").intValue();
-  });
+  std::sort(peers.begin(), peers.end(),
+            [](const omnetpp::cModule* left, const omnetpp::cModule* right) { return left->par("address").intValue() < right->par("address").intValue(); });
 
   if (peers.size() == 1) {
     return std::to_string(peers.front()->par("address").intValue());
@@ -168,7 +165,7 @@ void StationaryQubit::initialize() {
 std::unique_ptr<IConfiguration> StationaryQubit::prepareBackendQubitConfiguration(bool overwrite) {
   auto conf = backend->getDefaultConfiguration();
   if (!overwrite) return conf;
-  if (auto et_conf = dynamic_cast<backend::StationaryQubitConfiguration *>(conf.get())) {
+  if (auto et_conf = dynamic_cast<backend::StationaryQubitConfiguration*>(conf.get())) {
     et_conf->measurement_x_err_rate = par("x_measurement_error_rate").doubleValue();
     et_conf->measurement_y_err_rate = par("y_measurement_error_rate").doubleValue();
     et_conf->measurement_z_err_rate = par("z_measurement_error_rate").doubleValue();
@@ -216,7 +213,7 @@ void StationaryQubit::finish() {}
  *
  * \param msg is the FlyingQubit message
  */
-void StationaryQubit::handleMessage(cMessage *msg) {
+void StationaryQubit::handleMessage(cMessage* msg) {
   if (!msg->isSelfMessage()) {
     throw cRuntimeError("StationaryQubit::handleMessage: message from outside is not expected");
   }
@@ -224,7 +221,7 @@ void StationaryQubit::handleMessage(cMessage *msg) {
   setBusy();
   double rand = dblrand();
   if (rand < (1 - emission_success_probability)) {
-    auto* photon = check_and_cast<FlyingQubit *>(msg);
+    auto* photon = check_and_cast<FlyingQubit*>(msg);
     auto* qubit_ref = photon->getQubitRefForUpdate();
     if (qubit_ref != nullptr) {
       PhysicalServiceFacade service{backend};
@@ -301,8 +298,8 @@ void StationaryQubit::gateSdg() {
   if (!result.success) throw cRuntimeError("StationaryQubit::gateSdg failed");
 }
 
-void StationaryQubit::gateCNOT(IStationaryQubit *target_qubit) {
-  auto* target = check_and_cast<StationaryQubit *>(target_qubit);
+void StationaryQubit::gateCNOT(IStationaryQubit* target_qubit) {
+  auto* target = check_and_cast<StationaryQubit*>(target_qubit);
   PhysicalServiceFacade service{backend};
   auto source_handle = makeHandle(*this);
   auto target_handle = makeHandle(*target);
@@ -382,10 +379,10 @@ bool StationaryQubit::isLocked() { return locked; }
  * \brief Generate photon entangled with the memory
  * \warning Shouldn't we destroy a possibly existing photon object before? <- No, I dont think so...
  */
-FlyingQubit *StationaryQubit::generateEntangledPhoton() {
+FlyingQubit* StationaryQubit::generateEntangledPhoton() {
   Enter_Method("generateEntangledPhoton()");
-  auto *photon = new FlyingQubit("Photon");
-  auto *photon_ref = backend->getFlyingQubit();
+  auto* photon = new FlyingQubit("Photon");
+  auto* photon_ref = backend->getFlyingQubit();
   auto source_handle = makeHandle(*this);
   auto target_handle = makeHandle(photon_ref);
   PhysicalServiceFacade service{backend};
@@ -416,7 +413,7 @@ void StationaryQubit::emitPhoton(int pulse) {
     error("Requested a photon emission to a busy qubit... this should not happen!");
     return;
   }
-  FlyingQubit *pk = generateEntangledPhoton();
+  FlyingQubit* pk = generateEntangledPhoton();
   if (logger != nullptr) {
     logger->logEvent("flying_qubit_emit", buildPhysicalEventPayload("emit", pulse));
   }
@@ -428,7 +425,7 @@ void StationaryQubit::emitPhoton(int pulse) {
   scheduleAt(simTime() + abso, pk);  // cannot send back in time, so only positive lag
 }
 
-backends::IQubit *StationaryQubit::getBackendQubitRef() const { return qubit_ref; }
+backends::IQubit* StationaryQubit::getBackendQubitRef() const { return qubit_ref; }
 
 std::string StationaryQubit::buildPhysicalEventPayload(const char* phase, int pulse, bool photon_lost) const {
   auto dst_node_id = inferDestinationNodeIdFromCurrentPath(const_cast<StationaryQubit*>(this));

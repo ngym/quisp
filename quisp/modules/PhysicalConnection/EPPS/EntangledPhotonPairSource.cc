@@ -11,11 +11,11 @@ using namespace omnetpp;
 
 namespace {
 
-QubitHandle makeHandle(const quisp::backends::IQubit* qubit) {
+QubitHandle makeHandle(const quisp::backends::IQubit *qubit) {
   if (qubit == nullptr) throw cRuntimeError("EntangledPhotonPairSource::makeHandle: null qubit");
-  const auto* id = qubit->getId();
+  const auto *id = qubit->getId();
   if (id == nullptr) throw cRuntimeError("EntangledPhotonPairSource::makeHandle: qubit has no id");
-  const auto* qid = dynamic_cast<const QubitId*>(id);
+  const auto *qid = dynamic_cast<const QubitId *>(id);
   if (qid == nullptr) throw cRuntimeError("EntangledPhotonPairSource::makeHandle: unsupported qubit id type");
   return QubitHandle{qid->node_addr, qid->qnic_index, qid->qnic_type, qid->qubit_addr};
 }
@@ -54,8 +54,8 @@ void EntangledPhotonPairSource::handleMessage(cMessage *msg) {
   if (strcmp(msg->getName(), "RightPhoton")) port = 1;
   double rand = dblrand();
   if (rand < (1 - emission_success_probability)) {
-    auto* photon = check_and_cast<FlyingQubit *>(msg);
-    auto* qubit_ref = photon->getQubitRefForUpdate();
+    auto *photon = check_and_cast<FlyingQubit *>(msg);
+    auto *qubit_ref = photon->getQubitRefForUpdate();
     if (qubit_ref != nullptr) {
       PhysicalServiceFacade service{backend};
       auto handle = makeHandle(qubit_ref);

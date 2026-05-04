@@ -1,7 +1,7 @@
-#include <memory>
 #include <algorithm>
-#include <utility>
+#include <memory>
 #include <nlohmann/json.hpp>
+#include <utility>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -12,10 +12,11 @@
 #include "QubitRecord/QubitRecord.h"
 #include "RuleEngine.h"
 #include "handlers/RuleProtocolHandlers.h"
+#include "messages/QNode_ipc_messages_m.h"
 #include "messages/purification_messages_m.h"
-#include "modules/PhysicalConnection/BSA/types.h"
 #include "modules/Logger/DisabledLogger.h"
 #include "modules/Logger/ILogger.h"
+#include "modules/PhysicalConnection/BSA/types.h"
 #include "modules/QNIC.h"
 #include "modules/QNIC/StationaryQubit/IStationaryQubit.h"
 #include "modules/QRSA/HardwareMonitor/IHardwareMonitor.h"
@@ -25,14 +26,13 @@
 #include "rules/Action.h"
 #include "rules/Rule.h"
 #include "rules/RuleSet.h"
-#include "messages/QNode_ipc_messages_m.h"
 #include "runtime/RuleSet.h"
 #include "runtime/Runtime.h"
 #include "runtime/opcode.h"
 #include "runtime/test.h"
 #include "runtime/types.h"
-#include "test_utils/TestUtilFunctions.h"
 #include "test_utils/Gate.h"
+#include "test_utils/TestUtilFunctions.h"
 #include "test_utils/TestUtils.h"
 #include "test_utils/mock_modules/MockHardwareMonitor.h"
 #include "test_utils/mock_modules/MockQNicStore.h"
@@ -99,13 +99,9 @@ class TestQNicStoreStub : public IQNicStore {
     return acquire_available_qubit_return;
   }
 
-  int countNumFreeQubits(QNIC_type type, int qnic_index) override {
-    return countNumAvailableQubits(type, qnic_index);
-  }
+  int countNumFreeQubits(QNIC_type type, int qnic_index) override { return countNumAvailableQubits(type, qnic_index); }
 
-  int takeFreeQubitIndex(QNIC_type type, int qnic_index) override {
-    return acquireAvailableQubitIndex(type, qnic_index);
-  }
+  int takeFreeQubitIndex(QNIC_type type, int qnic_index) override { return acquireAvailableQubitIndex(type, qnic_index); }
 
   void setQubitBusy(QNIC_type type, int qnic_index, int qubit_index, bool is_busy) override {
     (void)type;
@@ -123,8 +119,7 @@ class TestQNicStoreStub : public IQNicStore {
   }
 };
 
-std::unique_ptr<quisp::rules::RuleSet> makeMinimalRuleSetForRuntimeForwarding(unsigned long ruleset_id = 0, int owner_address = 0,
-                                                                              int partner_address = 1) {
+std::unique_ptr<quisp::rules::RuleSet> makeMinimalRuleSetForRuntimeForwarding(unsigned long ruleset_id = 0, int owner_address = 0, int partner_address = 1) {
   auto ruleset = std::make_unique<quisp::rules::RuleSet>(ruleset_id, owner_address);
   auto rule = std::make_unique<quisp::rules::Rule>(partner_address, -1, -1);
   rule->setName("forwarding test rule");
@@ -175,15 +170,15 @@ class Strategy : public quisp_test::TestComponentProviderStrategy {
 
 class RuleEngineTestTarget : public quisp::modules::RuleEngine {
  public:
+  using quisp::modules::RuleEngine::gate;
+  using quisp::modules::RuleEngine::handleMessage;
   using quisp::modules::RuleEngine::handlePurificationResult;
+  using quisp::modules::RuleEngine::handleRuleEvent;
   using quisp::modules::RuleEngine::handleSwappingResult;
   using quisp::modules::RuleEngine::initialize;
-  using quisp::modules::RuleEngine::handleMessage;
-  using quisp::modules::RuleEngine::handleRuleEvent;
   using quisp::modules::RuleEngine::par;
   using quisp::modules::RuleEngine::qnic_store;
   using quisp::modules::RuleEngine::runtimes;
-  using quisp::modules::RuleEngine::gate;
 
   RuleEngineTestTarget(IStationaryQubit* mockQubit, MockRoutingDaemon* routingdaemon, MockHardwareMonitor* hardware_monitor, MockRealTimeController* realtime_controller,
                        std::vector<QNicSpec> qnic_specs = {}, std::unique_ptr<ILogger> logger = {})
@@ -201,7 +196,7 @@ class RuleEngineTestTarget : public quisp::modules::RuleEngine {
   }
   // setter function for allResorces[qnic_type][qnic_index]
   void setAllResources(int partner_addr, IQubitRecord* qubit) { this->bell_pair_store.insertEntangledQubit(partner_addr, qubit); };
-  cGate *gate(const char* gate_name, int index = -1) override { return std::string(gate_name) == "RouterPort$o" ? router_port_gate.get() : RuleEngine::gate(gate_name, index); }
+  cGate* gate(const char* gate_name, int index = -1) override { return std::string(gate_name) == "RouterPort$o" ? router_port_gate.get() : RuleEngine::gate(gate_name, index); }
 
  private:
   FRIEND_TEST(RuleEngineTest, ESResourceUpdate);
@@ -344,9 +339,8 @@ TEST_F(RuleEngineTest, unknownProtocolForKnownTypeIsLoggedAsUnknownRuleProtocol)
   sim->registerComponent(rule_engine);
   rule_engine->callInitialize();
 
-  core::events::RuleEvent unknown_protocol_event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false,
-                                                 SimTime(1), 0, core::events::ProtocolType::Unknown,
-                                                 core::events::ExecutionPath::EntanglementLifecycle};
+  core::events::RuleEvent unknown_protocol_event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL,          false, SimTime(1), 0,
+                                                 core::events::ProtocolType::Unknown,     core::events::ExecutionPath::EntanglementLifecycle};
 
   rule_engine->handleRuleEvent(unknown_protocol_event);
 
@@ -366,15 +360,13 @@ TEST_F(RuleEngineTest, dispatchRuleEventPrefersExactHandlerBeforeFallbacks) {
   int exact_calls = 0;
   int type_fallback_calls = 0;
   int protocol_fallback_calls = 0;
-  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
-                                core::events::ProtocolType::MSM_v1, core::events::ExecutionPath::EntanglementLifecycle};
+  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL,          false, SimTime(1), 0,
+                                core::events::ProtocolType::MSM_v1,      core::events::ExecutionPath::EntanglementLifecycle};
 
   rule_engine->registerRuleEventHandler(core::events::RuleEventKind::BSM_RESULT, core::events::ProtocolType::MSM_v1,
                                         [&exact_calls](const core::events::RuleEvent&) { ++exact_calls; });
-  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventKind::BSM_RESULT,
-                                            [&type_fallback_calls](const core::events::RuleEvent&) { ++type_fallback_calls; });
-  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolType::MSM_v1,
-                                                [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
+  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventKind::BSM_RESULT, [&type_fallback_calls](const core::events::RuleEvent&) { ++type_fallback_calls; });
+  rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolType::MSM_v1, [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
   rule_engine->handleRuleEvent(event);
 
   EXPECT_EQ(exact_calls, 1);
@@ -392,13 +384,12 @@ TEST_F(RuleEngineTest, dispatchRuleEventFallsBackByTypeBeforeProtocolFallback) {
 
   int type_fallback_calls = 0;
   int protocol_fallback_calls = 0;
-  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
+  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL,          false, SimTime(1), 0,
                                 core::events::ProtocolType::Maintenance, core::events::ExecutionPath::EntanglementLifecycle};
 
-  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventKind::BSM_RESULT,
-                                            [&type_fallback_calls](const core::events::RuleEvent&) { ++type_fallback_calls; });
+  rule_engine->registerRuleEventTypeFallback(core::events::RuleEventKind::BSM_RESULT, [&type_fallback_calls](const core::events::RuleEvent&) { ++type_fallback_calls; });
   rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolType::Maintenance,
-                                                [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
+                                                 [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
   rule_engine->handleRuleEvent(event);
 
   EXPECT_EQ(type_fallback_calls, 1);
@@ -414,11 +405,11 @@ TEST_F(RuleEngineTest, dispatchRuleEventFallsBackByProtocolWhenTypeFallbackMissi
   rule_engine->callInitialize();
 
   int protocol_fallback_calls = 0;
-  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL, false, SimTime(1), 0,
+  core::events::RuleEvent event{core::events::RuleEventKind::BSM_RESULT, core::events::RuleEventChannel::EXTERNAL,          false, SimTime(1), 0,
                                 core::events::ProtocolType::Maintenance, core::events::ExecutionPath::EntanglementLifecycle};
 
   rule_engine->registerRuleEventProtocolFallback(core::events::ProtocolType::Maintenance,
-                                                [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
+                                                 [&protocol_fallback_calls](const core::events::RuleEvent&) { ++protocol_fallback_calls; });
   rule_engine->handleRuleEvent(event);
 
   EXPECT_EQ(protocol_fallback_calls, 1);
@@ -506,7 +497,7 @@ TEST_F(RuleEngineTest, singleClickResultEventIsHandledByRegistrarWithoutUnknownL
   EXPECT_EQ(qnic_store_stub->set_qubit_busy_calls, 1);
 
   rule_engine->qnic_store.reset();
-	// do not delete rule_engine directly here (OMNeT++ module lifecycle handled by simulation environment)
+  // do not delete rule_engine directly here (OMNeT++ module lifecycle handled by simulation environment)
 }
 
 TEST_F(RuleEngineTest, msmResultEventIsHandledByRegistrarWithoutUnknownLog) {
@@ -699,9 +690,8 @@ TEST(RuleProtocolHandlerRegistrarTest, defaultProtocolHandlerListContainsExpecte
   for (const auto& handler : handlers) {
     actual_specs.push_back(handler->protocolSpec());
   }
-  const std::vector<core::events::ProtocolType> expected_specs = {
-      core::events::ProtocolType::MIM_v1, core::events::ProtocolType::MSM_v1, core::events::ProtocolType::Purification,
-      core::events::ProtocolType::Swapping, core::events::ProtocolType::ConnectionManagement};
+  const std::vector<core::events::ProtocolType> expected_specs = {core::events::ProtocolType::MIM_v1, core::events::ProtocolType::MSM_v1, core::events::ProtocolType::Purification,
+                                                                  core::events::ProtocolType::Swapping, core::events::ProtocolType::ConnectionManagement};
 
   auto sorted_actual_specs = actual_specs;
   auto sorted_expected_specs = expected_specs;
@@ -719,7 +709,7 @@ TEST_F(RuleEngineTest, directUnknownRuleEventFromRuleEngineLogsUnknownRuleEvent)
   rule_engine->callInitialize();
 
   core::events::RuleEvent unknown_event{core::events::RuleEventKind::UNKNOWN, core::events::RuleEventChannel::EXTERNAL, false, SimTime(2), 11,
-                                        core::events::ProtocolType::Unknown, core::events::ExecutionPath::Unknown};
+                                        core::events::ProtocolType::Unknown,  core::events::ExecutionPath::Unknown};
   rule_engine->handleRuleEvent(unknown_event);
 
   EXPECT_EQ(raw_logger->last_event_type, "unknown_rule_event");
@@ -746,7 +736,7 @@ TEST_F(RuleEngineTest, emitPhotonRequestEventIsHandledByRegistrarWithoutUnknownL
   qnic_store_stub->count_num_available_return = 1;
   qnic_store_stub->acquire_available_qubit_return = 5;
   rule_engine->qnic_store.reset(qnic_store_stub);
- 	EXPECT_CALL(*realtime_controller, EmitPhoton(0, 5, QNIC_E, _)).Times(1);
+  EXPECT_CALL(*realtime_controller, EmitPhoton(0, 5, QNIC_E, _)).Times(1);
 
   rule_engine->handleMessage(emit_request);
 

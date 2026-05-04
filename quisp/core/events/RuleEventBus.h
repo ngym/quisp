@@ -3,13 +3,13 @@
 #include <omnetpp/cmessage.h>
 #include <omnetpp/simtime_t.h>
 
-#include <functional>
 #include <cstdint>
+#include <functional>
 #include <optional>
-#include <unordered_map>
 #include <string>
-#include <vector>
+#include <unordered_map>
 #include <variant>
+#include <vector>
 
 #include "ExecutionPath.h"
 #include "ProtocolSpec.h"
@@ -87,11 +87,10 @@ inline std::string to_string(RuleEventKind event_type) {
   }
 }
 
-using RuleEventPayload = std::variant<std::monostate, messages::BSMTimingNotification *, messages::CombinedBSAresults *,
-                                     messages::EPPSTimingNotification *, messages::EmitPhotonRequest *,
-                                     messages::InternalRuleSetForwarding *, messages::InternalRuleSetForwarding_Application *,
-                                     messages::LinkTomographyRuleSet *, messages::MSMResult *, messages::PurificationResult *,
-                                     messages::SingleClickResult *, messages::StopEmitting *, messages::SwappingResult *>;
+using RuleEventPayload =
+    std::variant<std::monostate, messages::BSMTimingNotification *, messages::CombinedBSAresults *, messages::EPPSTimingNotification *, messages::EmitPhotonRequest *,
+                 messages::InternalRuleSetForwarding *, messages::InternalRuleSetForwarding_Application *, messages::LinkTomographyRuleSet *, messages::MSMResult *,
+                 messages::PurificationResult *, messages::SingleClickResult *, messages::StopEmitting *, messages::SwappingResult *>;
 
 struct RuleEvent {
   RuleEventKind type = RuleEventKind::UNKNOWN;

@@ -12,13 +12,9 @@ QNicRecord::QNicRecord(utils::ComponentProvider& provider, int index, QNIC_type 
   }
 }
 
-int QNicRecord::countNumFreeQubits() {
-  return countNumAvailableQubits();
-}
+int QNicRecord::countNumFreeQubits() { return countNumAvailableQubits(); }
 
-int QNicRecord::takeFreeQubitIndex() {
-  return acquireAvailableQubitIndex();
-}
+int QNicRecord::takeFreeQubitIndex() { return acquireAvailableQubitIndex(); }
 
 int QNicRecord::countNumAvailableQubits() {
   int num_free = 0;

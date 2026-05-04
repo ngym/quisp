@@ -3,8 +3,8 @@
 #include <cstddef>
 #include <deque>
 #include <iostream>
-#include <string>
 #include <stdexcept>
+#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <variant>
@@ -365,7 +365,7 @@ class Runtime {
   ICallBack* callback;
   //@}
 
- /** @name states */
+  /** @name states */
   //@{
   /// @brief currently evaluating rule id
   RuleId rule_id = -1;
@@ -507,6 +507,5 @@ class Runtime {
    */
   bool debugging = false;
   //@}
-
 };
 }  // namespace quisp::runtime

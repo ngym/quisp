@@ -5,10 +5,10 @@
 #pragma once
 
 #include <functional>
-#include <unordered_map>
 #include <memory>
-#include <vector>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include <omnetpp.h>
 
@@ -16,6 +16,8 @@
 #include "IRuleEngine.h"
 #include "QNicStore/IQNicStore.h"
 #include "QubitRecord/IQubitRecord.h"
+#include "core/events/ProtocolSpec.h"
+#include "core/events/RuleEventBus.h"
 #include "messages/BSA_ipc_messages_m.h"
 #include "messages/classical_messages.h"
 #include "messages/link_generation_messages_m.h"
@@ -24,12 +26,10 @@
 #include "modules/QRSA/HardwareMonitor/IHardwareMonitor.h"
 #include "modules/QRSA/RealTimeController/IRealTimeController.h"
 #include "modules/QRSA/RoutingDaemon/IRoutingDaemon.h"
-#include "core/events/RuleEventBus.h"
 #include "rules/RuleSet.h"
 #include "runtime/Runtime.h"
 #include "runtime/RuntimeFacade.h"
 #include "utils/ComponentProvider.h"
-#include "core/events/ProtocolSpec.h"
 
 using namespace omnetpp;
 using namespace quisp::rules;
@@ -96,7 +96,7 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void freeResource(int qnic_index, int qubit_index, QNIC_type qnic_type);
   void freeConsumedResource(int qnic_index, IStationaryQubit *qubit, QNIC_type qnic_type);
   void ResourceAllocation(int qnic_type, int qnic_index);
-  using RuleEventHandler = std::function<void(const core::events::RuleEvent&)>;
+  using RuleEventHandler = std::function<void(const core::events::RuleEvent &)>;
   using RuleEventKind = core::events::RuleEventKind;
   using ProtocolType = core::events::ProtocolType;
   // Compatibility aliases preserved for phased migration.
@@ -109,7 +109,7 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   void registerRuleEventHandler(RuleEventKind event_type, ProtocolType protocol_spec, RuleEventHandler handler);
   void registerRuleEventTypeFallback(RuleEventKind event_type, RuleEventHandler handler);
   void registerRuleEventProtocolFallback(ProtocolType protocol_spec, RuleEventHandler handler);
-  RuleProtocolExecutionContext& protocolExecutionContext();
+  RuleProtocolExecutionContext &protocolExecutionContext();
 
  protected:
   void initialize() override;
@@ -142,9 +142,7 @@ class RuleEngine : public IRuleEngine, public Logger::LoggerBase {
   std::unique_ptr<RuleProtocolExecutionContext> protocol_execution_context;
   core::events::RuleEventBus event_bus;
   struct RuleEventDispatchKeyHash {
-    size_t operator()(RuleEventDispatchKey const& key) const {
-      return (static_cast<size_t>(key.first) * 1315423911u) ^ static_cast<size_t>(key.second);
-    }
+    size_t operator()(RuleEventDispatchKey const &key) const { return (static_cast<size_t>(key.first) * 1315423911u) ^ static_cast<size_t>(key.second); }
   };
   std::unordered_map<RuleEventDispatchKey, RuleEventHandler, RuleEventDispatchKeyHash> rule_event_handlers;
   std::unordered_map<int, RuleEventHandler> rule_event_type_fallback_handlers;

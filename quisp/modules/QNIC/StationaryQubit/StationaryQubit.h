@@ -8,8 +8,8 @@
 
 #include <FlyingQubit_m.h>
 #include <modules/Backend/Backends.h>
-#include <modules/common_types.h>
 #include <modules/Logger/LoggerBase.h>
+#include <modules/common_types.h>
 #include <utils/ComponentProvider.h>
 #include "IStationaryQubit.h"
 #include "QubitId.h"
@@ -76,7 +76,7 @@ class StationaryQubit : public IStationaryQubit, protected Logger::LoggerBase {
   void handleMessage(omnetpp::cMessage *msg) override;
   messages::FlyingQubit *generateEntangledPhoton();
   void setBusy();
-  std::string buildPhysicalEventPayload(const char* phase, int pulse = -1, bool photon_lost = false) const;
+  std::string buildPhysicalEventPayload(const char *phase, int pulse = -1, bool photon_lost = false) const;
 
   /**
    * get the default backend configuration from the Bcakend module.

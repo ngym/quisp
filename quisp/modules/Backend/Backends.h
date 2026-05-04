@@ -1,10 +1,10 @@
 #pragma once
 #include "GraphState/Backend.h"
-#include "modules/Backend/QubitConfiguration.h"
 #include "interfaces/IConfiguration.h"
 #include "interfaces/IGraphStateBackend.h"
 #include "interfaces/IQubit.h"
 #include "interfaces/IQubitId.h"
+#include "modules/Backend/QubitConfiguration.h"
 
 // the namespace for exposing the backend
 namespace quisp::backends {

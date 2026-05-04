@@ -1,7 +1,7 @@
 #include "Backend.h"
-#include <memory>
 #include <algorithm>
 #include <cctype>
+#include <memory>
 #include "PhysicalServiceFacade.h"
 #include "modules/Backend/QubitConfiguration.h"
 
@@ -59,14 +59,12 @@ std::string BackendContainer::getSelectedBackendType() const {
 
 std::unique_ptr<IGraphStateBackend> BackendContainer::createBackend(const std::string& backend_type) {
   const auto normalized = normalizeBackendType(backend_type);
-  if (normalized == "GraphStateBackend" || normalized == "qutip" || normalized == "qutip_density_matrix" || normalized == "qutip_state_vector" ||
-      normalized == "qutip_sv") {
+  if (normalized == "GraphStateBackend" || normalized == "qutip" || normalized == "qutip_density_matrix" || normalized == "qutip_state_vector" || normalized == "qutip_sv") {
     auto config = getDefaultQubitErrorModelConfiguration();
     return std::make_unique<GraphStateBackend>(std::make_unique<RNG>(this), std::move(config), static_cast<GraphStateBackend::ICallback*>(this));
   }
-  throw omnetpp::cRuntimeError(
-      "Unknown backend type: %s. Supported types are: GraphStateBackend, graph_state, qutip, qutip_density_matrix, qutip_state_vector, qutip_sv",
-      backend_type.c_str());
+  throw omnetpp::cRuntimeError("Unknown backend type: %s. Supported types are: GraphStateBackend, graph_state, qutip, qutip_density_matrix, qutip_state_vector, qutip_sv",
+                               backend_type.c_str());
 }
 
 std::unique_ptr<StationaryQubitConfiguration> BackendContainer::getDefaultQubitErrorModelConfiguration() {

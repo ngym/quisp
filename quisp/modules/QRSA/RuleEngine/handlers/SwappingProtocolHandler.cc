@@ -20,9 +20,8 @@ void SwappingProtocolHandler::registerHandlers(RuleEngine& engine) {
     engine.registerRuleEventHandler(event_type, protocol_spec, std::move(handler));
   };
 
-  register_handler(EventType::SWAPPING_RESULT, EventProtocol::Swapping, [&engine](const core::events::RuleEvent& event) {
-    engine.protocolExecutionContext().handleSwappingResult(std::get<messages::SwappingResult *>(event.payload));
-  });
+  register_handler(EventType::SWAPPING_RESULT, EventProtocol::Swapping,
+                   [&engine](const core::events::RuleEvent& event) { engine.protocolExecutionContext().handleSwappingResult(std::get<messages::SwappingResult*>(event.payload)); });
 }
 
 }  // namespace quisp::modules::handlers

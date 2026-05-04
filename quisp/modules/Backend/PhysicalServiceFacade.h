@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "IPhysicalBackend.h"
-#include "modules/Backend/interfaces/IQubit.h"
 #include "modules/Backend/interfaces/IGraphStateBackend.h"
+#include "modules/Backend/interfaces/IQubit.h"
 
 namespace quisp::modules::backend {
 
@@ -25,8 +25,7 @@ class PhysicalServiceFacade {
   // All quantum mutations/noise/measurement are forwarded to backend; OMNeT side uses only classical outputs.
   OperationResult applyNoise(QubitHandle qubit);
   // channel_profile + params are interpreted only by backend implementations.
-  OperationResult applyErrorChannel(const std::vector<QubitHandle>& qubit_ids, const std::string& channel_profile_name,
-                                   const nlohmann::json& params);
+  OperationResult applyErrorChannel(const std::vector<QubitHandle>& qubit_ids, const std::string& channel_profile_name, const nlohmann::json& params);
   // Returns BSA-era classical outcome (e.g., outcome_pattern) in OperationResult.
   OperationResult applyHomInterference(const std::vector<QubitHandle>& qubit_ids, const nlohmann::json& params = {});
   OperationResult applyDetection(const std::vector<QubitHandle>& qubit_ids, const nlohmann::json& params = {});

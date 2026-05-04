@@ -1,12 +1,12 @@
 #pragma once
 
-#include <unordered_map>
 #include <omnetpp.h>
+#include <unordered_map>
 
 #include "FlyingQubit_m.h"
+#include "messages/BSA_ipc_messages_m.h"
 #include "modules/Backend/Backends.h"
 #include "modules/Backend/interfaces/IQubit.h"
-#include "messages/BSA_ipc_messages_m.h"
 #include "modules/PhysicalConnection/BSA/types.h"
 #include "utils/ComponentProvider.h"
 
@@ -37,7 +37,7 @@ class BellStateAnalyzer : public omnetpp::cSimpleModule {
   PhotonRecord getPhotonRecordFromMessage(messages::FlyingQubit *);
   void processPhotonRecords();
   physical::types::BSAClickResult processIndistinguishPhotons(PhotonRecord &left_photon, PhotonRecord &right_photon);
-  physical::types::BSAClickResult determineClickResult(const std::string& outcome_pattern);
+  physical::types::BSAClickResult determineClickResult(const std::string &outcome_pattern);
   void validateProperties();
 
   // device parameters

@@ -8,16 +8,16 @@
 
 #include "PhysicalServiceFacade.h"
 #include "modules/Backend/interfaces/IConfiguration.h"
+#include "modules/Backend/interfaces/IGraphStateBackend.h"
 #include "modules/Backend/interfaces/IQubit.h"
 #include "modules/Backend/interfaces/IQubitId.h"
-#include "modules/Backend/interfaces/IGraphStateBackend.h"
 #include "modules/QNIC/StationaryQubit/QubitId.h"
 
 using quisp::backends::abstract::EigenvalueResult;
 using quisp::backends::abstract::IConfiguration;
+using quisp::backends::abstract::IGraphStateBackend;
 using quisp::backends::abstract::IQubit;
 using quisp::backends::abstract::IQubitId;
-using quisp::backends::abstract::IGraphStateBackend;
 using quisp::modules::backend::MeasureBasis;
 using quisp::modules::backend::PhysicalServiceFacade;
 using quisp::modules::backend::QubitHandle;
@@ -86,9 +86,7 @@ class FakeQubit : public IQubit {
 
 class FakeBackend : public IGraphStateBackend {
  public:
-  IQubit* createQubit(const IQubitId* id, std::unique_ptr<IConfiguration> /*configuration*/) override {
-    return createQubitInternal(id);
-  }
+  IQubit* createQubit(const IQubitId* id, std::unique_ptr<IConfiguration> /*configuration*/) override { return createQubitInternal(id); }
 
   IQubit* createQubit(const IQubitId* id) override { return createQubitInternal(id); }
 
@@ -116,8 +114,7 @@ class FakeBackend : public IGraphStateBackend {
     if (qid == nullptr) {
       throw std::runtime_error("unsupported qubit id type");
     }
-    return std::to_string(qid->node_addr) + "," + std::to_string(qid->qnic_index) + "," + std::to_string(qid->qnic_type) + "," +
-           std::to_string(qid->qubit_addr);
+    return std::to_string(qid->node_addr) + "," + std::to_string(qid->qnic_index) + "," + std::to_string(qid->qnic_type) + "," + std::to_string(qid->qubit_addr);
   }
 
   IQubit* createQubitInternal(const IQubitId* id) {
@@ -135,9 +132,7 @@ class FakeBackend : public IGraphStateBackend {
       delete id;
       throw std::runtime_error("qubit already exists");
     }
-    auto inserted = qubits.emplace(
-        k,
-        std::make_unique<FakeQubit>(std::make_unique<QubitId>(qid->node_addr, qid->qnic_index, qid->qnic_type, qid->qubit_addr)));
+    auto inserted = qubits.emplace(k, std::make_unique<FakeQubit>(std::make_unique<QubitId>(qid->node_addr, qid->qnic_index, qid->qnic_type, qid->qubit_addr)));
     delete id;
     return inserted.first->second.get();
   }
@@ -155,9 +150,7 @@ class FakeBackend : public IGraphStateBackend {
   int flying_qubit_created_count = 0;
 };
 
-QubitHandle handleFrom(int node, int idx, int type, int q) {
-  return QubitHandle{node, idx, type, q};
-}
+QubitHandle handleFrom(int node, int idx, int type, int q) { return QubitHandle{node, idx, type, q}; }
 
 TEST(GraphStatePhysicalBackendContractTest, ApplyGateRoutesToBackendQubits) {
   FakeBackend backend;

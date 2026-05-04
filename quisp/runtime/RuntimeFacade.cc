@@ -4,9 +4,9 @@ namespace quisp::runtime {
 
 RuntimeFacade::RuntimeFacade(std::unique_ptr<Runtime::ICallBack> &&callback) : manager(std::move(callback)) {}
 
-void RuntimeFacade::submitRuleSet(const RuleSet& ruleset) { manager.acceptRuleSet(ruleset); }
+void RuntimeFacade::submitRuleSet(const RuleSet &ruleset) { manager.acceptRuleSet(ruleset); }
 
-void RuntimeFacade::acceptRuleSet(const RuleSet& ruleset) { submitRuleSet(ruleset); }
+void RuntimeFacade::acceptRuleSet(const RuleSet &ruleset) { submitRuleSet(ruleset); }
 
 Runtime *RuntimeFacade::findById(unsigned long long ruleset_id) { return manager.findById(ruleset_id); }
 
@@ -17,9 +17,7 @@ std::vector<Runtime>::iterator RuntimeFacade::end() { return manager.end(); }
 std::vector<Runtime>::reference RuntimeFacade::at(size_t index) { return manager.at(index); }
 size_t RuntimeFacade::size() const { return manager.size(); }
 
-RuntimeStateSnapshot RuntimeFacade::snapshotState(size_t index) const {
-  return state_store.snapshot(manager.at(index));
-}
+RuntimeStateSnapshot RuntimeFacade::snapshotState(size_t index) const { return state_store.snapshot(manager.at(index)); }
 
 void RuntimeFacade::assignMessageToRuleSet(unsigned long long ruleset_id, int shared_rule_tag, MessageRecord msg_content) {
   auto *runtime = manager.findById(ruleset_id);
@@ -27,7 +25,7 @@ void RuntimeFacade::assignMessageToRuleSet(unsigned long long ruleset_id, int sh
   runtime->assignMessageToRuleSet(shared_rule_tag, msg_content);
 }
 
-void RuntimeFacade::allocateResources(modules::BellPairStore& bell_pair_store, modules::QNIC_type qnic_type, int qnic_index) {
+void RuntimeFacade::allocateResources(modules::BellPairStore &bell_pair_store, modules::QNIC_type qnic_type, int qnic_index) {
   for (auto &runtime : manager) {
     auto &partners = runtime.getPartners();
     for (auto &partner_addr : partners) {

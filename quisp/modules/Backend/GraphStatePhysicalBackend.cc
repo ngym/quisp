@@ -4,8 +4,8 @@
 #include <cctype>
 #include <cmath>
 #include <memory>
-#include <stdexcept>
 #include <sstream>
+#include <stdexcept>
 #include <vector>
 
 #include "modules/Backend/interfaces/IQubit.h"
@@ -82,9 +82,7 @@ double extractProfileProbability(const nlohmann::json& payload, const std::initi
 
 GraphStatePhysicalBackend::GraphStatePhysicalBackend(IGraphStateBackend* backend) : backend_(backend) {}
 
-uint32_t GraphStatePhysicalBackend::capabilities() const {
-  return static_cast<uint32_t>(BackendCapability::SupportsLegacyErrorModel);
-}
+uint32_t GraphStatePhysicalBackend::capabilities() const { return static_cast<uint32_t>(BackendCapability::SupportsLegacyErrorModel); }
 
 OperationResult GraphStatePhysicalBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) {
   if (backend_ == nullptr) throw std::runtime_error("GraphStatePhysicalBackend has no backend");
@@ -185,9 +183,7 @@ OperationResult GraphStatePhysicalBackend::applyNoiselessGate(const BackendConte
   return {false};
 }
 
-OperationResult GraphStatePhysicalBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
-  return measureAt(ctx, qubit, basis);
-}
+OperationResult GraphStatePhysicalBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) { return measureAt(ctx, qubit, basis); }
 
 OperationResult GraphStatePhysicalBackend::measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
   return measureNoiselessAt(ctx, qubit, basis, forced_plus);
@@ -265,13 +261,9 @@ backends::IQubit* GraphStatePhysicalBackend::resolveQubit(QubitHandle qubit) {
   }
 }
 
-std::string GraphStatePhysicalBackend::keyFor(const QubitHandle& qubit) const {
-  return keyFromHandle(qubit);
-}
+std::string GraphStatePhysicalBackend::keyFor(const QubitHandle& qubit) const { return keyFromHandle(qubit); }
 
-GraphStatePhysicalBackend::GraphErrorState& GraphStatePhysicalBackend::metadataFor(const QubitHandle& qubit) {
-  return error_states_[keyFor(qubit)];
-}
+GraphStatePhysicalBackend::GraphErrorState& GraphStatePhysicalBackend::metadataFor(const QubitHandle& qubit) { return error_states_[keyFor(qubit)]; }
 
 GraphStatePhysicalBackend::GraphErrorState* GraphStatePhysicalBackend::metadataPtr(const QubitHandle& qubit) const {
   const auto key = keyFor(qubit);
@@ -367,8 +359,8 @@ OperationResult GraphStatePhysicalBackend::applyErrorChannel(const BackendContex
   }
 
   if (profile == "depolarizingchannel" || profile == "depolarizing") {
-    const auto depolarizing_probability = extractProfileProbability(
-        operation.payload, {"channel_depolarizing_rate", "channel_error_rate", "depolarizing_probability", "depolarizing_error_rate", "p"}, 0.0);
+    const auto depolarizing_probability =
+        extractProfileProbability(operation.payload, {"channel_depolarizing_rate", "channel_error_rate", "depolarizing_probability", "depolarizing_error_rate", "p"}, 0.0);
     if (depolarizing_probability <= 0.0) {
       OperationResult result;
       result.success = true;
@@ -484,19 +476,18 @@ OperationResult GraphStatePhysicalBackend::applyDetection(const BackendContext& 
       pattern = "dAh";
     }
     auto result = OperationResult{
-      true,
-      1.0,
-      is_discarded,
-      false,
-      false,
-      clicked,
-      pattern,
-      clicked ? 1 : 0,
-      histogram,
-      {{"profile", "detection"},
-      {"visibility", visibility}},
-      is_discarded ? (discard_reason.empty() ? kCutoffReason : discard_reason) : (is_photon_lost ? discard_reason : std::string()),
-      is_unavailable ? "detection skipped due to unavailable qubit" : std::string("detection success"),
+        true,
+        1.0,
+        is_discarded,
+        false,
+        false,
+        clicked,
+        pattern,
+        clicked ? 1 : 0,
+        histogram,
+        {{"profile", "detection"}, {"visibility", visibility}},
+        is_discarded ? (discard_reason.empty() ? kCutoffReason : discard_reason) : (is_photon_lost ? discard_reason : std::string()),
+        is_unavailable ? "detection skipped due to unavailable qubit" : std::string("detection success"),
     };
     result.message = is_unavailable ? "detection skipped due to unavailable qubit" : std::string("detection success");
     result.photon_lost = is_photon_lost;
@@ -640,8 +631,7 @@ double GraphStatePhysicalBackend::computeLossProbability(const nlohmann::json& p
   const double legacy = clampProbability(extractProbability(payload, {"legacy_channel_loss_rate", "channel_loss_rate"}, 0.0));
   const double attenuation = clampProbability(extractProbability(payload, {"attenuation_db_per_km", "channel_attenuation_db_per_km"}, 0.0));
   const double node_overhead = clampProbability(extractProbability(payload, {"node_io_overhead_db", "channel_node_io_overhead_db"}, 0.0));
-  const int node_count = std::max(
-      0, static_cast<int>(std::llround(extractProbability(payload, {"node_count", "channel_node_count"}, 0.0))));
+  const int node_count = std::max(0, static_cast<int>(std::llround(extractProbability(payload, {"node_count", "channel_node_count"}, 0.0))));
 
   double length_km = extractProbability(payload, {"channel_length_km", "length_km", "distance_km", "distance"}, 0.0);
   if (length_km < 0.0) length_km = 0.0;

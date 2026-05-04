@@ -1,7 +1,7 @@
 #include "StationaryQubit.h"
-#include <modules/Backend/interfaces/IQubit.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include <modules/Backend/interfaces/IQubit.h>
 #include <modules/common_types.h>
 #include <test_utils/TestUtils.h>
 #include <cmath>

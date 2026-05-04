@@ -84,7 +84,8 @@ TEST_F(JsonLoggerTest, UnknownPacket) {
 TEST_F(JsonLoggerTest, StructuredEvent) {
   logger->logEvent("unknown_rule_event", "{\"event_type\": \"UNKNOWN\", \"msg_name\": \"raw\", \"msg_type\": \"cMessage\", \"event_number\": 123}");
   EXPECT_EQ(log_stream.str(),
-            "{\"simtime\": 0, \"event_type\": \"unknown_rule_event\", \"event_payload\": {\"event_type\": \"UNKNOWN\", \"msg_name\": \"raw\", \"msg_type\": \"cMessage\", \"event_number\": 123}}\n");
+            "{\"simtime\": 0, \"event_type\": \"unknown_rule_event\", \"event_payload\": {\"event_type\": \"UNKNOWN\", \"msg_name\": \"raw\", \"msg_type\": \"cMessage\", "
+            "\"event_number\": 123}}\n");
 }
 
 TEST_F(JsonLoggerTest, LogBellPairTest) {

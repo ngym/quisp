@@ -21,7 +21,7 @@ namespace {
 constexpr auto kMSMResultKind = 6;
 }
 
-RuleProtocolExecutionContext::RuleProtocolExecutionContext(RuleEngine& engine) : engine_(engine) {}
+RuleProtocolExecutionContext::RuleProtocolExecutionContext(RuleEngine &engine) : engine_(engine) {}
 
 void RuleProtocolExecutionContext::handleSingleClickResult(messages::SingleClickResult *click_result) {
   auto qnic_index = click_result->getQnicIndex();
@@ -38,8 +38,7 @@ void RuleProtocolExecutionContext::handleSingleClickResult(messages::SingleClick
   msm_result->setKind(kMSMResultKind);
   if (click_result->getClickResult().success) {
     msm_info.qubit_postprocess_info[msm_info.photon_index_counter].qubit_index = qubit_index;
-    msm_info.qubit_postprocess_info[msm_info.photon_index_counter].correction_operation =
-        click_result->getClickResult().correction_operation;
+    msm_info.qubit_postprocess_info[msm_info.photon_index_counter].correction_operation = click_result->getClickResult().correction_operation;
     msm_info.iteration_index++;
   } else {
     engine_.realtime_controller->ReInitialize_StationaryQubit(qnic_index, qubit_index, QNIC_RP, false);
@@ -159,12 +158,8 @@ void RuleProtocolExecutionContext::handleSwappingResult(messages::SwappingResult
       if (event_logger != nullptr) {
         std::ostringstream payload;
         payload << "{"
-                << "\"self_addr\": " << engine_.parentAddress
-                << ", \"partner_addr\": " << new_partner_addr
-                << ", \"ruleset_id\": " << ruleset_id
-                << ", \"shared_rule_tag\": " << shared_rule_tag
-                << ", \"sequence_number\": " << sequence_number
-                << "}";
+                << "\"self_addr\": " << engine_.parentAddress << ", \"partner_addr\": " << new_partner_addr << ", \"ruleset_id\": " << ruleset_id
+                << ", \"shared_rule_tag\": " << shared_rule_tag << ", \"sequence_number\": " << sequence_number << "}";
         event_logger->logEvent("bellpair_e2e_completed", payload.str());
       }
     }

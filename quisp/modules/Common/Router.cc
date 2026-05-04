@@ -29,13 +29,11 @@ std::string shortClassName(const cMessage *message) {
 }
 
 std::string protocolFamilyFor(const Header *pk) {
-  if (dynamic_cast<const ConnectionSetupRequest *>(pk) != nullptr ||
-      dynamic_cast<const ConnectionSetupResponse *>(pk) != nullptr ||
+  if (dynamic_cast<const ConnectionSetupRequest *>(pk) != nullptr || dynamic_cast<const ConnectionSetupResponse *>(pk) != nullptr ||
       dynamic_cast<const RejectConnectionSetupRequest *>(pk) != nullptr) {
     return "connection_setup";
   }
-  if (dynamic_cast<const InternalRuleSetForwarding *>(pk) != nullptr ||
-      dynamic_cast<const InternalRuleSetForwarding_Application *>(pk) != nullptr) {
+  if (dynamic_cast<const InternalRuleSetForwarding *>(pk) != nullptr || dynamic_cast<const InternalRuleSetForwarding_Application *>(pk) != nullptr) {
     return "ruleset_forwarding";
   }
   if (dynamic_cast<const SwappingResult *>(pk) != nullptr) {
@@ -44,18 +42,13 @@ std::string protocolFamilyFor(const Header *pk) {
   if (dynamic_cast<const PurificationResult *>(pk) != nullptr) {
     return "purification";
   }
-  if (dynamic_cast<const BSMTimingNotification *>(pk) != nullptr ||
-      dynamic_cast<const EPPSTimingNotification *>(pk) != nullptr ||
-      dynamic_cast<const SingleClickResult *>(pk) != nullptr ||
-      dynamic_cast<const MSMResult *>(pk) != nullptr ||
-      dynamic_cast<const StopEmitting *>(pk) != nullptr ||
+  if (dynamic_cast<const BSMTimingNotification *>(pk) != nullptr || dynamic_cast<const EPPSTimingNotification *>(pk) != nullptr ||
+      dynamic_cast<const SingleClickResult *>(pk) != nullptr || dynamic_cast<const MSMResult *>(pk) != nullptr || dynamic_cast<const StopEmitting *>(pk) != nullptr ||
       dynamic_cast<const StopEPPSEmission *>(pk) != nullptr) {
     return "link_generation";
   }
-  if (dynamic_cast<const LinkTomographyRequest *>(pk) != nullptr ||
-      dynamic_cast<const LinkTomographyAck *>(pk) != nullptr ||
-      dynamic_cast<const LinkTomographyRuleSet *>(pk) != nullptr ||
-      dynamic_cast<const LinkTomographyResult *>(pk) != nullptr) {
+  if (dynamic_cast<const LinkTomographyRequest *>(pk) != nullptr || dynamic_cast<const LinkTomographyAck *>(pk) != nullptr ||
+      dynamic_cast<const LinkTomographyRuleSet *>(pk) != nullptr || dynamic_cast<const LinkTomographyResult *>(pk) != nullptr) {
     return "tomography";
   }
   if (dynamic_cast<const OspfPacket *>(pk) != nullptr) {

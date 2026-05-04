@@ -1131,7 +1131,14 @@
           <span class="muted">Configuration: この run を起動した設定の確認 (read-only)</span>
         </div>
         <section id="configurationView" class="panel" hidden style="margin-top:8px;">
-          <div class="section-title"><span>Parameter Values</span></div>
+          <div class="section-title">
+            <span>Hypothesis &amp; Notes <span class="muted" id="configStudyProfileLabel"></span></span>
+            <button id="configStudyEditBtn" type="button" class="btn small" hidden title="Studies タブで編集">編集</button>
+          </div>
+          <div id="configStudyHypothesis" class="muted" style="font-size:13px;line-height:1.5;margin-bottom:8px;">--</div>
+          <div id="configStudyNotes" class="mono" style="font-size:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);border-radius:6px;padding:8px;min-height:36px;">--</div>
+          <div id="configStudyUpdatedAt" class="muted" style="font-size:11px;margin-top:4px;"></div>
+          <div class="section-title" style="margin-top:14px;"><span>Parameter Values</span></div>
           <table class="table-lite" style="width:100%;">
             <thead><tr><th style="width:40%;">Key</th><th>Value</th></tr></thead>
             <tbody id="configParameterValuesBody"><tr><td colspan="2" class="muted">run を選択してください</td></tr></tbody>
@@ -3163,6 +3170,90 @@
           physicalNotes.hidden = true;
           physicalNotes.innerHTML = '';
         }
+      }
+      renderConfigStudyAnnotations(run, summary);
+    }
+
+    // Surface the researcher's own past Hypothesis & Notes (kept on the
+    // Studies side, keyed by experiment_profile_id) inside the Configuration
+    // tab so that opening a Run-detail page shows the question that was
+    // being asked, not just the parameter dump.
+    function renderConfigStudyAnnotations(run, summary) {
+      const labelEl = document.getElementById('configStudyProfileLabel');
+      const hypoEl = document.getElementById('configStudyHypothesis');
+      const notesEl = document.getElementById('configStudyNotes');
+      const updatedEl = document.getElementById('configStudyUpdatedAt');
+      const editBtn = document.getElementById('configStudyEditBtn');
+      if (!hypoEl || !notesEl) return;
+      const profileId =
+        (run && run.experiment_profile_id)
+        || (summary && summary.experiment_profile_id)
+        || null;
+      if (labelEl) labelEl.textContent = profileId ? `(${profileId})` : '';
+      if (editBtn) {
+        editBtn.hidden = !profileId;
+        editBtn.onclick = profileId ? () => openStudyForProfile(profileId) : null;
+      }
+      if (!profileId) {
+        hypoEl.textContent = 'profile が紐付いていない run です。';
+        notesEl.textContent = '--';
+        if (updatedEl) updatedEl.textContent = '';
+        return;
+      }
+      // Optimistic placeholder while the fetch is in flight.
+      hypoEl.textContent = '読み込み中…';
+      notesEl.textContent = '';
+      if (updatedEl) updatedEl.textContent = '';
+      const targetProfile = profileId;
+      fetchStudyRecord(targetProfile)
+        .then((record) => {
+          // Guard against a fast tab switch — only paint if the run-detail
+          // view still references the same profile we fetched for.
+          const currentRun = state.selectedSimRun;
+          const currentProfile =
+            (currentRun && currentRun.experiment_profile_id)
+            || (state.experimentSummary && state.experimentSummary.experiment_profile_id)
+            || null;
+          if (currentProfile !== targetProfile) return;
+          const hypo = (record && record.hypothesis) || '';
+          const notes = (record && record.notes) || '';
+          hypoEl.textContent = hypo
+            ? hypo
+            : 'Hypothesis 未記入。Studies タブで「このプロファイルで何を確かめたいか」を1行残しておくと、後続 run の解釈が速くなります。';
+          notesEl.textContent = notes ? notes : '(Notes 無し)';
+          if (updatedEl) {
+            updatedEl.textContent = record && record.updated_at
+              ? `Studies 最終更新: ${formatRunTimeLabel(record.updated_at) || record.updated_at}`
+              : '';
+          }
+        })
+        .catch(() => {
+          hypoEl.textContent = '取得に失敗しました。';
+          notesEl.textContent = '--';
+          if (updatedEl) updatedEl.textContent = '';
+        });
+    }
+
+    function openStudyForProfile(profileId) {
+      if (!profileId) return;
+      // Leave the run-detail view, switch back to Studies section, and
+      // pre-select the profile so the textareas are populated.
+      logUiAction('ui.config_open_study', { profile_id: profileId });
+      try {
+        if (typeof setShellView === 'function') setShellView('list', null);
+      } catch (_e) { /* fall through */ }
+      setSection('studies');
+      if (ui.experimentProfile) {
+        ui.experimentProfile.value = profileId;
+        ui.experimentProfile.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (ui.studyHypothesis && typeof ui.studyHypothesis.focus === 'function') {
+        // Slight delay so the section transition + populate finishes before
+        // focus jumps the viewport.
+        setTimeout(() => {
+          try { ui.studyHypothesis.focus(); } catch (_e) {}
+          try { ui.studyHypothesis.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (_e) {}
+        }, 0);
       }
     }
 

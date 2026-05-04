@@ -706,6 +706,17 @@ bool QutipBackend::ensureWorkerStarted(const nlohmann::json& backend_config) con
     // child
     if (::dup2(stdin_pipe[0], STDIN_FILENO) < 0) std::_Exit(127);
     if (::dup2(stdout_pipe[1], STDOUT_FILENO) < 0) std::_Exit(127);
+
+    // Redirect worker stderr to a known log file so a Python crash or warning
+    // is visible after the fact instead of being swallowed by SIGPIPE.
+    const char* log_env = std::getenv("QUTIP_WORKER_STDERR_LOG");
+    const std::string log_path = (log_env != nullptr && log_env[0] != '\0') ? std::string(log_env) : std::string("/tmp/quisp_qutip_worker.log");
+    const int log_fd = ::open(log_path.c_str(), O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (log_fd >= 0) {
+      ::dup2(log_fd, STDERR_FILENO);
+      ::close(log_fd);
+    }
+
     ::close(stdin_pipe[0]);
     ::close(stdin_pipe[1]);
     ::close(stdout_pipe[0]);
@@ -1220,7 +1231,18 @@ OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const Ph
       if (!entanglement_set_operation.payload.is_object()) entanglement_set_operation.payload = nlohmann::json::object();
       entanglement_set_operation.payload["merge_entanglement_set_ids"] = merged_from;
     }
-    return executeQutipWorker(ctx, entanglement_set_operation);
+    auto result = executeQutipWorker(ctx, entanglement_set_operation);
+    // The Python worker partial-traces detection targets out of the persistent
+    // density matrix on success. Mirror that here: detach the photons from the
+    // C++-side entanglement-set bookkeeping, so when the same flying-qubit slot
+    // is reused for the next emission it starts in a fresh set instead of
+    // dragging the previous BSA's memories along with it.
+    if (result.success && normalized_kind == "detection") {
+      for (const auto& target : operation.targets) {
+        detachTargetFromEntanglementSet(target);
+      }
+    }
+    return result;
   }
 
   return unsupported("qutip backend does not support operation.kind=" + operation.kind + " [category=unsupported_kind]");

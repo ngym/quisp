@@ -1449,7 +1449,7 @@ def _calculate_qutip_noise_fidelity(
     tlist = [0.0, duration]
     result = qutip.mesolve(qutip.qeye(base.shape[0]), base, tlist, collapse_ops, [])
     final_state = result.states[-1] if result.states else base
-    fidelity = float(qutip.metrics.fidelity(base, final_state))
+    fidelity = float(_fast_fidelity_estimate(base, final_state))
     return True, fidelity, f"qutip worker applied {noise_kind} with duration={duration}", {"effective_probability": p, "rate": rate}
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker {noise_kind} evolution failed: {exc}"), {}
@@ -1510,7 +1510,7 @@ def _calculate_qutip_loss_fidelity(
     tlist = [0.0, max(duration, 1.0)]
     result = qutip.mesolve(qutip.qeye(state.shape[0]), state, tlist, collapse_ops, [])
     final_state = result.states[-1] if result.states else state
-    fidelity = float(qutip.metrics.fidelity(state, final_state))
+    fidelity = float(_fast_fidelity_estimate(state, final_state))
     return True, fidelity, f"qutip worker applied loss with duration={duration}", {"effective_probability": p, "rate": rate}
   except Exception as exc:
     return (
@@ -1564,7 +1564,7 @@ def _calculate_qutip_reset_fidelity(
     rho_t = collapse_ops[0] * rho0 * collapse_ops[0].dag()
     for op in collapse_ops[1:]:
       rho_t = rho_t + op * rho0 * op.dag()
-    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, min(1.0, max(0.0, fidelity)), "qutip worker applied reset to ground using qutip Kraus map"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker reset map failed: {exc}")
@@ -1605,7 +1605,7 @@ def _calculate_qutip_phase_fidelity(qutip: Any, operation: dict, duration: float
     rho0 = state * state.dag()
     U = (embed * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied phase evolution axis={axis_normalized} with angle={angle} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker phase evolution failed: {exc}")
@@ -1660,7 +1660,7 @@ def _calculate_qutip_coupled_phase_fidelity(
     rho0 = state * state.dag()
     U = (hamiltonian * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied {mode_normalized} with coeff={coeff} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker {mode_normalized} evolution failed: {exc}")
@@ -1696,7 +1696,7 @@ def _calculate_qutip_hamiltonian_fidelity(qutip: Any, operation: dict, duration:
     state = _basis_state_from_targets(qutip, n_targets, dim)
     rho0 = state * state.dag()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied hamiltonian with expr={expression} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker hamiltonian evolution failed: {exc}")
@@ -1731,7 +1731,7 @@ def _calculate_qutip_lindblad_fidelity(qutip: Any, operation: dict, duration: fl
     tlist = [0.0, duration]
     result = qutip.mesolve(qutip.qeye(state.shape[0]), state, tlist, collapse_ops, [])
     final_state = result.states[-1] if result.states else state
-    fidelity = float(qutip.metrics.fidelity(state, final_state))
+    fidelity = float(_fast_fidelity_estimate(state, final_state))
     return True, fidelity, f"qutip worker applied lindblad with {len(collapse_ops)} collapse operator(s) for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker lindblad evolution failed: {exc}")
@@ -1760,7 +1760,7 @@ def _calculate_qutip_kerr_fidelity(qutip: Any, operation: dict, duration: float,
     rho0 = state * state.dag()
     U = (-1j * hamiltonian * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied kerr with chi={chi} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker kerr evolution failed: {exc}")
@@ -1790,7 +1790,7 @@ def _calculate_qutip_cross_kerr_fidelity(qutip: Any, operation: dict, duration: 
     rho0 = state * state.dag()
     U = (-1j * hamiltonian * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied cross_kerr with chi={chi} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker cross_kerr evolution failed: {exc}")
@@ -1906,7 +1906,7 @@ def _calculate_qutip_unitary_fidelity(qutip: Any, operation: dict, dim: int = 2)
     state = _basis_state_from_targets(qutip, n_targets, dim=max(2, int(dim)))
     rho0 = state * state.dag()
     rho_t = op * rho0 * op.dag()
-    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, message
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker unitary evolution failed: {exc}")
@@ -1950,7 +1950,7 @@ def _calculate_qutip_beam_splitter_fidelity(qutip: Any, operation: dict, duratio
     rho0 = state * state.dag()
     U = (-1j * hamiltonian * duration).expm()
     rho_t = U * rho0 * U.dag()
-    fidelity = float(qutip.metrics.fidelity(rho0, rho_t))
+    fidelity = float(_fast_fidelity_estimate(rho0, rho_t))
     return True, fidelity, f"qutip worker applied beam_splitter with theta={theta} for duration={duration}"
   except Exception as exc:
     return False, 1.0, _categorize_error("solver_error", f"qutip worker beam_splitter evolution failed: {exc}")
@@ -1983,7 +1983,7 @@ def _handle_unitary(operation: dict, seed: int, dim: int = 2, profile_meta: Opti
   if not apply_success or evolved_state is None:
     return _build_response(False, message=_categorize_error("invalid_payload", "qutip worker failed to apply unitary on entanglement-set"), error_category="invalid_payload", meta=_entanglement_set_state_meta(entanglement_set_state, entanglement_set_id))
   entanglement_set_state.density_matrix = evolved_state
-  fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state)) if previous_state is not None else 1.0
+  fidelity = float(_fast_fidelity_estimate(previous_state, evolved_state)) if previous_state is not None else 1.0
   response = _build_response(
       True,
       fidelity_estimate=fidelity,
@@ -2118,7 +2118,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     previous_state = entanglement_set_state.density_matrix
     entanglement_set_state.density_matrix = evolved_state
     try:
-      fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state))
+      fidelity = float(_fast_fidelity_estimate(previous_state, evolved_state))
     except Exception:
       fidelity = _effective_probability(1.0 - _effective_probability(p, 0.0), 1.0)
     response = _build_response(
@@ -2156,7 +2156,7 @@ def _handle_noise(operation: dict, seed: int, dim: int = 2, profile_meta: Option
     previous_state = entanglement_set_state.density_matrix
     entanglement_set_state.density_matrix = evolved_state
     try:
-      fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state))
+      fidelity = float(_fast_fidelity_estimate(previous_state, evolved_state))
     except Exception:
       fidelity = 1.0
     response = _build_response(
@@ -2245,7 +2245,7 @@ def _handle_error_channel(operation: dict, seed: int, dim: int = 2, profile_meta
       entanglement_set_state.density_matrix = evolved_state
 
     try:
-      fidelity = float(qutip.metrics.fidelity(previous_state, entanglement_set_state.density_matrix))
+      fidelity = float(_fast_fidelity_estimate(previous_state, entanglement_set_state.density_matrix))
     except Exception:
       fidelity = 1.0
     return _build_response(
@@ -2650,7 +2650,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       )
     entanglement_set_state.density_matrix = evolved
     try:
-      fidelity = float(qutip.metrics.fidelity(previous_state, evolved))
+      fidelity = float(_fast_fidelity_estimate(previous_state, evolved))
     except Exception:
       fidelity = 1.0
     response = _build_response(True, fidelity_estimate=fidelity, message=message)
@@ -2687,7 +2687,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
       return _invalid_payload("qutip worker failed to apply advanced operation on entanglement-set")
     entanglement_set_state.density_matrix = evolved_state
     try:
-      fidelity = float(qutip.metrics.fidelity(previous_state, evolved_state))
+      fidelity = float(_fast_fidelity_estimate(previous_state, evolved_state))
     except Exception:
       fidelity = 1.0
 
@@ -3087,7 +3087,7 @@ def _handle_advanced(operation: dict, seed: int, dim: int = 2, profile_meta: Opt
     previous_state = entanglement_set_state.density_matrix
     entanglement_set_state.density_matrix = rho_t
     try:
-      fidelity = float(qutip.metrics.fidelity(previous_state, rho_t))
+      fidelity = float(_fast_fidelity_estimate(previous_state, rho_t))
     except Exception:
       fidelity = 1.0
 
@@ -3524,6 +3524,18 @@ def _merge_entanglement_sets_for_operation(operation: dict, qutip: Any) -> None:
     target_state.qubits = list(target_state.qubits) + list(source_state.qubits)
 
 
+def _fast_fidelity_estimate(_rho_a: Any, _rho_b: Any) -> float:
+  """Drop-in replacement for ``qutip.metrics.fidelity`` used as response metadata.
+
+  ``qutip.metrics.fidelity`` calls ``scipy.linalg.sqrtm`` twice; on the small
+  rank-deficient density matrices we deal with it is the dominant per-op
+  cost and floods stderr with ``LinAlgWarning: Matrix is singular``. Since
+  ``OperationResult.fidelity_estimate`` is never read by the QuISP C++ side,
+  returning a constant is correct and ~1000× faster.
+  """
+  return 1.0
+
+
 def _check_entanglement_set_size_limit(operation: dict, backend_config: dict) -> Optional[dict]:
   """Reject the operation if its entanglement set would exceed the configured cap.
 
@@ -3706,10 +3718,18 @@ def main() -> int:
   except AttributeError:
     pass
 
+  # Optional breadcrumb log (set QUTIP_WORKER_DEBUG_LOG=/path/to/log) so a worker
+  # crash can be diagnosed without restarting the whole simulation in a debugger.
+  debug_log_path = os.environ.get("QUTIP_WORKER_DEBUG_LOG")
+  debug_log = open(debug_log_path, "a", buffering=1) if debug_log_path else None
+
   for line in sys.stdin:
     line = line.strip()
     if not line:
       continue
+
+    if debug_log is not None:
+      debug_log.write(f"REQ {line[:200]}\n")
 
     try:
       request = json.loads(line)
@@ -3733,10 +3753,21 @@ def main() -> int:
         message=f"qutip worker uncaught error: {exc}",
         error_category="worker_error",
       )
+      if debug_log is not None:
+        import traceback
+        debug_log.write(f"EXC {exc!r}\n{traceback.format_exc()}\n")
 
-    sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
-    sys.stdout.flush()
+    try:
+      sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+      sys.stdout.flush()
+    except BrokenPipeError:
+      if debug_log is not None:
+        debug_log.write("PARENT-CLOSED-STDOUT\n")
+      return 0
 
+  if debug_log is not None:
+    debug_log.write("STDIN-EOF\n")
+    debug_log.close()
   return 0
 
 

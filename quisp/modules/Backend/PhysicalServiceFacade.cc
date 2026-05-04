@@ -4,9 +4,12 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 #include "ErrorBasisBackend.h"
 #include "QutipBackend.h"
@@ -49,7 +52,34 @@ std::unique_ptr<IPhysicalBackend> createBackendByType(const std::string& backend
   }
   throw std::runtime_error("PhysicalServiceFacade: unsupported physical backend type: " + backend_name);
 }
+
+// Cache of physical backends keyed by (backend_type, underlying graph_state pointer).
+// Without this, every PhysicalServiceFacade construction (one per quantum
+// operation in QuISP) would tear down and rebuild a QutipBackend, killing the
+// persistent Python worker — and with it the entire entanglement-set state —
+// after at most a single op.
+using BackendCacheKey = std::pair<std::string, IQuantumBackend*>;
+std::map<BackendCacheKey, std::unique_ptr<IPhysicalBackend>> g_backend_cache;
+std::mutex g_backend_cache_mutex;
+
+IPhysicalBackend* lookupOrCreateCachedBackend(const std::string& backend_name, IQuantumBackend* backend) {
+  std::lock_guard<std::mutex> lock(g_backend_cache_mutex);
+  const auto key = std::make_pair(backend_name, backend);
+  auto it = g_backend_cache.find(key);
+  if (it != g_backend_cache.end()) {
+    return it->second.get();
+  }
+  auto created = createBackendByType(backend_name, backend);
+  auto* raw = created.get();
+  g_backend_cache.emplace(key, std::move(created));
+  return raw;
+}
 }  // namespace
+
+void PhysicalServiceFacade::clearBackendCache() {
+  std::lock_guard<std::mutex> lock(g_backend_cache_mutex);
+  g_backend_cache.clear();
+}
 
 PhysicalServiceFacade::PhysicalServiceFacade(IQuantumBackend* backend) {
   backend_name_ = resolveBackendTypeFromContext();
@@ -58,7 +88,7 @@ PhysicalServiceFacade::PhysicalServiceFacade(IQuantumBackend* backend) {
     return;
   }
   backend_name_ = normalizeBackendType(backend_name_);
-  backend_ = createBackendByType(backend_name_, backend);
+  backend_ = lookupOrCreateCachedBackend(backend_name_, backend);
 }
 
 PhysicalServiceFacade::PhysicalServiceFacade(IQuantumBackend* backend, const std::string& backend_type) {
@@ -67,11 +97,11 @@ PhysicalServiceFacade::PhysicalServiceFacade(IQuantumBackend* backend, const std
     backend_ = nullptr;
     return;
   }
-  backend_ = createBackendByType(backend_name_, backend);
+  backend_ = lookupOrCreateCachedBackend(backend_name_, backend);
 }
 
 PhysicalServiceFacade::PhysicalServiceFacade(std::unique_ptr<IPhysicalBackend> backend, const std::string& backend_type)
-    : backend_name_(normalizeBackendType(backend_type)), backend_(std::move(backend)) {}
+    : backend_name_(normalizeBackendType(backend_type)), owned_backend_(std::move(backend)), backend_(owned_backend_.get()) {}
 
 BackendContext PhysicalServiceFacade::makeContext() const {
   static std::atomic<std::uint64_t> operation_sequence{0};

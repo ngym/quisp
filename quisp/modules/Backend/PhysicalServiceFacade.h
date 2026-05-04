@@ -44,12 +44,23 @@ class PhysicalServiceFacade {
   EigenvalueResult measureY(QubitHandle qubit);
   EigenvalueResult measureZ(QubitHandle qubit);
 
+  // Drop every cached backend instance. Call from the OMNeT++ Backend module
+  // when a new simulation run starts so the previous run's QutipBackend (and
+  // its persistent worker) is torn down before the underlying graph_state
+  // backend pointer is invalidated.
+  static void clearBackendCache();
+
  private:
   BackendContext makeContext() const;
   std::string resolveBackendTypeFromContext() const;
 
   std::string backend_name_;
-  std::unique_ptr<IPhysicalBackend> backend_;
+  // Either we own the backend (legacy unique_ptr ctor / tests), or we point to
+  // a process-wide cached instance that survives many facades. Caching is the
+  // critical fix that lets the QutipBackend keep its persistent Python worker
+  // alive across operations: the facade itself is constructed per call site.
+  std::unique_ptr<IPhysicalBackend> owned_backend_;
+  IPhysicalBackend* backend_ = nullptr;
 };
 
 }  // namespace quisp::modules::backend

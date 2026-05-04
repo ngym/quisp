@@ -2,6 +2,7 @@
 #include <memory>
 #include <algorithm>
 #include <cctype>
+#include "PhysicalServiceFacade.h"
 #include "backends/QubitConfiguration.h"
 
 namespace quisp::modules::backend {
@@ -29,9 +30,17 @@ std::string normalizeBackendType(std::string value) {
 
 BackendContainer::BackendContainer() {}
 
-BackendContainer::~BackendContainer() {}
+BackendContainer::~BackendContainer() {
+  // The cache holds raw pointers to the underlying graph_state backend that we
+  // are about to destroy. Drop it now so the next simulation run starts with
+  // a fresh QutipBackend (and Python worker) bound to the new backend pointer.
+  PhysicalServiceFacade::clearBackendCache();
+}
 
 void BackendContainer::initialize() {
+  // Defensive: if a previous simulation left cache entries, drop them before
+  // we instantiate a new IQuantumBackend.
+  PhysicalServiceFacade::clearBackendCache();
   auto backend_type = getSelectedBackendType();
   backend = createBackend(backend_type);
 }

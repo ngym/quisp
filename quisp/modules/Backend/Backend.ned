@@ -9,7 +9,7 @@ simple Backend
         string backend_type = default("GraphStateBackend");
         string physical_backend_type = default("qutip_density_matrix");
         string qutip_backend_class = default("qutip_density_matrix");
-        string qutip_python_executable = default("python3");
+        string qutip_python_executable = default("");
         string qutip_worker_script = default("scripts/qutip_worker.py");
         int qutip_max_register_qubits = default(8);
         int qutip_max_hilbert_dim = default(4);

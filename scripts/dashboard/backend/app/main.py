@@ -758,6 +758,40 @@ def create_app(
     return app
 
 
+def create_dev_app() -> "FastAPI":  # type: ignore[name-defined]
+    """uvicorn --reload entry point.
+
+    The reloader spawns the app in a fresh subprocess, so we cannot
+    capture closure state from run_server(). All configuration is read
+    from environment variables that run_server() / run_backend.sh
+    populate, keeping the dev cycle self-contained.
+    """
+    cwd = _build_project_root()
+    log_dir = Path(os.environ.get("DASHBOARD_LOG_DIR", cwd / "scripts" / "dashboard" / "runs"))
+    audit_log_env = os.environ.get("DASHBOARD_AUDIT_LOG", "")
+    audit_log: Optional[Path] = Path(audit_log_env) if audit_log_env else (cwd / "scripts" / "dashboard" / "dashboard_audit.log")
+    workspace_root = Path(os.environ.get("DASHBOARD_WORKSPACE_ROOT", cwd))
+    quisp_binary = Path(os.environ.get("DASHBOARD_QUISP_BINARY", cwd / "quisp" / "quisp"))
+    if not quisp_binary.is_file():
+        raise RuntimeError(f"quisp binary does not exist or is not a file: {quisp_binary}")
+    allow_origin_env = os.environ.get("DASHBOARD_ALLOW_ORIGIN", "")
+    allow_origins: Optional[List[str]] = (
+        [item.strip() for item in allow_origin_env.split(",") if item.strip()]
+        if allow_origin_env
+        else None
+    )
+    return create_app(
+        log_dir=log_dir,
+        allow_origins=allow_origins,
+        quisp_binary=quisp_binary,
+        workspace_root=workspace_root,
+        audit_log_path=audit_log,
+        max_concurrent_runs=int(os.environ.get("Q_DASH_MAX_CONCURRENT_RUNS", "2")),
+        run_timeout_seconds=float(os.environ.get("Q_DASH_RUN_TIMEOUT_SECONDS", "7200")),
+        stop_timeout_seconds=float(os.environ.get("Q_DASH_STOP_TIMEOUT_SECONDS", "10")),
+    )
+
+
 def run_server(
     log_dir: Path,
     host: str,
@@ -769,8 +803,35 @@ def run_server(
     max_concurrent_runs: int,
     run_timeout_seconds: float,
     stop_timeout_seconds: float,
+    reload: bool = False,
 ) -> None:
     import uvicorn
+
+    if reload:
+        # uvicorn's reloader needs an import-string app + a factory because
+        # the app must be re-created in each child process. Hand off settings
+        # via environment so create_dev_app() can pick them up.
+        os.environ["DASHBOARD_LOG_DIR"] = str(log_dir)
+        os.environ["DASHBOARD_WORKSPACE_ROOT"] = str(workspace_root)
+        if audit_log is not None:
+            os.environ["DASHBOARD_AUDIT_LOG"] = str(audit_log)
+        if quisp_binary is not None:
+            os.environ["DASHBOARD_QUISP_BINARY"] = str(quisp_binary)
+        if allow_origins:
+            os.environ["DASHBOARD_ALLOW_ORIGIN"] = ",".join(allow_origins)
+        os.environ["Q_DASH_MAX_CONCURRENT_RUNS"] = str(max_concurrent_runs)
+        os.environ["Q_DASH_RUN_TIMEOUT_SECONDS"] = str(run_timeout_seconds)
+        os.environ["Q_DASH_STOP_TIMEOUT_SECONDS"] = str(stop_timeout_seconds)
+        reload_dir = str(workspace_root / "scripts" / "dashboard" / "backend")
+        uvicorn.run(
+            "scripts.dashboard.backend.app.main:create_dev_app",
+            host=host,
+            port=port,
+            reload=True,
+            factory=True,
+            reload_dirs=[reload_dir],
+        )
+        return
 
     app = create_app(
         log_dir=log_dir,
@@ -807,6 +868,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-concurrent-runs", type=int, default=int(os.getenv("Q_DASH_MAX_CONCURRENT_RUNS", "2")))
     parser.add_argument("--run-timeout-seconds", type=float, default=float(os.getenv("Q_DASH_RUN_TIMEOUT_SECONDS", "7200")))
     parser.add_argument("--stop-timeout-seconds", type=float, default=float(os.getenv("Q_DASH_STOP_TIMEOUT_SECONDS", "10")))
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        default=os.getenv("DASHBOARD_RELOAD", "").lower() in ("1", "true", "yes", "on"),
+        help="Enable uvicorn auto-reload (development convenience).",
+    )
     return parser.parse_args()
 
 
@@ -829,6 +896,7 @@ def main() -> None:
         max_concurrent_runs=max(1, args.max_concurrent_runs),
         run_timeout_seconds=max(0.0, args.run_timeout_seconds),
         stop_timeout_seconds=max(0.1, args.stop_timeout_seconds),
+        reload=bool(args.reload),
     )
 
 

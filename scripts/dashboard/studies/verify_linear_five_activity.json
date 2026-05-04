@@ -1,0 +1,6 @@
+{
+  "profile_id": "verify_linear_five_activity",
+  "hypothesis": "実験: graph_state バックエンドにおいて emission_success_probability=0.3..0.7 の範囲で BellPair Rate がどう変動するか確認する",
+  "notes": "## ねらい\n- 5ノードリピータの BellPair Rate を p_emit でスイープ\n- 期待: graph_state なら p_emit に依存しない可能性 (前回観察)\n\n## 実行ログ\n- 2026/5/4 13:43:11 sweep 投入\n",
+  "updated_at": "2026-05-04T04:43:11.011383+00:00"
+}

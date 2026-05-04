@@ -4372,28 +4372,47 @@
       // numbers; the operational metadata moves to the Configuration
       // tab where it belongs.
       ui.metricStatusLabel.textContent = '状態';
-      ui.metricFreshnessLabel.textContent = 'BellPair Rate';
+      ui.metricFreshnessLabel.textContent = 'BellPair Rate (per-link)';
       ui.metricEventRateLabel.textContent = 'Fidelity Mean';
       ui.metricRenderFpsLabel.textContent = 'Photon Loss';
-      ui.metricRenderMsLabel.textContent = 'Inventory Peak';
+      ui.metricRenderMsLabel.textContent = 'BellPair保留 Peak';
       ui.metricSimTimeLabel.textContent = '現在sim時刻';
 
       const summary = state.experimentSummary;
       const run = state.selectedSimRun;
       const backend = selectedBackendType(summary);
+      const summaries = (summary && summary.metric_summaries) || {};
 
-      // Card 2: BellPair Rate (per second, whole run)
-      const bellRate = readSummaryMetricMean('bellpair_generation_rate_per_s');
-      if (bellRate != null) {
-        ui.metricFreshness.textContent = `${Number(bellRate).toFixed(3)} /s`;
-        ui.metricFreshnessSub.textContent = 'whole run';
+      // Card 2: BellPair Rate
+      //   Headline = per-link mean (link_bellpair_rate_per_s.mean), since
+      //   that's the rate the physical link is producing raw entanglement.
+      //   Subtitle surfaces the post-swap end-to-end rate when the run
+      //   actually exercised swapping (hop > 1); otherwise it reports the
+      //   whole-sim total to give a sense of aggregate throughput.
+      const linkRateDist = summaries.link_bellpair_rate_per_s || null;
+      const e2eRate = summaries.e2e_bellpair_rate_per_s || null;
+      const totalRate = readSummaryMetricMean('bellpair_generation_rate_per_s');
+      const linkRateMean = (linkRateDist && linkRateDist.mean != null) ? linkRateDist.mean : null;
+      if (linkRateMean != null) {
+        ui.metricFreshness.textContent = `${Number(linkRateMean).toFixed(3)} /s`;
+      } else if (totalRate != null) {
+        ui.metricFreshness.textContent = `${Number(totalRate).toFixed(3)} /s`;
       } else {
         ui.metricFreshness.textContent = '--';
+      }
+      const e2eHop = e2eRate && e2eRate.hop != null ? Number(e2eRate.hop) : null;
+      if (e2eRate && e2eRate.value != null && e2eHop != null && e2eHop > 1) {
+        ui.metricFreshnessSub.textContent = `E2E (${e2eHop} hops): ${Number(e2eRate.value).toFixed(3)} /s`;
+      } else if (totalRate != null) {
+        ui.metricFreshnessSub.textContent = `全link合計 ${Number(totalRate).toFixed(3)} /s · E2E未計測 (single-hop or no swap)`;
+      } else if (linkRateMean != null) {
+        ui.metricFreshnessSub.textContent = 'E2E未計測 (link sample 内に多hop なし)';
+      } else {
         ui.metricFreshnessSub.textContent = summary ? 'no BellPair samples' : 'run summary unavailable';
       }
 
       // Card 3: Fidelity Mean (distribution mean)
-      const fidelityMetric = summary && summary.metric_summaries ? summary.metric_summaries.link_fidelity : null;
+      const fidelityMetric = summaries.link_fidelity || null;
       if (fidelityMetric && distributionAllNull(fidelityMetric)) {
         ui.metricEventRate.textContent = '--';
         ui.metricEventRateSub.textContent = fidelityUnavailableHint(summary);
@@ -4405,24 +4424,42 @@
         ui.metricEventRateSub.textContent = backend === 'graph_state' ? fidelityUnavailableHint(summary) : 'unavailable';
       }
 
-      // Card 4: Photon Loss Rate (per second)
+      // Card 4: Photon Loss
+      //   Headline = events/s (raw rate). Subtitle = % of attempted
+      //   emissions that were lost (loss / max(emit, loss+sent)). The %
+      //   is the more physically meaningful figure but the /s rate
+      //   answers "how busy is the channel"; show both.
       const photonLoss = readSummaryMetricMean('photon_loss_rate_per_s');
       if (photonLoss != null) {
         ui.metricRenderFps.textContent = `${Number(photonLoss).toFixed(3)} /s`;
-        ui.metricRenderFpsSub.textContent = 'whole run';
       } else {
         ui.metricRenderFps.textContent = '--';
+      }
+      const lossShare = readSummaryMetricMean('photon_loss_share_pct');
+      const lossCount = readSummaryMetricMean('photon_loss_count');
+      const emitCount = readSummaryMetricMean('flying_qubit_emit_count');
+      if (lossShare != null) {
+        const denomNote = emitCount ? ` (${lossCount}/${emitCount} emit)` : '';
+        ui.metricRenderFpsSub.textContent = `loss share ${Number(lossShare).toFixed(1)}%${denomNote}`;
+      } else if (photonLoss != null) {
+        ui.metricRenderFpsSub.textContent = '% 算出には emit counter 未収集';
+      } else {
         ui.metricRenderFpsSub.textContent = summary ? 'no photon loss data' : 'run summary unavailable';
       }
 
-      // Card 5: Inventory Peak (count)
+      // Card 5: BellPair Inventory Peak
+      //   The unit "count" used to be ambiguous; this number is the peak
+      //   number of *BellPairs* (not qubits) that were sitting unconsumed
+      //   in the BellPairStore at any moment. Subtitle shows the
+      //   time-averaged inventory so the researcher can tell whether the
+      //   peak was a brief spike or a sustained backlog.
       const inventoryPeak = readSummaryMetricMean('bellpair_inventory_peak');
       if (inventoryPeak != null) {
-        ui.metricRenderMs.textContent = `${Number(inventoryPeak)} count`;
+        ui.metricRenderMs.textContent = `${Number(inventoryPeak)} 個`;
         const inventoryMean = readSummaryMetricMean('bellpair_inventory_mean');
         ui.metricRenderMsSub.textContent = inventoryMean != null
-          ? `mean ${Number(inventoryMean).toFixed(2)}`
-          : 'whole run';
+          ? `未消費もつれ対 (mean ${Number(inventoryMean).toFixed(2)})`
+          : '未消費もつれ対の最大数';
       } else {
         ui.metricRenderMs.textContent = '--';
         ui.metricRenderMsSub.textContent = summary ? 'no inventory data' : 'run summary unavailable';

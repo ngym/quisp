@@ -14,7 +14,7 @@
 #include <vector>
 #include <unsupported/Eigen/KroneckerProduct>
 #include <unsupported/Eigen/MatrixFunctions>
-#include "backends/interfaces/IQubit.h"
+#include "modules/Backend/interfaces/IQubit.h"
 #include "modules/Backend/PhysicalServiceFacade.h"
 #include "omnetpp/cexception.h"
 

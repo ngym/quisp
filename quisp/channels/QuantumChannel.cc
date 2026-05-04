@@ -10,7 +10,7 @@
 #include <string>
 
 #include "FlyingQubit_m.h"
-#include "backends/interfaces/IQubit.h"
+#include "modules/Backend/interfaces/IQubit.h"
 #include "modules/Backend/Backend.h"
 #include "modules/Backend/PhysicalServiceFacade.h"
 #include "modules/QNIC/StationaryQubit/QubitId.h"

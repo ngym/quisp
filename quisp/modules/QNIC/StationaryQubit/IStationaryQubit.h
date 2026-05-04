@@ -1,7 +1,7 @@
 #pragma once
 
 #include <FlyingQubit_m.h>
-#include <backends/Backends.h>
+#include <modules/Backend/Backends.h>
 #include <Eigen/Eigen>
 #include <unordered_set>
 

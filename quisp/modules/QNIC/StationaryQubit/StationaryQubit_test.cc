@@ -1,5 +1,5 @@
 #include "StationaryQubit.h"
-#include <backends/interfaces/IQubit.h>
+#include <modules/Backend/interfaces/IQubit.h>
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include <modules/common_types.h>
@@ -9,9 +9,9 @@
 #include <cstring>
 #include <stdexcept>
 #include <unsupported/Eigen/MatrixFunctions>
-#include "backends/Backends.h"
-#include "backends/interfaces/IConfiguration.h"
-#include "backends/interfaces/IGraphStateBackend.h"
+#include "modules/Backend/Backends.h"
+#include "modules/Backend/interfaces/IConfiguration.h"
+#include "modules/Backend/interfaces/IGraphStateBackend.h"
 #include "omnetpp/cmessage.h"
 #include "test_utils/Simulation.h"
 #include "test_utils/TestUtilFunctions.h"

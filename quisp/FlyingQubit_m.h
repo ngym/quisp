@@ -26,7 +26,7 @@ class FlyingQubit;
 }  // namespace quisp
 
 // cplusplus {{
-    #include <backends/interfaces/IQubit.h>
+    #include <modules/Backend/interfaces/IQubit.h>
     using quisp::backends::abstract::IQubit;
 // }}
 

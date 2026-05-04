@@ -5,8 +5,8 @@
 #include <utils/ComponentProvider.h>
 #include <vector>
 #include "FlyingQubit_m.h"
-#include "backends/Backends.h"
-#include "backends/interfaces/IQubit.h"
+#include "modules/Backend/Backends.h"
+#include "modules/Backend/interfaces/IQubit.h"
 #include "modules/PhysicalConnection/BSA/types.h"
 #include "modules/QNIC/StationaryQubit/IStationaryQubit.h"
 

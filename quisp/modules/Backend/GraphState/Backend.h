@@ -8,8 +8,8 @@
 #include "../interfaces/IQubit.h"
 #include "../interfaces/IRandomNumberGenerator.h"
 #include "Qubit.h"
-#include "backends/QubitConfiguration.h"
-#include "backends/interfaces/IQubitId.h"
+#include "modules/Backend/QubitConfiguration.h"
+#include "modules/Backend/interfaces/IQubitId.h"
 
 namespace quisp::backends::graph_state {
 using abstract::IConfiguration;

@@ -4,7 +4,7 @@
 #include <unsupported/Eigen/MatrixFunctions>
 #include <vector>
 #include "Qubit.h"
-#include "backends/GraphState/Backend.h"
+#include "modules/Backend/GraphState/Backend.h"
 #include "omnetpp/cexception.h"
 #include "omnetpp/simtime.h"
 #include "test.h"

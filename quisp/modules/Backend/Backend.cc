@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include "PhysicalServiceFacade.h"
-#include "backends/QubitConfiguration.h"
+#include "modules/Backend/QubitConfiguration.h"
 
 namespace quisp::modules::backend {
 

@@ -1,6 +1,6 @@
 #pragma once
 #include "GraphState/Backend.h"
-#include "backends/QubitConfiguration.h"
+#include "modules/Backend/QubitConfiguration.h"
 #include "interfaces/IConfiguration.h"
 #include "interfaces/IGraphStateBackend.h"
 #include "interfaces/IQubit.h"

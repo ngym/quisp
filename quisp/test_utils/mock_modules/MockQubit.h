@@ -4,7 +4,7 @@
 #include <modules/QNIC/StationaryQubit/StationaryQubit.h>
 #include <test_utils/ModuleType.h>
 #include <test_utils/TestUtilFunctions.h>
-#include "backends/Backends.h"
+#include "modules/Backend/Backends.h"
 #include "modules/QNIC.h"
 #include "modules/QNIC/StationaryQubit/IStationaryQubit.h"
 #include "modules/QRSA/RuleEngine/BellPairStore/BellPairStore.h"

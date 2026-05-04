@@ -4,8 +4,8 @@
 #include <omnetpp.h>
 
 #include "FlyingQubit_m.h"
-#include "backends/Backends.h"
-#include "backends/interfaces/IQubit.h"
+#include "modules/Backend/Backends.h"
+#include "modules/Backend/interfaces/IQubit.h"
 #include "messages/BSA_ipc_messages_m.h"
 #include "modules/PhysicalConnection/BSA/types.h"
 #include "utils/ComponentProvider.h"

@@ -1,7 +1,7 @@
 #include "Backend.h"
 #include "Qubit.h"
-#include "backends/interfaces/IConfiguration.h"
-#include "backends/interfaces/IQubit.h"
+#include "modules/Backend/interfaces/IConfiguration.h"
+#include "modules/Backend/interfaces/IQubit.h"
 #include "modules/QNIC/StationaryQubit/QubitId.h"
 
 using quisp::modules::qubit_id::QubitId;

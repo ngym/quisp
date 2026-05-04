@@ -7,13 +7,13 @@
 #pragma once
 
 #include <FlyingQubit_m.h>
-#include <backends/Backends.h>
+#include <modules/Backend/Backends.h>
 #include <modules/common_types.h>
 #include <modules/Logger/LoggerBase.h>
 #include <utils/ComponentProvider.h>
 #include "IStationaryQubit.h"
 #include "QubitId.h"
-#include "backends/interfaces/IGraphStateBackend.h"
+#include "modules/Backend/interfaces/IGraphStateBackend.h"
 
 namespace quisp::modules {
 

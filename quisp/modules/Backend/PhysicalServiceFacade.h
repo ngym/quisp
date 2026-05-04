@@ -5,8 +5,8 @@
 #include <vector>
 
 #include "IPhysicalBackend.h"
-#include "backends/interfaces/IQubit.h"
-#include "backends/interfaces/IGraphStateBackend.h"
+#include "modules/Backend/interfaces/IQubit.h"
+#include "modules/Backend/interfaces/IGraphStateBackend.h"
 
 namespace quisp::modules::backend {
 

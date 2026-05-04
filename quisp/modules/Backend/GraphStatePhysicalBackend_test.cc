@@ -7,10 +7,10 @@
 #include <vector>
 
 #include "PhysicalServiceFacade.h"
-#include "backends/interfaces/IConfiguration.h"
-#include "backends/interfaces/IQubit.h"
-#include "backends/interfaces/IQubitId.h"
-#include "backends/interfaces/IGraphStateBackend.h"
+#include "modules/Backend/interfaces/IConfiguration.h"
+#include "modules/Backend/interfaces/IQubit.h"
+#include "modules/Backend/interfaces/IQubitId.h"
+#include "modules/Backend/interfaces/IGraphStateBackend.h"
 #include "modules/QNIC/StationaryQubit/QubitId.h"
 
 using quisp::backends::abstract::EigenvalueResult;

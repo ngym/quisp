@@ -1,6 +1,6 @@
 #pragma once
 
-#include <backends/Backends.h>
+#include <modules/Backend/Backends.h>
 #include <omnetpp.h>
 
 namespace quisp::modules::backend::rng {

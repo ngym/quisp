@@ -8,7 +8,7 @@
 #include <sstream>
 #include <vector>
 
-#include "backends/interfaces/IQubit.h"
+#include "modules/Backend/interfaces/IQubit.h"
 
 namespace quisp::modules::backend {
 

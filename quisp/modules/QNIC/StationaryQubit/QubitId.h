@@ -1,5 +1,5 @@
 #pragma once
-#include "backends/Backends.h"
+#include "modules/Backend/Backends.h"
 #include "modules/QNIC/StationaryQubit/IStationaryQubit.h"
 
 namespace quisp::modules::qubit_id {

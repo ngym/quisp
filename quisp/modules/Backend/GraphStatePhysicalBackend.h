@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "IPhysicalBackend.h"
-#include "backends/interfaces/IGraphStateBackend.h"
+#include "modules/Backend/interfaces/IGraphStateBackend.h"
 #include "modules/QNIC/StationaryQubit/QubitId.h"
 
 namespace quisp::modules::backend {

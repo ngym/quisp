@@ -1,6 +1,6 @@
 #include <iostream>
 #include <map>
-#include "backends/interfaces/IRandomNumberGenerator.h"
+#include "modules/Backend/interfaces/IRandomNumberGenerator.h"
 
 namespace quisp::util_functions {
 using quisp::backends::abstract::IRandomNumberGenerator;

@@ -4,8 +4,8 @@
 #include <memory>
 #include <string>
 #include "RNG.h"
-#include "backends/GraphState/Qubit.h"
-#include "backends/QubitConfiguration.h"
+#include "modules/Backend/GraphState/Qubit.h"
+#include "modules/Backend/QubitConfiguration.h"
 
 namespace quisp::modules::backend {
 using quisp::modules::common::GraphStateBackend;

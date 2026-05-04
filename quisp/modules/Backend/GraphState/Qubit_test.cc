@@ -1,11 +1,11 @@
-#include <backends/Backends.h>
+#include <modules/Backend/Backends.h>
 #include <gtest/gtest.h>
 #include <test_utils/TestUtils.h>
 #include <Eigen/Eigen>
 #include <memory>
 #include <unsupported/Eigen/MatrixFunctions>
-#include "backends/GraphState/types.h"
-#include "backends/interfaces/IQubit.h"
+#include "modules/Backend/GraphState/types.h"
+#include "modules/Backend/interfaces/IQubit.h"
 #include "test.h"
 
 namespace {

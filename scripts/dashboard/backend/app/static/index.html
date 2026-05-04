@@ -2138,8 +2138,13 @@
       // researcher lands on the sweep plot once the runs finish, rather
       // than having to dig the runs out of the job list and click
       // 比較+ on each one. Cap to 5 (the existing compare-queue limit).
-      if (Array.isArray(campaign.run_specs)) {
-        const launched = campaign.run_specs.map((spec) => spec.run_id).filter(Boolean);
+      // Note: campaign.run_specs[i].run_id is generated at preview time
+      // and can drift from the sim_store record id by a few ms; resolve
+      // the actual ids by filtering state.simRuns by campaign_id, which
+      // is the canonical link.
+      if (campaign && campaign.campaign_id) {
+        const matching = (state.simRuns || []).filter((run) => run && run.tags && run.tags.campaign_id === campaign.campaign_id);
+        const launched = matching.map((run) => run.run_id).filter(Boolean);
         if (launched.length > 0) {
           const seen = new Set();
           const merged = [];

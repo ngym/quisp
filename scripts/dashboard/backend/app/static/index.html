@@ -162,6 +162,8 @@
     .compare-plot .grid-line { stroke: rgba(103, 144, 214, 0.18); }
     .compare-plot .data-line { stroke-width: 1.6; fill: none; }
     .compare-plot .data-point { stroke-width: 1; }
+    .compare-plot .legend .legendItem { cursor: pointer; user-select: none; opacity: 1; transition: opacity 120ms ease; }
+    .compare-plot .legend .legendItem[data-disabled="true"] { opacity: 0.35; text-decoration: line-through; }
     .table-lite tr.compare-param-row td { color: #c9d8ff; font-size: 11px; }
     .table-lite tr.compare-param-row td:first-child { color: #9bdfff; }
     .info-icon {
@@ -1222,6 +1224,7 @@
       activitySummary: null,
       activityPollTimer: null,
       lastActivitySignature: null,
+      compareHiddenMetrics: new Set(),
       monitorRateLastAtMs: null,
       monitorRateLastSimTime: null,
       replayRateLastAtMs: null,
@@ -2520,15 +2523,19 @@
         .sort((a, b) => a.value - b.value);
       const xValues = order.map((entry) => entry.value);
 
-      // Plot up to 4 metrics to keep the legend readable.
-      const plottedMetrics = metricRows.slice(0, 4).map((row, mIndex) => {
+      // Plot up to 4 metrics to keep the legend readable. Each metric
+      // keeps a stable color regardless of whether the user has hidden
+      // some of them via the legend chips.
+      const colorAssignedMetrics = metricRows.slice(0, 4).map((row, mIndex) => {
         const series = metricScalarSeries(row, runs);
         return {
           metric_id: row.metric_id,
           color: COMPARE_PLOT_COLORS[mIndex % COMPARE_PLOT_COLORS.length],
           points: order.map((entry) => ({ x: entry.value, y: series[entry.index] })),
+          hidden: state.compareHiddenMetrics.has(row.metric_id),
         };
       });
+      const plottedMetrics = colorAssignedMetrics.filter((m) => !m.hidden);
 
       const width = 320;
       const height = 200;
@@ -2592,7 +2599,11 @@
         return segments.join('');
       }).join('');
 
-      const legend = plottedMetrics.map((m) => `<span class="legendItem"><span class="legendSwatch" style="background:${m.color}"></span>${escapeHtml(m.metric_id)}</span>`).join('');
+      // Legend lists every metric (even hidden ones) so the user can
+      // toggle them back on. Click flips visibility and re-renders.
+      const legend = colorAssignedMetrics
+        .map((m) => `<span class="legendItem" data-metric-id="${escapeHtml(m.metric_id)}" data-disabled="${m.hidden ? 'true' : 'false'}" role="button" tabindex="0" title="クリックで表示/非表示"><span class="legendSwatch" style="background:${m.color}"></span>${escapeHtml(m.metric_id)}</span>`)
+        .join('');
 
       el.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9fb3db;">
@@ -2605,9 +2616,35 @@
           ${seriesPaths}
           <text class="axis-label" x="${margin.left + innerW / 2}" y="${height - 4}" text-anchor="middle">${escapeHtml(axis.key)}</text>
         </svg>
-        <div class="legend" style="position:static;left:auto;right:auto;bottom:auto;flex-wrap:wrap;gap:6px;margin-top:4px;">${legend}</div>
+        <div class="legend" style="position:static;left:auto;right:auto;bottom:auto;flex-wrap:wrap;gap:6px;margin-top:4px;pointer-events:auto;">${legend}</div>
       `;
       el.hidden = false;
+      el.querySelectorAll('.legendItem[data-metric-id]').forEach((item) => {
+        const handler = () => {
+          const metricId = item.getAttribute('data-metric-id');
+          if (!metricId) return;
+          if (state.compareHiddenMetrics.has(metricId)) {
+            state.compareHiddenMetrics.delete(metricId);
+          } else {
+            state.compareHiddenMetrics.add(metricId);
+          }
+          logUiAction('ui.compare_metric_toggle', {
+            metric_id: metricId,
+            hidden: state.compareHiddenMetrics.has(metricId),
+          });
+          // Re-render with the latest snapshot in state.
+          if (state.experimentComparison) {
+            renderExperimentComparison(state.experimentComparison);
+          }
+        };
+        item.addEventListener('click', handler);
+        item.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            handler();
+          }
+        });
+      });
     }
 
     function formatCompactNumber(value) {
@@ -6111,6 +6148,7 @@
           selectRunForView(next.runId).catch(() => {});
         } else if (next.view === 'list') {
           setShellView('list', null);
+          setSection(readSectionFromHash());
         }
       });
 

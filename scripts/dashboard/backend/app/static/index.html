@@ -3995,20 +3995,29 @@
       const hasRun = Boolean(state.runId);
       const atEdge = isAtLiveEdge();
       const behind = liveBehindEvents();
+      // The LIVE pill is meaningful only while the run itself is still
+      // streaming events. Once it's terminal, treat the run as static
+      // and switch the pill off so finished runs aren't shown with a
+      // live red glow.
+      const run = state.selectedSimRun;
+      const runIsLive = !!run && ['queued', 'starting', 'running'].includes(run.status);
+      const liveActive = hasRun && runIsLive && atEdge && state.mode === 'overview' && state.followLiveEdge;
 
       if (ui.goLiveBtn) {
-        ui.goLiveBtn.dataset.live = hasRun && atEdge && state.mode === 'overview' && state.followLiveEdge ? 'on' : 'off';
-        ui.goLiveBtn.textContent = hasRun && atEdge && state.mode === 'overview' && state.followLiveEdge ? 'LIVE' : 'GO LIVE';
-        ui.goLiveBtn.disabled = !hasRun || (atEdge && state.mode === 'overview' && state.followLiveEdge);
+        ui.goLiveBtn.dataset.live = liveActive ? 'on' : 'off';
+        ui.goLiveBtn.textContent = liveActive ? 'LIVE' : 'GO LIVE';
+        ui.goLiveBtn.disabled = !hasRun || !runIsLive || liveActive;
       }
 
       if (ui.monitorGoLiveBtn) {
-        ui.monitorGoLiveBtn.disabled = !hasRun || (atEdge && state.mode === 'overview' && state.followLiveEdge);
+        ui.monitorGoLiveBtn.disabled = !hasRun || !runIsLive || liveActive;
       }
 
       if (ui.liveSeekStatus) {
         if (!hasRun) {
           ui.liveSeekStatus.textContent = 'no run selected';
+        } else if (!runIsLive) {
+          ui.liveSeekStatus.textContent = 'run finished';
         } else if (atEdge && state.mode === 'overview' && state.followLiveEdge) {
           ui.liveSeekStatus.textContent = 'at live edge';
         } else if (behind > 0) {

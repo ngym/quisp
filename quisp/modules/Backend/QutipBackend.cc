@@ -3,6 +3,10 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cerrno>
+#include <csignal>
+#include <cstring>
+#include <iostream>
 #include <map>
 #include <set>
 #include <fstream>
@@ -16,6 +20,9 @@
 #include <nlohmann/json.hpp>
 
 #include "omnetpp.h"
+#include <fcntl.h>
+#include <poll.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 namespace quisp::modules::backend {
@@ -160,7 +167,8 @@ int64_t QutipBackend::nextEntanglementSetId() const {
   return id;
 }
 
-int64_t QutipBackend::attachEntanglementSetToTargets(const std::vector<QubitHandle>& targets) const {
+int64_t QutipBackend::attachEntanglementSetToTargets(const std::vector<QubitHandle>& targets, std::vector<EntanglementSetId>* merged_from) const {
+  if (merged_from != nullptr) merged_from->clear();
   if (targets.empty()) {
     return -1;
   }
@@ -219,9 +227,25 @@ int64_t QutipBackend::attachEntanglementSetToTargets(const std::vector<QubitHand
         qubit_entanglement_set_map_[merged_key] = main_entanglement_set_id;
       }
       entanglement_set_members_.erase(merged_entanglement_set);
+      if (merged_from != nullptr) {
+        if (std::find(merged_from->begin(), merged_from->end(), entanglement_set_id) == merged_from->end()) {
+          merged_from->push_back(entanglement_set_id);
+        }
+      }
     } else {
       main_members.insert(key);
       qubit_entanglement_set_map_[key] = main_entanglement_set_id;
+    }
+  }
+
+  // The first seen set is the "main" one we kept; absorb the rest into merged_from.
+  if (merged_from != nullptr) {
+    for (size_t i = 1; i < seen_entanglement_sets.size(); ++i) {
+      const auto candidate = seen_entanglement_sets[i];
+      if (candidate == main_entanglement_set_id) continue;
+      if (std::find(merged_from->begin(), merged_from->end(), candidate) == merged_from->end()) {
+        merged_from->push_back(candidate);
+      }
     }
   }
 
@@ -639,6 +663,196 @@ omnetpp::cModule* getBackendModuleFromContext() {
 QutipBackend::QutipBackend(IQuantumBackend* backend, std::string backend_type)
     : backend_(backend), backend_type_(std::move(backend_type)) {}
 
+QutipBackend::~QutipBackend() { shutdownWorker(); }
+
+int QutipBackend::workerTimeoutMs(const nlohmann::json& backend_config) const {
+  // Per-operation timeout. The worker's first response also covers Python-side
+  // qutip module import (~1-2s on cold start), so callers see a longer effective
+  // budget for the first request via worker_first_request_done_ below.
+  const int configured = backend_config.value("qutip_worker_timeout_ms", 1000);
+  return std::max(100, configured);
+}
+
+bool QutipBackend::ensureWorkerStarted(const nlohmann::json& backend_config) const {
+  if (worker_started_) return true;
+
+  const std::string script = findWorkerScript(backend_config);
+  const std::string python_executable = backend_config.value("python_executable", pythonExecutable());
+
+  int stdin_pipe[2] = {-1, -1};
+  int stdout_pipe[2] = {-1, -1};
+  if (::pipe(stdin_pipe) < 0) {
+    worker_last_error_ = std::string("qutip worker pipe(stdin) failed: ") + std::strerror(errno);
+    return false;
+  }
+  if (::pipe(stdout_pipe) < 0) {
+    worker_last_error_ = std::string("qutip worker pipe(stdout) failed: ") + std::strerror(errno);
+    ::close(stdin_pipe[0]);
+    ::close(stdin_pipe[1]);
+    return false;
+  }
+
+  const pid_t pid = ::fork();
+  if (pid < 0) {
+    worker_last_error_ = std::string("qutip worker fork failed: ") + std::strerror(errno);
+    ::close(stdin_pipe[0]);
+    ::close(stdin_pipe[1]);
+    ::close(stdout_pipe[0]);
+    ::close(stdout_pipe[1]);
+    return false;
+  }
+
+  if (pid == 0) {
+    // child
+    if (::dup2(stdin_pipe[0], STDIN_FILENO) < 0) std::_Exit(127);
+    if (::dup2(stdout_pipe[1], STDOUT_FILENO) < 0) std::_Exit(127);
+    ::close(stdin_pipe[0]);
+    ::close(stdin_pipe[1]);
+    ::close(stdout_pipe[0]);
+    ::close(stdout_pipe[1]);
+
+    // -u forces unbuffered stdout/stderr so the parent never blocks on a
+    // response that is sitting in Python's stdio buffer.
+    std::vector<std::string> args = {python_executable, "-u", script};
+    std::vector<char*> argv;
+    argv.reserve(args.size() + 1);
+    for (auto& s : args) argv.push_back(const_cast<char*>(s.c_str()));
+    argv.push_back(nullptr);
+
+    ::execvp(argv[0], argv.data());
+    std::cerr << "qutip worker exec failed for " << python_executable << ": " << std::strerror(errno) << "\n";
+    std::_Exit(127);
+  }
+
+  // parent
+  ::close(stdin_pipe[0]);
+  ::close(stdout_pipe[1]);
+  worker_pid_ = pid;
+  worker_stdin_fd_ = stdin_pipe[1];
+  worker_stdout_fd_ = stdout_pipe[0];
+  worker_started_ = true;
+  worker_first_request_done_ = false;
+  worker_stdout_buffer_.clear();
+  worker_last_error_.clear();
+  return true;
+}
+
+bool QutipBackend::sendWorkerRequest(const std::string& payload) const {
+  if (!worker_started_ || worker_stdin_fd_ < 0) return false;
+  std::string buffer = payload;
+  if (buffer.empty() || buffer.back() != '\n') buffer.push_back('\n');
+
+  size_t total = 0;
+  while (total < buffer.size()) {
+    const ssize_t written = ::write(worker_stdin_fd_, buffer.data() + total, buffer.size() - total);
+    if (written < 0) {
+      if (errno == EINTR) continue;
+      worker_last_error_ = std::string("qutip worker write failed: ") + std::strerror(errno);
+      return false;
+    }
+    if (written == 0) {
+      worker_last_error_ = "qutip worker write returned 0 bytes";
+      return false;
+    }
+    total += static_cast<size_t>(written);
+  }
+  return true;
+}
+
+bool QutipBackend::readWorkerResponse(int timeout_ms, std::string& line_out) const {
+  if (!worker_started_ || worker_stdout_fd_ < 0) return false;
+
+  while (true) {
+    const auto pos = worker_stdout_buffer_.find('\n');
+    if (pos != std::string::npos) {
+      line_out.assign(worker_stdout_buffer_, 0, pos);
+      worker_stdout_buffer_.erase(0, pos + 1);
+      return true;
+    }
+
+    struct pollfd pfd;
+    pfd.fd = worker_stdout_fd_;
+    pfd.events = POLLIN;
+    const int rv = ::poll(&pfd, 1, timeout_ms);
+    if (rv < 0) {
+      if (errno == EINTR) continue;
+      worker_last_error_ = std::string("qutip worker poll failed: ") + std::strerror(errno);
+      return false;
+    }
+    if (rv == 0) {
+      worker_last_error_ = std::string("qutip worker timed out after ") + std::to_string(timeout_ms) + "ms waiting for response";
+      return false;
+    }
+    if (pfd.revents & (POLLERR | POLLNVAL)) {
+      worker_last_error_ = "qutip worker pipe error";
+      return false;
+    }
+
+    char buf[4096];
+    const ssize_t n = ::read(worker_stdout_fd_, buf, sizeof(buf));
+    if (n < 0) {
+      if (errno == EINTR) continue;
+      worker_last_error_ = std::string("qutip worker read failed: ") + std::strerror(errno);
+      return false;
+    }
+    if (n == 0) {
+      worker_last_error_ = "qutip worker stdout closed (worker exited)";
+      return false;
+    }
+    worker_stdout_buffer_.append(buf, static_cast<size_t>(n));
+  }
+}
+
+void QutipBackend::shutdownWorker() const {
+  if (!worker_started_) return;
+
+  if (worker_stdin_fd_ >= 0) {
+    ::close(worker_stdin_fd_);
+    worker_stdin_fd_ = -1;
+  }
+
+  bool exited = false;
+  for (int i = 0; i < 20 && !exited; ++i) {
+    int status = 0;
+    const pid_t result = ::waitpid(worker_pid_, &status, WNOHANG);
+    if (result == worker_pid_) {
+      exited = true;
+      break;
+    }
+    if (result < 0) {
+      exited = true;
+      break;
+    }
+    ::usleep(100 * 1000);
+  }
+  if (!exited) {
+    ::kill(worker_pid_, SIGTERM);
+    for (int i = 0; i < 10 && !exited; ++i) {
+      int status = 0;
+      const pid_t result = ::waitpid(worker_pid_, &status, WNOHANG);
+      if (result == worker_pid_ || result < 0) {
+        exited = true;
+        break;
+      }
+      ::usleep(100 * 1000);
+    }
+  }
+  if (!exited) {
+    ::kill(worker_pid_, SIGKILL);
+    int status = 0;
+    ::waitpid(worker_pid_, &status, 0);
+  }
+
+  if (worker_stdout_fd_ >= 0) {
+    ::close(worker_stdout_fd_);
+    worker_stdout_fd_ = -1;
+  }
+  worker_pid_ = -1;
+  worker_started_ = false;
+  worker_first_request_done_ = false;
+  worker_stdout_buffer_.clear();
+}
+
 uint32_t QutipBackend::capabilities() const {
   return static_cast<uint32_t>(BackendCapability::SupportsLegacyErrorModel) | static_cast<uint32_t>(BackendCapability::SupportsDenseOperator) |
          static_cast<uint32_t>(BackendCapability::SupportsAdvancedOperation);
@@ -722,9 +936,11 @@ OperationResult QutipBackend::runUnitary(const BackendContext& ctx, const std::s
   PhysicalOperation operation;
   operation.kind = "unitary";
   operation.targets = qubits;
-  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets);
+  std::vector<EntanglementSetId> merged_from;
+  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets, &merged_from);
   operation.entanglement_set_event = context.empty() ? "unitary" : context;
   operation.payload = {{"kind", "unitary"}, {"gate", normalizedGateName(gate)}, {"context", context}};
+  if (!merged_from.empty()) operation.payload["merge_entanglement_set_ids"] = merged_from;
   return executeQutipWorker(ctx, operation);
 }
 
@@ -736,7 +952,8 @@ OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHan
   PhysicalOperation operation;
   operation.kind = "measurement";
   operation.targets = {qubit};
-  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets);
+  std::vector<EntanglementSetId> merged_from;
+  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets, &merged_from);
   operation.entanglement_set_event = "measurement";
   auto basis_label = std::string("Z");
   if (basis == MeasureBasis::X) {
@@ -748,6 +965,7 @@ OperationResult QutipBackend::runMeasurement(const BackendContext& ctx, QubitHan
   }
   operation.basis = basis_label;
   operation.payload = {{"basis", basis_label}, {"noiseless", is_noiseless}};
+  if (!merged_from.empty()) operation.payload["merge_entanglement_set_ids"] = merged_from;
   auto result = executeQutipWorker(ctx, operation);
   if (result.success) {
     detachTargetFromEntanglementSet(qubit);
@@ -765,13 +983,15 @@ OperationResult QutipBackend::runNoise(const BackendContext& ctx, QubitHandle qu
   PhysicalOperation operation;
   operation.kind = "noise";
   operation.targets = {qubit};
-  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets);
+  std::vector<EntanglementSetId> merged_from;
+  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets, &merged_from);
   operation.entanglement_set_event = "noise";
   operation.payload = {
       {"kind", "noise"},
       {"noise_kind", noise_kind},
       {"p", p},
   };
+  if (!merged_from.empty()) operation.payload["merge_entanglement_set_ids"] = merged_from;
   return executeQutipWorker(ctx, operation);
 }
 
@@ -788,9 +1008,11 @@ OperationResult QutipBackend::applyErrorChannel(const BackendContext& ctx, const
   PhysicalOperation operation;
   operation.kind = "error_channel";
   operation.targets = qubits;
-  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets);
+  std::vector<EntanglementSetId> merged_from;
+  operation.entanglement_set_id = attachEntanglementSetToTargets(operation.targets, &merged_from);
   operation.entanglement_set_event = "error_channel";
   operation.payload = payload;
+  if (!merged_from.empty()) operation.payload["merge_entanglement_set_ids"] = merged_from;
   return executeQutipWorker(ctx, operation);
 }
 
@@ -811,68 +1033,35 @@ OperationResult QutipBackend::executeQutipWorker(const BackendContext& ctx, cons
   }
 
   const auto backend_config = collectBackendParameters();
-  const auto script = findWorkerScript(backend_config);
-  const std::string python_executable = backend_config.value("python_executable", pythonExecutable());
-  const auto python = shellEscape(python_executable);
-  const auto script_path = shellEscape(script);
-  const auto request = contextToJson(ctx, operation, backend_config);
-
-  char request_file[] = "/tmp/quisp_qutip_request_XXXXXX";
-  const auto request_fd = mkstemp(request_file);
-  if (request_fd < 0) {
-    return unsupported("qutip backend failed to create temporary request file");
+  if (!ensureWorkerStarted(backend_config)) {
+    return unsupported(worker_last_error_);
   }
 
-  char response_file[] = "/tmp/quisp_qutip_response_XXXXXX";
-  const auto response_fd = mkstemp(response_file);
-  if (response_fd < 0) {
-    ::close(request_fd);
-    ::unlink(request_file);
-    return unsupported("qutip backend failed to create temporary response file");
+  const std::string request = contextToJson(ctx, operation, backend_config);
+  if (!sendWorkerRequest(request)) {
+    const std::string err = worker_last_error_;
+    shutdownWorker();
+    return unsupported(err);
   }
 
-  {
-    std::ofstream request_out(request_file);
-    if (!request_out) {
-      ::close(request_fd);
-      ::close(response_fd);
-      ::unlink(request_file);
-      ::unlink(response_file);
-      return unsupported("qutip backend failed to open temporary request file");
-    }
-    request_out << request;
-    request_out.close();
+  // The first response also covers the worker's qutip module import on cold
+  // start (~1-2s), so allow a generous floor of 30s on the very first call.
+  const int per_op_timeout = workerTimeoutMs(backend_config);
+  const int timeout_ms = worker_first_request_done_ ? per_op_timeout : std::max(per_op_timeout, 30000);
+  std::string response_line;
+  if (!readWorkerResponse(timeout_ms, response_line)) {
+    const std::string err = worker_last_error_;
+    shutdownWorker();
+    return unsupported(err);
   }
-
-  const std::string cmd = python + " " + script_path + " --input " + shellEscape(request_file) + " --output " + shellEscape(response_file);
-  const int status = std::system(cmd.c_str());
-  ::close(request_fd);
-  ::close(response_fd);
-
-  if (status != 0) {
-    ::unlink(request_file);
-    ::unlink(response_file);
-    return unsupported(std::string("qutip worker execution failed (status=") + std::to_string(status) + ")");
-  }
-
-  std::ifstream response_in(response_file);
-  if (!response_in) {
-    ::unlink(request_file);
-    ::unlink(response_file);
-    return unsupported("qutip worker did not produce output");
-  }
+  worker_first_request_done_ = true;
 
   nlohmann::json response;
   try {
-    response_in >> response;
+    response = nlohmann::json::parse(response_line);
   } catch (const std::exception& exc) {
-    ::unlink(request_file);
-    ::unlink(response_file);
-    return unsupported(std::string("qutip worker response parse error: ") + exc.what());
+    return unsupported(std::string("qutip worker response parse error: ") + exc.what() + " [line=" + response_line + "]");
   }
-
-  ::unlink(request_file);
-  ::unlink(response_file);
 
   if (!response.is_object()) {
     return unsupported("qutip worker returned invalid response format");
@@ -1024,8 +1213,13 @@ OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const Ph
     std::vector<QubitHandle> involved = entanglement_set_operation.targets;
     involved.reserve(entanglement_set_operation.targets.size() + entanglement_set_operation.controls.size());
     involved.insert(involved.end(), entanglement_set_operation.controls.begin(), entanglement_set_operation.controls.end());
-    entanglement_set_operation.entanglement_set_id = attachEntanglementSetToTargets(involved);
+    std::vector<EntanglementSetId> merged_from;
+    entanglement_set_operation.entanglement_set_id = attachEntanglementSetToTargets(involved, &merged_from);
     entanglement_set_operation.entanglement_set_event = normalized_kind;
+    if (!merged_from.empty()) {
+      if (!entanglement_set_operation.payload.is_object()) entanglement_set_operation.payload = nlohmann::json::object();
+      entanglement_set_operation.payload["merge_entanglement_set_ids"] = merged_from;
+    }
     return executeQutipWorker(ctx, entanglement_set_operation);
   }
 

@@ -3427,6 +3427,72 @@ def _finalize_response(
   return response
 
 
+def _merge_entanglement_sets_for_operation(operation: dict, qutip: Any) -> None:
+  """Merge sibling entanglement-set states into the operation's target set.
+
+  The C++ backend tracks set membership and decides when two sets must be
+  fused (typically when an operation references qubits from previously
+  independent sets — e.g. two photons meeting at a BSA). It signals fusion
+  by listing the absorbed source set ids in
+  ``operation['payload']['merge_entanglement_set_ids']``. Until the worker
+  performs the fusion here, those qubits would silently be re-initialised
+  to ``|0>`` by ``_ensure_entanglement_set_state``, destroying any existing
+  entanglement.
+  """
+  payload = operation.get("payload")
+  if not isinstance(payload, dict):
+    return
+  raw = payload.get("merge_entanglement_set_ids")
+  if not raw:
+    return
+
+  source_ids: list[int] = []
+  if isinstance(raw, list):
+    for item in raw:
+      try:
+        source_id = int(item)
+      except (TypeError, ValueError):
+        continue
+      source_ids.append(source_id)
+
+  if not source_ids:
+    return
+
+  try:
+    target_id = int(operation.get("entanglement_set_id", -1))
+  except (TypeError, ValueError):
+    return
+
+  target_state = _QUTIP_ENTANGLEMENT_SET_STATES.get(target_id)
+
+  for source_id in source_ids:
+    if source_id == target_id:
+      continue
+    source_state = _QUTIP_ENTANGLEMENT_SET_STATES.pop(source_id, None)
+    if source_state is None:
+      continue
+
+    if target_state is None:
+      # Re-key the source state under the target id; its qubits and density
+      # matrix carry over verbatim.
+      source_state.entanglement_set_id = target_id
+      target_state = source_state
+      _QUTIP_ENTANGLEMENT_SET_STATES[target_id] = target_state
+      continue
+
+    # Tensor the source state into the target state. The new joint qubit
+    # ordering is target.qubits ++ source.qubits, mirroring qutip.tensor's
+    # left-to-right convention so qubit_position lookups remain correct.
+    if target_state.dim != source_state.dim:
+      # Different working dimensions are not expected here; coerce to the
+      # target dim by leaving source untouched if conversion would be lossy.
+      _QUTIP_ENTANGLEMENT_SET_STATES[source_id] = source_state
+      continue
+
+    target_state.density_matrix = qutip.tensor(target_state.density_matrix, source_state.density_matrix)
+    target_state.qubits = list(target_state.qubits) + list(source_state.qubits)
+
+
 def run_operation(request: dict) -> dict:
   operation = _get_payload(request)
   kind = _canonicalize_kind(operation.get("kind", ""))
@@ -3449,8 +3515,11 @@ def run_operation(request: dict) -> dict:
   profile_dim = _effective_profile_dim(profile_meta, int((profile_meta or {}).get("dim", 2)))
   # Initialize qutip import cache here so first-time heavy import does not
   # accidentally hit operation-level timeout.
-  if _coerce_qutip_modules() is None:
+  qutip_modules = _coerce_qutip_modules()
+  if qutip_modules is None:
     return _finalize_response(_qutip_unavailable_response(kind), trace, kind=kind, profile_error=profile_error, profile_meta=profile_meta)
+  qutip_module = qutip_modules[0] if isinstance(qutip_modules, tuple) else qutip_modules
+  _merge_entanglement_sets_for_operation(operation, qutip_module)
   timeout_ms_raw = backend_config.get("qutip_worker_timeout_ms", 1000)
   try:
     timeout_ms = int(timeout_ms_raw or 1000)
@@ -3508,24 +3577,55 @@ def run_operation(request: dict) -> dict:
 
 
 def main() -> int:
-  parser = argparse.ArgumentParser()
-  parser.add_argument("--input", required=True, help="input request json file path")
-  parser.add_argument("--output", required=True, help="output response json file path")
-  args = parser.parse_args()
+  """Persistent worker entry point.
 
-  request_path = Path(args.input)
-  output_path = Path(args.output)
-  request = {}
+  Reads one JSON request per line from stdin and writes one JSON response
+  per line to stdout. Module-global entanglement-set state survives across
+  requests, so QuISP can rely on quantum state continuity across operations.
+  """
+  import sys
+
   try:
-    request = json.loads(request_path.read_text(encoding="utf-8"))
-  except Exception as exc:
-    response = _build_response(False, message=f"qutip worker request parse error: {exc}", error_category="invalid_payload")
-    output_path.write_text(json.dumps(response), encoding="utf-8")
-    return 1
+    sys.stdout.reconfigure(line_buffering=True)
+  except AttributeError:
+    pass
+  try:
+    sys.stderr.reconfigure(line_buffering=True)
+  except AttributeError:
+    pass
 
-  response = run_operation(request)
-  output_path.write_text(json.dumps(response), encoding="utf-8")
-  return 0 if response.get("success") else 2
+  for line in sys.stdin:
+    line = line.strip()
+    if not line:
+      continue
+
+    try:
+      request = json.loads(line)
+    except Exception as exc:
+      response = _build_response(
+        False,
+        message=f"qutip worker request parse error: {exc}",
+        error_category="invalid_payload",
+      )
+      sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+      sys.stdout.flush()
+      continue
+
+    try:
+      response = run_operation(request)
+    except SystemExit:
+      raise
+    except BaseException as exc:
+      response = _build_response(
+        False,
+        message=f"qutip worker uncaught error: {exc}",
+        error_category="worker_error",
+      )
+
+    sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+  return 0
 
 
 if __name__ == "__main__":

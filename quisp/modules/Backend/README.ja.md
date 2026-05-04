@@ -44,7 +44,9 @@
   - `photon_lost`: 物理伝搬損失
 
 ## 4) GraphState backend (`ErrorBasisBackend`) の位置付け
-- `x_error`, `z_error`, `discarded`, `photon_lost` はバックエンド内部メタデータとしてのみ保持。
+- Pauli ノイズは `noiselessX`/`noiselessZ` で stabilizer state に直接適用し、
+  誤差フラグは保持しない。
+- `discarded`, `photon_lost` のみバックエンド内部メタデータとして保持。
 - OMNeT 側 `PhotonicQubit` メッセージからは誤差フラグを参照しない。
 
 ## 5) qutip profile contract (vNext)

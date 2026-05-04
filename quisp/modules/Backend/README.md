@@ -63,8 +63,9 @@ and the execution result.
   - `photon_lost`: physical propagation loss
 
 ## 4) Position of the GraphState backend (`ErrorBasisBackend`)
-- `x_error`, `z_error`, `discarded`, `photon_lost` are kept only as
-  backend-internal metadata.
+- Pauli noise is applied directly to the stabilizer state via real
+  `noiselessX`/`noiselessZ` gates; no error flags are tracked.
+- `discarded`, `photon_lost` are kept only as backend-internal metadata.
 - The OMNeT-side `PhotonicQubit` messages do not read error flags.
 
 ## 5) qutip profile contract (vNext)

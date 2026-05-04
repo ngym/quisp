@@ -33,8 +33,6 @@ class ErrorBasisBackend : public IPhysicalBackend {
   // Metadata-only state; OMNeT messages keep no error/loss flags.
   // discarded: 管理系discard. photon_lost: 物理消失.
   struct GraphErrorState {
-    bool x_error = false;
-    bool z_error = false;
     bool discarded = false;
     bool photon_lost = false;
     std::string discard_reason;

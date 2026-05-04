@@ -2,23 +2,12 @@
 #include <filesystem>
 #include <gtest/gtest.h>
 
-#include <memory>
 #include <string>
 #include <vector>
-#include <optional>
 
 #include "QutipBackend.h"
-#include "backends/interfaces/IConfiguration.h"
-#include "backends/interfaces/IQuantumBackend.h"
-#include "backends/interfaces/IQubit.h"
-#include "backends/interfaces/IQubitId.h"
 
 namespace {
-using omnetpp::SimTime;
-using quisp::backends::abstract::IConfiguration;
-using quisp::backends::abstract::IQuantumBackend;
-using quisp::backends::abstract::IQubit;
-using quisp::backends::abstract::IQubitId;
 using quisp::modules::backend::BackendContext;
 using quisp::modules::backend::PhysicalOperation;
 using quisp::modules::backend::QubitHandle;
@@ -31,42 +20,6 @@ struct QutipTestEnvironmentInitializer {
   QutipTestEnvironmentInitializer() { configureQutipPythonExecutableForTests(); }
 } qutip_test_environment_initializer;
 
-class NullQuantumBackend : public IQuantumBackend {
- public:
-  NullQuantumBackend() = default;
-
-  IQubit* createQubit(const IQubitId* id, std::unique_ptr<IConfiguration> conf) override {
-    delete id;
-    (void)conf;
-    return nullptr;
-  }
-
-  IQubit* createQubit(const IQubitId* id) override {
-    delete id;
-    return nullptr;
-  }
-
-  IQubit* createFlyingQubit() override { return nullptr; }
-  IQubit* getQubit(const IQubitId* id) override {
-    delete id;
-    return nullptr;
-  }
-  IQubit* getFlyingQubit() override { return nullptr; }
-  void returnToPool(IQubit*) override {}
-  void deleteQubit(const IQubitId* id) override { delete id; }
-  std::unique_ptr<IConfiguration> getDefaultConfiguration() const override { return std::make_unique<IConfiguration>(); }
-  const SimTime& getSimTime() override {
-    if (!sim_time_.has_value()) {
-      sim_time_ = SimTime();
-    }
-    return sim_time_.value();
-  }
-  void setSimTime(SimTime time) override { (void)time; }
-
- private:
-  std::optional<SimTime> sim_time_;
-};
-
 BackendContext defaultContext() {
   BackendContext context;
   context.seed = 123;
@@ -77,8 +30,7 @@ BackendContext defaultContext() {
 }
 
 TEST(QutipBackendContractTest, ApplyOperationRejectsEmptyKind) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip"};
+  QutipBackend qutip_backend{"qutip"};
 
   auto result = qutip_backend.applyOperation(defaultContext(), PhysicalOperation{});
   EXPECT_FALSE(result.success);
@@ -87,8 +39,7 @@ TEST(QutipBackendContractTest, ApplyOperationRejectsEmptyKind) {
 }
 
 TEST(QutipBackendContractTest, ApplyOperationSupportsAdvancedKindsWhenPossible) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip_density_matrix"};
+  QutipBackend qutip_backend{"qutip_density_matrix"};
 
   PhysicalOperation kerr_op;
   kerr_op.kind = "kerr";
@@ -103,8 +54,7 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsAdvancedKindsWhenPossible) 
 }
 
 TEST(QutipBackendContractTest, ApplyOperationAcceptsStateVectorAlias) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "QUTIP_STATE_VECTOR"};
+  QutipBackend qutip_backend{"QUTIP_STATE_VECTOR"};
   PhysicalOperation unitary_op;
   unitary_op.kind = "unitary";
   unitary_op.targets = {QubitHandle{1, 0, 0, 7}};
@@ -119,8 +69,7 @@ TEST(QutipBackendContractTest, ApplyOperationAcceptsStateVectorAlias) {
 }
 
 TEST(QutipBackendContractTest, ApplyOperationSupportsLegacyAliasAndCaseNormalization) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip"};
+  QutipBackend qutip_backend{"qutip"};
 
   PhysicalOperation kerr_op;
   kerr_op.kind = "Kerr";
@@ -159,8 +108,7 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsLegacyAliasAndCaseNormaliza
 }
 
 TEST(QutipBackendContractTest, ApplyOperationRejectsWrongTargetCountForBasicKinds) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip"};
+  QutipBackend qutip_backend{"qutip"};
 
   PhysicalOperation measurement_op;
   measurement_op.kind = "measurement";
@@ -184,8 +132,7 @@ TEST(QutipBackendContractTest, ApplyOperationRejectsWrongTargetCountForBasicKind
 }
 
 TEST(QutipBackendContractTest, ApplyOperationRejectsInvalidControlHandle) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip"};
+  QutipBackend qutip_backend{"qutip"};
 
   PhysicalOperation op;
   op.kind = "kerr";
@@ -197,16 +144,14 @@ TEST(QutipBackendContractTest, ApplyOperationRejectsInvalidControlHandle) {
 }
 
 TEST(QutipBackendContractTest, GenerateEntanglementAcceptsFlyingQubitHandle) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip_density_matrix"};
+  QutipBackend qutip_backend{"qutip_density_matrix"};
 
   auto result = qutip_backend.generateEntanglement(defaultContext(), QubitHandle{1, 0, 0, 7}, QubitHandle{-1, -1, -1, 1});
   EXPECT_EQ(result.message.find("invalid qubit handle"), std::string::npos);
 }
 
 TEST(QutipBackendContractTest, ApplyOperationAcceptsFlyingQubitTargetForUnitary) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip_density_matrix"};
+  QutipBackend qutip_backend{"qutip_density_matrix"};
 
   PhysicalOperation op;
   op.kind = "unitary";
@@ -217,8 +162,7 @@ TEST(QutipBackendContractTest, ApplyOperationAcceptsFlyingQubitTargetForUnitary)
 }
 
 TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip"};
+  QutipBackend qutip_backend{"qutip"};
   const auto runtimes_available = qutipRuntimeAvailable();
   const std::vector<std::string> advanced_kinds = {
       "dephasing",
@@ -359,8 +303,7 @@ TEST(QutipBackendContractTest, ApplyOperationSupportsCommonAdvancedKinds) {
 }
 
 TEST(QutipBackendContractTest, ApplyOperationRejectsUnknownKind) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip"};
+  QutipBackend qutip_backend{"qutip"};
 
   PhysicalOperation op;
   op.kind = "not_an_operation";
@@ -410,8 +353,7 @@ void configureQutipPythonExecutableForTests() {
 }
 
 TEST(QutipBackendContractTest, ApplyOperationFallsBackToLegacyForKnownKinds) {
-  NullQuantumBackend backend;
-  QutipBackend qutip_backend{&backend, "qutip_sv"};
+  QutipBackend qutip_backend{"qutip_sv"};
 
   PhysicalOperation unitary_op;
   unitary_op.kind = "unitary";

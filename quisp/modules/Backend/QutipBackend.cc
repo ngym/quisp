@@ -660,8 +660,7 @@ omnetpp::cModule* getBackendModuleFromContext() {
   return nullptr;
 }
 
-QutipBackend::QutipBackend(IQuantumBackend* backend, std::string backend_type)
-    : backend_(backend), backend_type_(std::move(backend_type)) {}
+QutipBackend::QutipBackend(std::string backend_type) : backend_type_(std::move(backend_type)) {}
 
 QutipBackend::~QutipBackend() { shutdownWorker(); }
 
@@ -1109,37 +1108,22 @@ OperationResult QutipBackend::executeQutipWorker(const BackendContext& ctx, cons
 }
 
 OperationResult QutipBackend::applyNoise(const BackendContext& ctx, QubitHandle qubit) {
-  if (backend_ == nullptr) {
-    throw std::runtime_error("QutipBackend has no backend");
-  }
   return runNoise(ctx, qubit, "dephasing", {});
 }
 
 OperationResult QutipBackend::applyGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
-  if (backend_ == nullptr) {
-    throw std::runtime_error("QutipBackend has no backend");
-  }
   return runUnitary(ctx, gate, qubits, "");
 }
 
 OperationResult QutipBackend::applyNoiselessGate(const BackendContext& ctx, const std::string& gate, const std::vector<QubitHandle>& qubits) {
-  if (backend_ == nullptr) {
-    throw std::runtime_error("QutipBackend has no backend");
-  }
   return runUnitary(ctx, gate, qubits, "noiseless");
 }
 
 OperationResult QutipBackend::measure(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis) {
-  if (backend_ == nullptr) {
-    throw std::runtime_error("QutipBackend has no backend");
-  }
   return runMeasurement(ctx, qubit, basis, false);
 }
 
 OperationResult QutipBackend::measureNoiseless(const BackendContext& ctx, QubitHandle qubit, MeasureBasis basis, bool forced_plus) {
-  if (backend_ == nullptr) {
-    throw std::runtime_error("QutipBackend has no backend");
-  }
   auto result = runMeasurement(ctx, qubit, basis, true);
   if (forced_plus && result.success) {
     result.measured_plus = true;
@@ -1148,14 +1132,10 @@ OperationResult QutipBackend::measureNoiseless(const BackendContext& ctx, QubitH
 }
 
 OperationResult QutipBackend::generateEntanglement(const BackendContext& ctx, QubitHandle source_qubit, QubitHandle target_qubit) {
-  if (backend_ == nullptr) {
-    throw std::runtime_error("QutipBackend has no backend");
-  }
   return runEntanglement(ctx, source_qubit, target_qubit);
 }
 
 void QutipBackend::releaseQubit(const BackendContext& ctx, QubitHandle qubit) {
-  if (backend_ == nullptr) return;
   // Look up the qubit's current entanglement set on the C++ side. If it isn't
   // tracked, there is nothing the worker is holding for it either.
   const auto key = qubitKey(qubit);
@@ -1184,9 +1164,6 @@ void QutipBackend::releaseQubit(const BackendContext& ctx, QubitHandle qubit) {
 }
 
 OperationResult QutipBackend::applyOperation(const BackendContext& ctx, const PhysicalOperation& operation) {
-  if (backend_ == nullptr) {
-    throw std::runtime_error("QutipBackend has no backend");
-  }
   if (operation.kind.empty()) {
     return unsupported("qutip backend operation.kind is empty [category=invalid_payload]");
   }

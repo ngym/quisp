@@ -45,7 +45,7 @@ std::string normalizeBackendType(const std::string& value) {
 
 std::unique_ptr<IPhysicalBackend> createBackendByType(const std::string& backend_name, IQuantumBackend* backend) {
   if (backend_name == "qutip" || backend_name == "qutip_density_matrix" || backend_name == "qutip_state_vector") {
-    return std::make_unique<QutipBackend>(backend, backend_name);
+    return std::make_unique<QutipBackend>(backend_name);
   }
   if (backend_name.empty() || backend_name == "graph_state") {
     return std::make_unique<ErrorBasisBackend>(backend);

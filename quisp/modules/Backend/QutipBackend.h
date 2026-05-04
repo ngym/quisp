@@ -9,15 +9,12 @@
 #include <sys/types.h>
 
 #include "IPhysicalBackend.h"
-#include "backends/interfaces/IQuantumBackend.h"
 
 namespace quisp::modules::backend {
 
-using quisp::backends::abstract::IQuantumBackend;
-
 class QutipBackend : public IPhysicalBackend {
  public:
-  QutipBackend(IQuantumBackend* backend, std::string backend_type = "qutip_density_matrix");
+  explicit QutipBackend(std::string backend_type = "qutip_density_matrix");
   ~QutipBackend() override;
 
   uint32_t capabilities() const override;
@@ -61,7 +58,6 @@ class QutipBackend : public IPhysicalBackend {
   void shutdownWorker() const;
   int workerTimeoutMs(const nlohmann::json& backend_config) const;
 
-  IQuantumBackend* backend_ = nullptr;
   std::string backend_type_;
 
   mutable bool qutip_runtime_checked_ = false;

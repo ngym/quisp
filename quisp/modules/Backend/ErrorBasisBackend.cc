@@ -330,11 +330,16 @@ OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, 
   }
 
   if (profile == "flipchannel" || profile == "xerror" || profile == "bitflip" || profile == "xflip" || profile == "biterror") {
+    // Channel X error: with probability p, an X is actually applied to the
+    // photon while in flight. The graph_state stabilizer is what BSA reads,
+    // so propagate the error there rather than to the unread metadata flag.
     const auto x_probability = extractProfileProbability(operation.payload, {"channel_x_error_rate", "legacy_channel_x_error_rate", "x_error_rate", "flip_probability", "p"}, 0.0);
     for (const auto& target : operation.targets) {
-      auto& state = metadataFor(target);
-      if (!state.discarded && !state.photon_lost && eventOccurs(ctx.seed, keyFor(target) + "/flip", x_probability)) {
-        state.x_error = !state.x_error;
+      const auto* state = metadataPtr(target);
+      if (state != nullptr && (state->discarded || state->photon_lost)) continue;
+      if (!eventOccurs(ctx.seed, keyFor(target) + "/flip", x_probability)) continue;
+      if (auto* qubit = resolveQubit(target); qubit != nullptr) {
+        qubit->noiselessX();
       }
     }
     OperationResult result;
@@ -347,9 +352,11 @@ OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, 
   if (profile == "phaseflipchannel" || profile == "zerror" || profile == "phaseflip" || profile == "phaseerror") {
     const auto z_probability = extractProfileProbability(operation.payload, {"channel_z_error_rate", "legacy_channel_z_error_rate", "z_error_rate", "phase_probability"}, 0.0);
     for (const auto& target : operation.targets) {
-      auto& state = metadataFor(target);
-      if (!state.discarded && !state.photon_lost && eventOccurs(ctx.seed, keyFor(target) + "/phase", z_probability)) {
-        state.z_error = !state.z_error;
+      const auto* state = metadataPtr(target);
+      if (state != nullptr && (state->discarded || state->photon_lost)) continue;
+      if (!eventOccurs(ctx.seed, keyFor(target) + "/phase", z_probability)) continue;
+      if (auto* qubit = resolveQubit(target); qubit != nullptr) {
+        qubit->noiselessZ();
       }
     }
     OperationResult result;
@@ -381,13 +388,15 @@ OperationResult ErrorBasisBackend::applyErrorChannel(const BackendContext& ctx, 
         continue;
       }
       const auto branch = distribution(rng) / depolarizing_probability;
+      auto* qubit = resolveQubit(target);
       if (branch < (1.0 / 3.0)) {
-        state.x_error = !state.x_error;
+        if (qubit != nullptr) qubit->noiselessX();
       } else if (branch < (2.0 / 3.0)) {
-        state.z_error = !state.z_error;
-      } else {
-        state.x_error = !state.x_error;
-        state.z_error = !state.z_error;
+        if (qubit != nullptr) qubit->noiselessZ();
+      } else if (qubit != nullptr) {
+        // Y = i X Z up to a global phase.
+        qubit->noiselessX();
+        qubit->noiselessZ();
       }
     }
     OperationResult result;

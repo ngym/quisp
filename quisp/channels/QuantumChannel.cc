@@ -134,7 +134,36 @@ cChannel::Result QuantumChannel::processMessage(cMessage *msg, const SendOptions
     params["legacy_channel_x_error_rate"] = params["channel_x_error_rate"];
     params["legacy_channel_z_error_rate"] = params["channel_z_error_rate"];
     params["legacy_channel_y_error_rate"] = params["channel_y_error_rate"];
+
+    // Apply the loss/depolarizing channel selected via channel_profile first
+    // (loss may discard the photon, in which case the per-Pauli passes below
+    // become no-ops because the metadata is already marked photon_lost).
     service.applyErrorChannel({handle}, profile.empty() ? "loss_channel" : profile, params);
+
+    // A real fiber link experiences loss AND independent Pauli noise. Each
+    // applyErrorChannel profile is intentionally single-purpose (loss only,
+    // X only, …), so when the per-link rates declare extra Pauli noise on
+    // top of the primary profile, dispatch follow-up calls here.
+    const auto x_rate = params.value("channel_x_error_rate", 0.0);
+    const auto z_rate = params.value("channel_z_error_rate", 0.0);
+    const auto y_rate = params.value("channel_y_error_rate", 0.0);
+    const auto needs_extra_x = x_rate > 0.0 && profile != "flip_channel";
+    const auto needs_extra_z = z_rate > 0.0 && profile != "phaseflip_channel";
+    const auto needs_extra_y = y_rate > 0.0;  // there is no dedicated y-only profile
+    if (needs_extra_x) service.applyErrorChannel({handle}, "flip_channel", params);
+    if (needs_extra_z) service.applyErrorChannel({handle}, "phaseflip_channel", params);
+    if (needs_extra_y) {
+      // Y = i X Z up to a global phase; chain X then Z to model a Y-noise rate
+      // without adding a redundant single-purpose profile.
+      auto y_as_x = params;
+      y_as_x["channel_x_error_rate"] = y_rate;
+      y_as_x["legacy_channel_x_error_rate"] = y_rate;
+      auto y_as_z = params;
+      y_as_z["channel_z_error_rate"] = y_rate;
+      y_as_z["legacy_channel_z_error_rate"] = y_rate;
+      service.applyErrorChannel({handle}, "flip_channel", y_as_x);
+      service.applyErrorChannel({handle}, "phaseflip_channel", y_as_z);
+    }
   }
 
   return {false, getDelay(), 0};

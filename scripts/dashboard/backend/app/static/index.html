@@ -736,20 +736,20 @@
     body[data-section="settings"][data-view="list"] .grid2 { display: none; }
 
     /* Run-detail mode visibility:
-       - Overview (state.mode === 'monitor' for now): canvas + Experiment Results
+       - Overview (state.mode === 'overview' for now): canvas + Experiment Results
        - Replay: canvas + replay seek + event list (hide Experiment Results)
-       - Configuration (state.mode === 'results' for now): hide canvas, show config view
+       - Configuration (state.mode === 'configuration' for now): hide canvas, show config view
     */
     body[data-mode="replay"][data-view="run"] .grid2,
-    body[data-mode="results"][data-view="run"] .grid2 { display: none; }
-    body[data-mode="results"][data-view="run"] .canvasWrap,
-    body[data-mode="results"][data-view="run"] #eventList,
-    body[data-mode="results"][data-view="run"] #monitorToolbar,
-    body[data-mode="results"][data-view="run"] #replayToolbar,
-    body[data-mode="results"][data-view="run"] .campaign-workspace,
-    body[data-mode="results"][data-view="run"] #replaySeekPanel,
-    body[data-mode="results"][data-view="run"] .layout > aside.panel { display: none; }
-    body[data-mode="results"][data-view="run"] #configurationView { display: block !important; }
+    body[data-mode="configuration"][data-view="run"] .grid2 { display: none; }
+    body[data-mode="configuration"][data-view="run"] .canvasWrap,
+    body[data-mode="configuration"][data-view="run"] #eventList,
+    body[data-mode="configuration"][data-view="run"] #monitorToolbar,
+    body[data-mode="configuration"][data-view="run"] #replayToolbar,
+    body[data-mode="configuration"][data-view="run"] .campaign-workspace,
+    body[data-mode="configuration"][data-view="run"] #replaySeekPanel,
+    body[data-mode="configuration"][data-view="run"] .layout > aside.panel { display: none; }
+    body[data-mode="configuration"][data-view="run"] #configurationView { display: block !important; }
     /* List view doesn't have a run loaded, so the Replay-time chrome
        (再生 / 停止 / カーソル先頭 / 速度 / GO LIVE / cursor) carries
        no useful state. Take it out entirely so the topbar is calm. */
@@ -1254,7 +1254,7 @@
       topology: { nodes: [], edges: [] },
       edgesVisible: true,
       cursor: 0,
-      mode: 'monitor',
+      mode: 'overview',
       followLiveEdge: true,
       liveMode: true,
       playing: false,
@@ -2982,7 +2982,7 @@
     }
 
     function currentVisibleEventDensity() {
-      if (state.mode === 'results') {
+      if (state.mode === 'configuration') {
         return state.activitySummary && state.activitySummary.visible_event_density
           ? state.activitySummary.visible_event_density.mean
           : null;
@@ -2993,7 +2993,7 @@
     }
 
     function syncModeFlags() {
-      state.liveMode = state.mode === 'monitor' && state.followLiveEdge;
+      state.liveMode = state.mode === 'overview' && state.followLiveEdge;
       if (state.mode !== 'replay') {
         state.playing = false;
       }
@@ -3065,12 +3065,12 @@
     }
 
     function renderModeUi() {
-      const isMonitor = state.mode === 'monitor';      // shown as Overview tab
+      const isMonitor = state.mode === 'overview';      // shown as Overview tab
       const isReplay = state.mode === 'replay';
-      const isResults = state.mode === 'results';      // shown as Configuration tab
+      const isResults = state.mode === 'configuration';      // shown as Configuration tab
       // Surface the active mode on <body> so CSS can hide / show the
       // grid2 (Experiment Results) and the configurationView accordingly.
-      document.body.dataset.mode = state.mode || 'monitor';
+      document.body.dataset.mode = state.mode || 'overview';
       ui.monitorModeBtn.dataset.active = String(isMonitor);
       ui.replayModeBtn.dataset.active = String(isReplay);
       ui.resultsModeBtn.dataset.active = String(isResults);
@@ -3298,7 +3298,7 @@
 
     function scheduleActivityPolling(immediate = false) {
       stopActivityPolling();
-      if (state.mode !== 'monitor' || !state.runId) {
+      if (state.mode !== 'overview' || !state.runId) {
         return;
       }
       const tick = async () => {
@@ -3307,7 +3307,7 @@
         } catch (_e) {
           // ignore poll failures
         }
-        if (state.mode === 'monitor') {
+        if (state.mode === 'overview') {
           state.activityPollTimer = setTimeout(tick, activityPollIntervalMs());
         }
       };
@@ -3772,14 +3772,14 @@
 
     async function setViewerMode(mode, options = {}) {
       state.mode = mode;
-      if (mode === 'monitor') {
+      if (mode === 'overview') {
         state.followLiveEdge = options.followLiveEdge !== false;
       } else {
         state.followLiveEdge = false;
       }
       syncModeFlags();
       renderModeUi();
-      if (mode === 'monitor') {
+      if (mode === 'overview') {
         closeSocket();
         stopActivityPolling();
         state.playing = false;
@@ -3828,19 +3828,19 @@
       const behind = liveBehindEvents();
 
       if (ui.goLiveBtn) {
-        ui.goLiveBtn.dataset.live = hasRun && atEdge && state.mode === 'monitor' && state.followLiveEdge ? 'on' : 'off';
-        ui.goLiveBtn.textContent = hasRun && atEdge && state.mode === 'monitor' && state.followLiveEdge ? 'LIVE' : 'GO LIVE';
-        ui.goLiveBtn.disabled = !hasRun || (atEdge && state.mode === 'monitor' && state.followLiveEdge);
+        ui.goLiveBtn.dataset.live = hasRun && atEdge && state.mode === 'overview' && state.followLiveEdge ? 'on' : 'off';
+        ui.goLiveBtn.textContent = hasRun && atEdge && state.mode === 'overview' && state.followLiveEdge ? 'LIVE' : 'GO LIVE';
+        ui.goLiveBtn.disabled = !hasRun || (atEdge && state.mode === 'overview' && state.followLiveEdge);
       }
 
       if (ui.monitorGoLiveBtn) {
-        ui.monitorGoLiveBtn.disabled = !hasRun || (atEdge && state.mode === 'monitor' && state.followLiveEdge);
+        ui.monitorGoLiveBtn.disabled = !hasRun || (atEdge && state.mode === 'overview' && state.followLiveEdge);
       }
 
       if (ui.liveSeekStatus) {
         if (!hasRun) {
           ui.liveSeekStatus.textContent = 'no run selected';
-        } else if (atEdge && state.mode === 'monitor' && state.followLiveEdge) {
+        } else if (atEdge && state.mode === 'overview' && state.followLiveEdge) {
           ui.liveSeekStatus.textContent = 'at live edge';
         } else if (behind > 0) {
           ui.liveSeekStatus.textContent = `${behind} ev behind live`;
@@ -3852,7 +3852,7 @@
       if (ui.timelineSeekHelp) {
         if (!hasRun) {
           ui.timelineSeekHelp.textContent = 'run を選ぶと LIVE seek を使えます。';
-        } else if (atEdge && state.mode === 'monitor' && state.followLiveEdge) {
+        } else if (atEdge && state.mode === 'overview' && state.followLiveEdge) {
           ui.timelineSeekHelp.textContent = `LIVE edge / cursor ${state.cursor}`;
         } else {
           ui.timelineSeekHelp.textContent = `${behind} ev behind live / cursor ${state.cursor}`;
@@ -4001,16 +4001,16 @@
       if (run && ['queued', 'starting', 'running'].includes(run.status) && state.lastEventBatchAtMs == null) {
         return { label: 'WAITING', sublabel: cursorSummary, tone: 'warn' };
       }
-      if (state.mode === 'results') {
+      if (state.mode === 'configuration') {
         return { label: 'RESULTS', sublabel: run ? runDisplayName(run) : cursorSummary, tone: 'idle' };
       }
-      if (state.mode === 'monitor' && freshness != null && backlog > 100) {
+      if (state.mode === 'overview' && freshness != null && backlog > 100) {
         return { label: 'VIEWER BEHIND', sublabel: `backlog: ${backlog} events`, tone: 'warn' };
       }
-      if (state.mode === 'monitor' && freshness != null && freshness > 2.0) {
+      if (state.mode === 'overview' && freshness != null && freshness > 2.0) {
         return { label: 'STREAM STALLED', sublabel: `last event ${formatAgeSeconds(freshness)}`, tone: 'warn' };
       }
-      if (state.mode === 'monitor') {
+      if (state.mode === 'overview') {
         if (!run && !state.runId && state.lastEventBatchAtMs == null) {
           return { label: 'IDLE', sublabel: cursorSummary, tone: 'idle' };
         }
@@ -5341,7 +5341,7 @@
         }
       }
 
-      if (state.mode === 'monitor' && state.activitySnapshot) {
+      if (state.mode === 'overview' && state.activitySnapshot) {
         const nodeHeatMap = new Map((state.activitySnapshot.view_node_activity || []).map((item) => [String(item.id), item]));
         const edgeHeatMap = new Map((state.activitySnapshot.view_edge_activity || []).map((item) => [`${item.src}::${item.dst}`, item]));
         const useNodeIcons = shouldRenderTopologyIcons(nodes.length);
@@ -5938,8 +5938,8 @@
           stopSimRunPolling();
         }
         await refreshExperimentSummary(selectedRun.run_id);
-        if (state.runId === selectedRun.run_id && ['finished', 'failed', 'terminated'].includes(selectedRun.status) && state.mode === 'monitor') {
-          await setViewerMode('results');
+        if (state.runId === selectedRun.run_id && ['finished', 'failed', 'terminated'].includes(selectedRun.status) && state.mode === 'overview') {
+          await setViewerMode('configuration');
         }
       } else {
         renderSelectedRunDiagnostic();
@@ -6063,12 +6063,12 @@
       });
       await Promise.all([refreshExperimentSummary(runId), loadReplayTimeline()]);
       if (run && ['queued', 'starting', 'running'].includes(run.status)) {
-        await setViewerMode('monitor', { followLiveEdge: true });
+        await setViewerMode('overview', { followLiveEdge: true });
       } else {
         // Both finished and "no run" states default to Overview
-        // (state.mode='monitor'). Configuration is opened explicitly
+        // (state.mode='overview'). Configuration is opened explicitly
         // from the tab; users no longer land on a Results-only screen.
-        await setViewerMode('monitor', { followLiveEdge: true });
+        await setViewerMode('overview', { followLiveEdge: true });
       }
     }
 
@@ -6082,7 +6082,7 @@
       }
       state.followLiveEdge = true;
       syncCursorUi();
-      await setViewerMode('monitor', { followLiveEdge: true });
+      await setViewerMode('overview', { followLiveEdge: true });
     }
 
     async function loadRuns() {
@@ -6572,7 +6572,7 @@
 
       ui.monitorModeBtn.addEventListener('click', async () => {
         logUiAction('ui.monitor_mode_click');
-        await setViewerMode('monitor', { followLiveEdge: true });
+        await setViewerMode('overview', { followLiveEdge: true });
       });
 
       ui.replayModeBtn.addEventListener('click', async () => {
@@ -6584,7 +6584,7 @@
 
       ui.resultsModeBtn.addEventListener('click', async () => {
         logUiAction('ui.results_mode_click');
-        await setViewerMode('results');
+        await setViewerMode('configuration');
       });
 
       ui.monitorGoLiveBtn.addEventListener('click', async () => {
@@ -6595,7 +6595,7 @@
       ui.monitorWindow.addEventListener('change', async () => {
         state.monitorWindowS = Number(ui.monitorWindow.value) || 1;
         logUiAction('ui.monitor_window_change', { value: state.monitorWindowS });
-        if (state.mode === 'monitor') {
+        if (state.mode === 'overview') {
           await refreshActivitySnapshot({ anchorCursor: state.followLiveEdge ? null : state.cursor });
         }
       });
@@ -6603,7 +6603,7 @@
       ui.monitorLookback.addEventListener('change', async () => {
         state.monitorLookbackS = Number(ui.monitorLookback.value) || 15;
         logUiAction('ui.monitor_lookback_change', { value: state.monitorLookbackS });
-        if (state.mode === 'monitor') {
+        if (state.mode === 'overview') {
           await refreshActivitySnapshot({ anchorCursor: state.followLiveEdge ? null : state.cursor });
         }
       });
@@ -6611,7 +6611,7 @@
       ui.monitorClass.addEventListener('change', async () => {
         state.monitorClasses = ui.monitorClass.value ? [ui.monitorClass.value] : [];
         logUiAction('ui.monitor_class_change', { value: state.monitorClasses.slice() });
-        if (state.mode === 'monitor') {
+        if (state.mode === 'overview') {
           await refreshActivitySnapshot({ anchorCursor: state.followLiveEdge ? null : state.cursor });
         }
       });
@@ -6715,7 +6715,7 @@
           node_regex: ui.nodeRegex.value.trim(),
         });
         await fetchAndRenderSubgraph();
-        if (state.mode === 'monitor') {
+        if (state.mode === 'overview') {
           await refreshActivitySnapshot({ anchorCursor: state.followLiveEdge ? null : state.cursor });
         } else if (state.mode === 'replay') {
           await loadFromCursor(state.cursor);
@@ -6791,7 +6791,7 @@
         if (nextCursor !== state.cursor) {
           logUiAction('ui.timeline_input', { cursor: nextCursor });
           state.cursor = nextCursor;
-          state.followLiveEdge = state.mode === 'monitor' && isAtLiveEdge(nextCursor);
+          state.followLiveEdge = state.mode === 'overview' && isAtLiveEdge(nextCursor);
           syncModeFlags();
           syncCursorUi();
           updateKpis();
@@ -6805,7 +6805,7 @@
         state.cursor = nextCursor;
         syncCursorUi();
         updateKpis();
-        if (state.mode === 'monitor') {
+        if (state.mode === 'overview') {
           state.followLiveEdge = isAtLiveEdge(nextCursor);
           syncModeFlags();
           await refreshActivitySnapshot({ anchorCursor: state.followLiveEdge ? null : nextCursor });
@@ -6827,7 +6827,7 @@
 
       ui.maxNodes.addEventListener('change', () => {
         logUiAction('ui.max_nodes_change', { value: ui.maxNodes.value });
-        if (state.mode === 'monitor') refreshActivitySnapshot({ anchorCursor: state.followLiveEdge ? null : state.cursor });
+        if (state.mode === 'overview') refreshActivitySnapshot({ anchorCursor: state.followLiveEdge ? null : state.cursor });
         fetchAndRenderSubgraph();
       });
 
@@ -7215,7 +7215,7 @@
       document.addEventListener('visibilitychange', () => {
         // When the tab regains focus, immediately rescheduling resumes the
         // 1s cadence; when hidden, the next tick will pick up the slow cadence.
-        if (!document.hidden && state.mode === 'monitor' && state.runId) {
+        if (!document.hidden && state.mode === 'overview' && state.runId) {
           scheduleActivityPolling(true);
         }
       });
@@ -7966,7 +7966,7 @@
         if (typeof state === "undefined") return;
         const resultsPanel = findResultsPanel();
         if (resultsPanel) {
-          resultsPanel.hidden = state.mode !== "results";
+          resultsPanel.hidden = state.mode !== "configuration";
         }
       }
 

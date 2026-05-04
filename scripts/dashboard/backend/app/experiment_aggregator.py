@@ -356,6 +356,10 @@ class ExperimentAggregator:
                     "display_name": summary.display_name,
                     "profile_id": summary.experiment_profile_id,
                     "status": summary.status,
+                    # Expose parameter_values so the dashboard can show
+                    # which axes differ across the compared runs and
+                    # later plot metric vs sweep parameter.
+                    "parameter_values": dict(summary.parameter_values or {}),
                 }
                 for summary in run_summaries
             ],

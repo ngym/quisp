@@ -133,6 +133,37 @@
     }
     .warning-banner ul { margin: 0; padding-left: 18px; }
     .warning-banner li + li { margin-top: 2px; }
+    .compare-shared {
+      margin: 6px 0;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(103, 144, 214, 0.22);
+      background: rgba(7, 18, 43, 0.55);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+    .compare-shared .label { color: #9fb3db; margin-right: 6px; }
+    .compare-shared code {
+      background: rgba(82, 214, 255, 0.08);
+      border-radius: 4px;
+      padding: 0 4px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .compare-plot {
+      margin: 6px 0 8px;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid rgba(103, 144, 214, 0.32);
+      background: rgba(7, 18, 43, 0.6);
+    }
+    .compare-plot svg { display: block; width: 100%; height: auto; }
+    .compare-plot .axis-label { fill: #9fb3db; font-size: 10px; }
+    .compare-plot .tick-label { fill: #c9d8ff; font-size: 10px; }
+    .compare-plot .grid-line { stroke: rgba(103, 144, 214, 0.18); }
+    .compare-plot .data-line { stroke-width: 1.6; fill: none; }
+    .compare-plot .data-point { stroke-width: 1; }
+    .table-lite tr.compare-param-row td { color: #c9d8ff; font-size: 11px; }
+    .table-lite tr.compare-param-row td:first-child { color: #9bdfff; }
     .canvasWrap {
       height: min(72vh, 720px);
       position: relative;
@@ -932,14 +963,11 @@
         </div>
         <div id="experimentCompareQueue" class="compare-tags"></div>
         <div class="help">`比較+` を押した run を最大5件まで比較します。</div>
+        <div id="experimentCompareSharedParams" class="muted compare-shared" hidden></div>
+        <div id="experimentComparePlot" class="compare-plot" hidden></div>
         <div class="list">
           <table class="table-lite">
-            <thead>
-              <tr>
-                <th>Metric</th>
-                <th id="experimentCompareHead"></th>
-              </tr>
-            </thead>
+            <thead id="experimentCompareTableHead"></thead>
             <tbody id="experimentCompareBody"></tbody>
           </table>
         </div>
@@ -1213,8 +1241,10 @@
       experimentFailureReasons: document.getElementById('experimentFailureReasons'),
       experimentLinkQualityBody: document.getElementById('experimentLinkQualityBody'),
       experimentCompareQueue: document.getElementById('experimentCompareQueue'),
-      experimentCompareHead: document.getElementById('experimentCompareHead'),
+      experimentCompareTableHead: document.getElementById('experimentCompareTableHead'),
       experimentCompareBody: document.getElementById('experimentCompareBody'),
+      experimentCompareSharedParams: document.getElementById('experimentCompareSharedParams'),
+      experimentComparePlot: document.getElementById('experimentComparePlot'),
       eventList: document.getElementById('eventList'),
       legend: document.getElementById('eventLegend'),
       canvas: document.getElementById('topologyCanvas'),
@@ -2099,29 +2129,122 @@
       }
     }
 
+    function partitionCompareParameters(runs) {
+      const allKeys = new Set();
+      for (const run of runs) {
+        for (const key of Object.keys(run.parameter_values || {})) {
+          allKeys.add(key);
+        }
+      }
+      const shared = {};
+      const differing = [];
+      for (const key of allKeys) {
+        const values = runs.map((run) => (run.parameter_values || {})[key]);
+        const unique = new Set(values.map((v) => JSON.stringify(v)));
+        if (unique.size === 1) {
+          shared[key] = values[0];
+        } else {
+          differing.push(key);
+        }
+      }
+      // Sort differing keys for stable display.
+      differing.sort();
+      return { shared, differing };
+    }
+
+    function renderCompareTableHead(runs) {
+      if (!ui.experimentCompareTableHead) return;
+      const headerCells = runs.map((run) => {
+        const suffix = shortRunIdSuffix(run.run_id);
+        const label = run.display_name || run.run_id;
+        return `<th title="${escapeHtml(run.run_id)}">${escapeHtml(label)}<div class="muted">#${escapeHtml(suffix)}</div></th>`;
+      }).join('');
+      ui.experimentCompareTableHead.innerHTML = `<tr><th>Metric / Parameter</th>${headerCells}</tr>`;
+    }
+
+    function renderCompareSharedParams(shared) {
+      if (!ui.experimentCompareSharedParams) return;
+      const entries = Object.entries(shared);
+      if (!entries.length) {
+        ui.experimentCompareSharedParams.hidden = true;
+        ui.experimentCompareSharedParams.innerHTML = '';
+        return;
+      }
+      const html = entries
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([key, value]) => `<span class="label">${escapeHtml(key)}</span><code>${escapeHtml(JSON.stringify(value))}</code>`)
+        .join(' · ');
+      ui.experimentCompareSharedParams.innerHTML = `<strong>shared:</strong> ${html}`;
+      ui.experimentCompareSharedParams.hidden = false;
+    }
+
     function renderExperimentComparison(response) {
       state.experimentComparison = response || null;
       if (!response || !Array.isArray(response.runs) || response.runs.length === 0) {
-        ui.experimentCompareHead.textContent = '';
+        if (ui.experimentCompareTableHead) {
+          ui.experimentCompareTableHead.innerHTML = '<tr><th>Metric / Parameter</th><th></th></tr>';
+        }
         ui.experimentCompareBody.innerHTML = '<tr><td colspan="2" class="muted">compare queue is empty</td></tr>';
+        if (ui.experimentCompareSharedParams) {
+          ui.experimentCompareSharedParams.hidden = true;
+          ui.experimentCompareSharedParams.innerHTML = '';
+        }
+        if (ui.experimentComparePlot) {
+          ui.experimentComparePlot.hidden = true;
+          ui.experimentComparePlot.innerHTML = '';
+        }
         return;
       }
-      ui.experimentCompareHead.textContent = response.runs.map((run) => run.display_name || run.run_id).join(' / ');
-      const rows = [];
+      const runs = response.runs;
+      const colCount = runs.length + 1;
+      renderCompareTableHead(runs);
+
+      const { shared, differing } = partitionCompareParameters(runs);
+      renderCompareSharedParams(shared);
+
+      const rowsHtml = [];
+
+      // Parameter rows: only the keys that actually differ across the
+      // compared runs. Researchers care about the sweep axis, not about
+      // the constants every run shares.
+      for (const key of differing) {
+        const cells = runs.map((run) => {
+          const value = (run.parameter_values || {})[key];
+          if (value == null) return '<td class="muted">--</td>';
+          return `<td class="mono">${escapeHtml(JSON.stringify(value))}</td>`;
+        }).join('');
+        rowsHtml.push(`<tr class="compare-param-row"><td class="mono">${escapeHtml(key)}</td>${cells}</tr>`);
+      }
+
+      if (differing.length > 0 && (response.metric_rows || []).length > 0) {
+        rowsHtml.push(`<tr><td colspan="${colCount}" class="muted" style="border-top:1px solid rgba(103,144,214,0.32);padding-top:6px;">— metrics —</td></tr>`);
+      }
+
       for (const row of response.metric_rows || []) {
-        const values = response.runs.map((run) => {
+        const cells = runs.map((run) => {
           const value = row[run.run_id];
           if (value == null || value === 'unavailable') {
-            return `<div class="muted">unavailable</div>`;
+            return `<td class="muted">unavailable</td>`;
           }
           if (typeof value === 'object') {
-            return `<div>mean ${formatExperimentValue(value.mean)}</div><div class="muted">p95 ${formatExperimentValue(value.p95)}</div>`;
+            return `<td><div>mean ${formatExperimentValue(value.mean)}</div><div class="muted">p95 ${formatExperimentValue(value.p95)}</div></td>`;
           }
-          return `<div>${formatExperimentValue(value)}</div>`;
+          return `<td>${formatExperimentValue(value)}</td>`;
         }).join('');
-        rows.push(`<tr><td class="mono">${row.metric_id}</td><td>${values}</td></tr>`);
+        rowsHtml.push(`<tr><td class="mono">${escapeHtml(row.metric_id)}</td>${cells}</tr>`);
       }
-      ui.experimentCompareBody.innerHTML = rows.join('') || '<tr><td colspan="2" class="muted">no metrics</td></tr>';
+
+      ui.experimentCompareBody.innerHTML = rowsHtml.join('') || `<tr><td colspan="${colCount}" class="muted">no metrics</td></tr>`;
+
+      // Plot is rendered by a separate function so we can extend it later.
+      renderComparePlot(response, differing);
+    }
+
+    function renderComparePlot(_response, _differingKeys) {
+      // Placeholder: line/scatter chart is wired in a follow-up commit.
+      if (!ui.experimentComparePlot) return;
+      ui.experimentComparePlot.hidden = true;
+      ui.experimentComparePlot.innerHTML = '';
     }
 
     async function refreshExperimentComparison() {

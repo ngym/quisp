@@ -692,6 +692,34 @@
     }
     .section-stub h2 { margin: 0 0 8px; color: #ffffff; }
     .section-stub p { margin: 4px 0; }
+    .library-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+    }
+    @media (max-width: 1100px) { .library-grid { grid-template-columns: 1fr; } }
+    .library-grid table.table-lite tbody td { vertical-align: top; padding: 6px 8px; }
+    .library-grid h3 { color: #d4e3ff; font-size: 13px; }
+    .library-shell .config-chip {
+      display: inline-block;
+      margin: 2px 4px 0 0;
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid rgba(103, 144, 214, 0.32);
+      font-size: 11px;
+      color: #c9d8ff;
+      background: rgba(7, 18, 43, 0.55);
+    }
+    .library-open-btn {
+      background: rgba(82, 214, 255, 0.16);
+      border: 1px solid rgba(82, 214, 255, 0.45);
+      color: #9bdfff;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .library-open-btn:hover { background: rgba(82, 214, 255, 0.28); color: #ffffff; }
     body[data-view="run"] .section-nav { display: none; }
     [data-section-only] { display: none; }
     body[data-section="studies"] [data-section-only="studies"] { display: block; }
@@ -738,10 +766,30 @@
       <button id="navSettings" type="button" aria-selected="false" data-section-target="settings">Settings</button>
     </nav>
 
-    <div data-section-only="library" class="section-stub">
-      <h2>Library</h2>
-      <p>Template / Config / Override などの再利用可能な定義を整理する場所です。</p>
-      <p class="muted">現状はプレースホルダー。Phase 3 で Studies の中の重複を吸収しつつ実装していきます。</p>
+    <div data-section-only="library" class="library-shell">
+      <div class="panel" style="margin-top:12px;">
+        <div class="section-title">
+          <span>Library</span>
+          <span class="status muted">読み取り専用 — 編集は Phase 3-B で</span>
+        </div>
+        <p class="muted" style="margin:0 0 10px;">QuISP に登録済みの Template / Config と、ダッシュボードが認識している Experiment Profile の一覧です。リンクから Studies に戻るとそのまま起動できます。</p>
+        <div class="library-grid">
+          <section>
+            <h3 style="margin:0 0 6px;">Templates</h3>
+            <table class="table-lite" style="width:100%;">
+              <thead><tr><th>Template</th><th>Configs</th></tr></thead>
+              <tbody id="libraryTemplatesBody"><tr><td colspan="2" class="muted">loading…</td></tr></tbody>
+            </table>
+          </section>
+          <section>
+            <h3 style="margin:0 0 6px;">Experiment Profiles</h3>
+            <table class="table-lite" style="width:100%;">
+              <thead><tr><th>Profile</th><th>Template / Config</th><th></th></tr></thead>
+              <tbody id="libraryProfilesBody"><tr><td colspan="3" class="muted">loading…</td></tr></tbody>
+            </table>
+          </section>
+        </div>
+      </div>
     </div>
 
     <div data-section-only="settings" class="section-stub">
@@ -6828,6 +6876,48 @@
       return match ? match[1] : 'studies';
     }
 
+    function renderLibrary() {
+      const templatesBody = document.getElementById('libraryTemplatesBody');
+      const profilesBody = document.getElementById('libraryProfilesBody');
+      if (templatesBody) {
+        const ids = Object.keys(state.simTemplateConfigs || {}).sort();
+        if (!ids.length) {
+          templatesBody.innerHTML = '<tr><td colspan="2" class="muted">テンプレートが取得できませんでした</td></tr>';
+        } else {
+          templatesBody.innerHTML = ids.map((tid) => {
+            const configs = state.simTemplateConfigs[tid] || [];
+            const chips = configs.length
+              ? configs.map((c) => `<span class="config-chip">${escapeHtml(c)}</span>`).join('')
+              : '<span class="muted">-</span>';
+            return `<tr><td class="mono" style="word-break:break-all;">${escapeHtml(tid)}</td><td>${chips}</td></tr>`;
+          }).join('');
+        }
+      }
+      if (profilesBody) {
+        const profiles = Array.isArray(state.experimentProfiles) ? state.experimentProfiles : [];
+        if (!profiles.length) {
+          profilesBody.innerHTML = '<tr><td colspan="3" class="muted">登録された Experiment Profile が見つかりません</td></tr>';
+        } else {
+          profilesBody.innerHTML = profiles.map((profile) => {
+            const label = profile.display_name || profile.profile_id;
+            const tpl = `${profile.template_id || '--'}<div class="muted" style="font-size:11px;">${escapeHtml(profile.config_name || '--')}</div>`;
+            return `<tr><td>${escapeHtml(label)}<div class="muted" style="font-size:11px;">${escapeHtml(profile.profile_id)}</div></td><td class="mono">${tpl}</td><td><button class="library-open-btn" data-profile-open="${escapeHtml(profile.profile_id)}">Studies で使う</button></td></tr>`;
+          }).join('');
+        }
+        profilesBody.querySelectorAll('button[data-profile-open]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const profileId = btn.getAttribute('data-profile-open');
+            setSection('studies');
+            if (ui.experimentProfile && profileId) {
+              ui.experimentProfile.value = profileId;
+              ui.experimentProfile.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            logUiAction('ui.library_open_profile', { profile_id: profileId });
+          });
+        });
+      }
+    }
+
     function attachVisibilityHandler() {
       if (typeof document === 'undefined' || !document.addEventListener) return;
       document.addEventListener('visibilitychange', () => {
@@ -6864,6 +6954,7 @@
       });
       renderExperimentCompareQueue();
       syncHypothesisFromProfile();
+      renderLibrary();
       setSection(readSectionFromHash());
       const initialNav = readShellViewFromHash();
       if (initialNav.view === 'run' && initialNav.runId) {

@@ -1850,6 +1850,30 @@
       });
       renderCampaignTracker(campaign);
       await Promise.all([loadRuns(), loadSimRuns()]);
+      // Hand the launched runs straight to the compare view so the
+      // researcher lands on the sweep plot once the runs finish, rather
+      // than having to dig the runs out of the job list and click
+      // 比較+ on each one. Cap to 5 (the existing compare-queue limit).
+      if (Array.isArray(campaign.run_specs)) {
+        const launched = campaign.run_specs.map((spec) => spec.run_id).filter(Boolean);
+        if (launched.length > 0) {
+          const seen = new Set();
+          const merged = [];
+          for (const id of [...launched, ...state.experimentCompareRunIds]) {
+            if (seen.has(id)) continue;
+            seen.add(id);
+            merged.push(id);
+            if (merged.length >= 5) break;
+          }
+          state.experimentCompareRunIds = merged;
+          renderExperimentCompareQueue();
+          refreshExperimentComparison().catch(() => {});
+          logUiAction('ui.compare_auto_attach', {
+            campaign_id: campaign.campaign_id,
+            run_ids: launched,
+          });
+        }
+      }
       return campaign;
     }
 

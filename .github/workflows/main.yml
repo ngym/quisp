@@ -10,7 +10,12 @@ jobs:
       image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        # Use a personal access token with `read:packages` scope (stored as the
+        # `GHCR_PAT` repo secret) instead of GITHUB_TOKEN: the default workflow
+        # token cannot pull this private container even with `permissions:
+        # packages: read`, which fails the unit/module/sim/clang-* jobs at the
+        # "Starting job container" step.
+        password: ${{ secrets.GHCR_PAT }}
     steps:
       - name: work around permission issue
         run: git config --global --add safe.directory /__w/quisp/quisp
@@ -45,7 +50,12 @@ jobs:
       image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        # Use a personal access token with `read:packages` scope (stored as the
+        # `GHCR_PAT` repo secret) instead of GITHUB_TOKEN: the default workflow
+        # token cannot pull this private container even with `permissions:
+        # packages: read`, which fails the unit/module/sim/clang-* jobs at the
+        # "Starting job container" step.
+        password: ${{ secrets.GHCR_PAT }}
     steps:
       - name: work around permission issue
         run: git config --global --add safe.directory /__w/quisp/quisp
@@ -71,7 +81,12 @@ jobs:
       image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        # Use a personal access token with `read:packages` scope (stored as the
+        # `GHCR_PAT` repo secret) instead of GITHUB_TOKEN: the default workflow
+        # token cannot pull this private container even with `permissions:
+        # packages: read`, which fails the unit/module/sim/clang-* jobs at the
+        # "Starting job container" step.
+        password: ${{ secrets.GHCR_PAT }}
     steps:
       - name: work around permission issue
         run: git config --global --add safe.directory /__w/quisp/quisp
@@ -109,7 +124,12 @@ jobs:
       image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        # Use a personal access token with `read:packages` scope (stored as the
+        # `GHCR_PAT` repo secret) instead of GITHUB_TOKEN: the default workflow
+        # token cannot pull this private container even with `permissions:
+        # packages: read`, which fails the unit/module/sim/clang-* jobs at the
+        # "Starting job container" step.
+        password: ${{ secrets.GHCR_PAT }}
     steps:
       - name: work around permission issue
         run: git config --global --add safe.directory /__w/quisp/quisp
@@ -135,7 +155,12 @@ jobs:
       image: ghcr.io/ngym/quisp-ci:omnetpp-6.3.0
       credentials:
         username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
+        # Use a personal access token with `read:packages` scope (stored as the
+        # `GHCR_PAT` repo secret) instead of GITHUB_TOKEN: the default workflow
+        # token cannot pull this private container even with `permissions:
+        # packages: read`, which fails the unit/module/sim/clang-* jobs at the
+        # "Starting job container" step.
+        password: ${{ secrets.GHCR_PAT }}
     steps:
       - name: work around permission issue
         run: git config --global --add safe.directory /__w/quisp/quisp

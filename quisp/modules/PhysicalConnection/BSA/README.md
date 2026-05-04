@@ -96,13 +96,24 @@ def process_indistinguish_photons(p, q):
     # OMNeT logic only consumes the classical outcome pattern.
     detection = backend_detection(p, q)
 
-    if detection.outcome_pattern in {'dAh,dBv', 'dAv,dBh'}:
-        # ψ− outcome
-        # Pauli-X correction
-        return 'success', 'Psi+' | 'Psi-'
     if detection.outcome_pattern in {'dAh,dAv', 'dBh,dBv'}:
         # ψ+ outcome
-        # Pauli-Z correction
-        return 'success', 'Psi+' | 'Psi-'
+        # Pauli-X correction
+        return 'success', 'Phi+'
+    if detection.outcome_pattern in {'dAh,dBv', 'dAv,dBh'}:
+        # ψ− outcome
+        # Pauli-Y correction
+        return 'success', 'Phi+'
     return 'fail'
 ```
+
+### BSA correction convention
+Memory-photon entanglement on each side is prepared as $\ket{\Phi^+} = (\ket{00}+\ket{11})/\sqrt{2}$ via H + CNOT. The swap-test identity then gives
+$$\ket{\Phi^+}_{M_A P_A} \otimes \ket{\Phi^+}_{M_B P_B} = \tfrac{1}{2}\sum_\beta \ket{\beta}_{M_A M_B}\otimes\ket{\beta}_{P_A P_B},$$
+so projecting the two photons onto Bell state $\ket{\beta}$ leaves the two memories in $\ket{\beta}$. Tomography compares against $\ket{\Phi^+}$, so the right-side memory is steered back to $\ket{\Phi^+}$:
+
+| Detection pattern | Photon Bell state | Memories left in | Correction (right side) |
+| --- | --- | --- | --- |
+| `dAh,dAv` or `dBh,dBv` | $\ket{\psi^+}$ | $\ket{\psi^+}$ | $X$  ($X_B\ket{\psi^+} = \ket{\Phi^+}$) |
+| `dAh,dBv` or `dAv,dBh` | $\ket{\psi^-}$ | $\ket{\psi^-}$ | $Y$  ($Y_B\ket{\psi^-} = -i\ket{\Phi^+}$) |
+| `dAh`, `dAv`, `dBh`, `dBv`, `none` | $\phi$-like / single | indistinguishable in linear optics | failure |

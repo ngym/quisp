@@ -2240,11 +2240,183 @@
       renderComparePlot(response, differing);
     }
 
-    function renderComparePlot(_response, _differingKeys) {
-      // Placeholder: line/scatter chart is wired in a follow-up commit.
-      if (!ui.experimentComparePlot) return;
-      ui.experimentComparePlot.hidden = true;
-      ui.experimentComparePlot.innerHTML = '';
+    function pickPlottableParameter(differingKeys, runs) {
+      // Plot needs a single sweep axis whose values are numeric.
+      // If multiple parameters differ, prefer the one with the most
+      // distinct numeric values (the "primary" axis).
+      let best = null;
+      let bestDistinct = 0;
+      for (const key of differingKeys) {
+        const numericValues = [];
+        for (const run of runs) {
+          const raw = (run.parameter_values || {})[key];
+          const num = Number(raw);
+          if (raw == null || Number.isNaN(num)) {
+            continue;
+          }
+          numericValues.push(num);
+        }
+        if (numericValues.length === runs.length) {
+          const distinct = new Set(numericValues).size;
+          if (distinct > bestDistinct) {
+            best = { key, values: numericValues };
+            bestDistinct = distinct;
+          }
+        }
+      }
+      return best;
+    }
+
+    function metricScalarSeries(metricRow, runs) {
+      // Returns numbers aligned with runs[]; null where metric is
+      // unavailable. distribution metrics use mean.
+      const out = [];
+      for (const run of runs) {
+        const raw = metricRow[run.run_id];
+        if (raw == null || raw === 'unavailable') {
+          out.push(null);
+          continue;
+        }
+        if (typeof raw === 'object') {
+          const mean = Number(raw.mean);
+          out.push(Number.isFinite(mean) ? mean : null);
+        } else {
+          const num = Number(raw);
+          out.push(Number.isFinite(num) ? num : null);
+        }
+      }
+      return out;
+    }
+
+    const COMPARE_PLOT_COLORS = ['#7dffad', '#ffd96e', '#ff9cab', '#9bdfff', '#c39bff'];
+
+    function renderComparePlot(response, differingKeys) {
+      const el = ui.experimentComparePlot;
+      if (!el) return;
+      const runs = response.runs || [];
+      if (runs.length < 2) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+      }
+      const axis = pickPlottableParameter(differingKeys, runs);
+      if (!axis) {
+        // No single numeric sweep axis — nothing to plot meaningfully yet.
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+      }
+
+      // Build per-metric series, sorted by sweep-axis x-value.
+      const metricRows = (response.metric_rows || []).filter((row) => {
+        const series = metricScalarSeries(row, runs);
+        return series.some((value) => value != null);
+      });
+      if (!metricRows.length) {
+        el.hidden = true;
+        el.innerHTML = '';
+        return;
+      }
+      const order = axis.values
+        .map((value, index) => ({ value, index }))
+        .sort((a, b) => a.value - b.value);
+      const xValues = order.map((entry) => entry.value);
+
+      // Plot up to 4 metrics to keep the legend readable.
+      const plottedMetrics = metricRows.slice(0, 4).map((row, mIndex) => {
+        const series = metricScalarSeries(row, runs);
+        return {
+          metric_id: row.metric_id,
+          color: COMPARE_PLOT_COLORS[mIndex % COMPARE_PLOT_COLORS.length],
+          points: order.map((entry) => ({ x: entry.value, y: series[entry.index] })),
+        };
+      });
+
+      const width = 320;
+      const height = 200;
+      const margin = { top: 14, right: 12, bottom: 32, left: 44 };
+      const innerW = width - margin.left - margin.right;
+      const innerH = height - margin.top - margin.bottom;
+
+      const xMin = Math.min(...xValues);
+      const xMax = Math.max(...xValues);
+      const xRange = xMax - xMin || 1;
+
+      const allYs = plottedMetrics.flatMap((m) => m.points.map((p) => p.y).filter((y) => y != null));
+      const yMin = allYs.length ? Math.min(...allYs) : 0;
+      const yMax = allYs.length ? Math.max(...allYs) : 1;
+      const yPad = (yMax - yMin) * 0.1 || Math.abs(yMax) * 0.1 || 1;
+      const yLo = yMin - yPad;
+      const yHi = yMax + yPad;
+      const yRange = yHi - yLo || 1;
+
+      const xPos = (x) => margin.left + ((x - xMin) / xRange) * innerW;
+      const yPos = (y) => margin.top + (1 - (y - yLo) / yRange) * innerH;
+
+      const gridLinesY = 4;
+      const grid = [];
+      for (let i = 0; i <= gridLinesY; i += 1) {
+        const t = i / gridLinesY;
+        const yValue = yLo + t * yRange;
+        const yp = margin.top + (1 - t) * innerH;
+        grid.push(`<line class="grid-line" x1="${margin.left}" x2="${margin.left + innerW}" y1="${yp}" y2="${yp}" />`);
+        grid.push(`<text class="tick-label" text-anchor="end" x="${margin.left - 4}" y="${yp + 3}">${formatCompactNumber(yValue)}</text>`);
+      }
+
+      const xTicks = [];
+      const tickValues = Array.from(new Set(xValues)).sort((a, b) => a - b);
+      for (const xv of tickValues) {
+        const xp = xPos(xv);
+        xTicks.push(`<line class="grid-line" y1="${margin.top}" y2="${margin.top + innerH}" x1="${xp}" x2="${xp}" />`);
+        xTicks.push(`<text class="tick-label" text-anchor="middle" x="${xp}" y="${margin.top + innerH + 14}">${formatCompactNumber(xv)}</text>`);
+      }
+
+      const seriesPaths = plottedMetrics.map((metric) => {
+        const segments = [];
+        let path = '';
+        for (const pt of metric.points) {
+          if (pt.y == null) {
+            path = '';
+            continue;
+          }
+          const cmd = path ? 'L' : 'M';
+          path += `${cmd}${xPos(pt.x).toFixed(2)},${yPos(pt.y).toFixed(2)} `;
+        }
+        const points = metric.points
+          .filter((pt) => pt.y != null)
+          .map((pt) => `<circle class="data-point" cx="${xPos(pt.x).toFixed(2)}" cy="${yPos(pt.y).toFixed(2)}" r="3" fill="${metric.color}" stroke="${metric.color}" />`)
+          .join('');
+        segments.push(`<path class="data-line" stroke="${metric.color}" d="${path.trim()}" />`);
+        segments.push(points);
+        return segments.join('');
+      }).join('');
+
+      const legend = plottedMetrics.map((m) => `<span class="legendItem"><span class="legendSwatch" style="background:${m.color}"></span>${escapeHtml(m.metric_id)}</span>`).join('');
+
+      el.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9fb3db;">
+          <strong style="color:#d4e3ff;">Sweep plot</strong>
+          <span>x = <code>${escapeHtml(axis.key)}</code></span>
+        </div>
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="parameter vs metric plot">
+          ${grid.join('')}
+          ${xTicks.join('')}
+          ${seriesPaths}
+          <text class="axis-label" x="${margin.left + innerW / 2}" y="${height - 4}" text-anchor="middle">${escapeHtml(axis.key)}</text>
+        </svg>
+        <div class="legend" style="position:static;left:auto;right:auto;bottom:auto;flex-wrap:wrap;gap:6px;margin-top:4px;">${legend}</div>
+      `;
+      el.hidden = false;
+    }
+
+    function formatCompactNumber(value) {
+      if (value == null || Number.isNaN(value)) return '--';
+      const abs = Math.abs(value);
+      if (abs === 0) return '0';
+      if (abs < 0.01 || abs >= 1000) return value.toExponential(2);
+      if (abs < 1) return value.toFixed(3);
+      if (abs < 100) return value.toFixed(2);
+      return value.toFixed(1);
     }
 
     async function refreshExperimentComparison() {

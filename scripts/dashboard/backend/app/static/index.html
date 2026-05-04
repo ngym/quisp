@@ -658,9 +658,55 @@
     body[data-view="run"] .back-to-list-btn { display: inline-flex; }
     body[data-view="run"] .topbar-tagline { display: none; }
     body[data-view="list"] .topbar-tagline { color: #9fb3db; font-size: 11px; }
+    /* Section nav (Studies / Library / Settings) — only visible in list view. */
+    .section-nav {
+      display: flex;
+      gap: 4px;
+      padding: 0 4px;
+      margin: 8px 0 0;
+      border-bottom: 1px solid rgba(103, 144, 214, 0.22);
+    }
+    .section-nav button {
+      background: transparent;
+      border: none;
+      color: #9fb3db;
+      font-size: 13px;
+      padding: 8px 14px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 120ms ease, border-color 120ms ease;
+    }
+    .section-nav button:hover { color: #d4e3ff; }
+    .section-nav button[aria-selected="true"] {
+      color: #ffffff;
+      border-bottom-color: #9bdfff;
+    }
+    .section-stub {
+      padding: 32px;
+      border: 1px dashed rgba(103, 144, 214, 0.35);
+      border-radius: 10px;
+      background: rgba(7, 18, 43, 0.55);
+      color: #c9d8ff;
+      margin-top: 12px;
+    }
+    .section-stub h2 { margin: 0 0 8px; color: #ffffff; }
+    .section-stub p { margin: 4px 0; }
+    body[data-view="run"] .section-nav { display: none; }
+    [data-section-only] { display: none; }
+    body[data-section="studies"] [data-section-only="studies"] { display: block; }
+    body[data-section="library"] [data-section-only="library"] { display: block; }
+    body[data-section="settings"] [data-section-only="settings"] { display: block; }
+    /* When the user is in Library/Settings, hide the Studies workspace
+       (Setup sidebar, canvas, comparison) so the placeholder isn't
+       drowned out. Run detail (data-view="run") ignores the section. */
+    body[data-section="library"][data-view="list"] .layout,
+    body[data-section="library"][data-view="list"] .grid2,
+    body[data-section="settings"][data-view="list"] .layout,
+    body[data-section="settings"][data-view="list"] .grid2 { display: none; }
   </style>
 </head>
-<body data-view="list">
+<body data-view="list" data-section="studies">
   <div class="shell">
     <div class="topbar panel">
       <div class="topbar-nav">
@@ -684,6 +730,24 @@
         </label>
         <span id="cursorLabel" class="status">cursor:0</span>
       </div>
+    </div>
+
+    <nav class="section-nav" aria-label="Top sections">
+      <button id="navStudies" type="button" aria-selected="true" data-section-target="studies">Studies</button>
+      <button id="navLibrary" type="button" aria-selected="false" data-section-target="library">Library</button>
+      <button id="navSettings" type="button" aria-selected="false" data-section-target="settings">Settings</button>
+    </nav>
+
+    <div data-section-only="library" class="section-stub">
+      <h2>Library</h2>
+      <p>Template / Config / Override などの再利用可能な定義を整理する場所です。</p>
+      <p class="muted">現状はプレースホルダー。Phase 3 で Studies の中の重複を吸収しつつ実装していきます。</p>
+    </div>
+
+    <div data-section-only="settings" class="section-stub">
+      <h2>Settings</h2>
+      <p>QuISP バイナリのパス、出力先、表示モードなどダッシュボード全体の設定。</p>
+      <p class="muted">現状はプレースホルダー。<code>DASHBOARD_*</code> 環境変数経由で代替できます。</p>
     </div>
 
     <div id="runAlert" class="panel failure-banner run-only" data-level="bad" hidden>
@@ -5976,6 +6040,17 @@
           setShellView('list', null);
         });
       }
+      for (const id of VALID_SECTIONS) {
+        const btn = document.getElementById('nav' + id.charAt(0).toUpperCase() + id.slice(1));
+        if (!btn) continue;
+        btn.addEventListener('click', () => {
+          if (document.body.dataset.view === 'run') {
+            // From run-detail, switching sections also exits to list.
+            setShellView('list', null);
+          }
+          setSection(id);
+        });
+      }
       window.addEventListener('hashchange', () => {
         const next = readShellViewFromHash();
         if (next.view === 'run' && next.runId && next.runId !== state.runId) {
@@ -6657,6 +6732,32 @@
       return { view: 'list', runId: null };
     }
 
+    const VALID_SECTIONS = ['studies', 'library', 'settings'];
+
+    function setSection(name) {
+      const target = VALID_SECTIONS.includes(name) ? name : 'studies';
+      document.body.dataset.section = target;
+      for (const id of VALID_SECTIONS) {
+        const btn = document.getElementById('nav' + id.charAt(0).toUpperCase() + id.slice(1));
+        if (btn) btn.setAttribute('aria-selected', String(id === target));
+      }
+      // Sync URL hash, but only when not deep-linked into a run.
+      if (!location.hash.startsWith('#/run/')) {
+        const desired = target === 'studies' ? '' : `#/${target}`;
+        if (desired) {
+          history.replaceState(null, '', desired);
+        } else if (location.hash) {
+          history.replaceState(null, '', location.pathname + location.search);
+        }
+      }
+      logUiAction('ui.section_change', { section: target });
+    }
+
+    function readSectionFromHash() {
+      const match = (location.hash || '').match(/^#\/(library|settings|studies)\b/);
+      return match ? match[1] : 'studies';
+    }
+
     function attachVisibilityHandler() {
       if (typeof document === 'undefined' || !document.addEventListener) return;
       document.addEventListener('visibilitychange', () => {
@@ -6692,6 +6793,7 @@
         profileId: ui.experimentProfile.value || null,
       });
       renderExperimentCompareQueue();
+      setSection(readSectionFromHash());
       const initialNav = readShellViewFromHash();
       if (initialNav.view === 'run' && initialNav.runId) {
         // Deep-link from URL hash: open the requested run if it exists.

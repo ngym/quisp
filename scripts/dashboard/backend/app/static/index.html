@@ -850,10 +850,15 @@
             Experiment Profile
             <select id="experimentProfile"></select>
           </label>
-          <label title="このプロファイルで何を確かめたいか。フリーフォーマット。研究ノートに繋げるための短文を想定。ブラウザにローカル保存(プロファイルごと)。">
+          <label title="このプロファイルで何を確かめたいか。フリーフォーマット。バックエンドに保存(scripts/dashboard/studies/<profile_id>.json)。">
             仮説 (任意)
             <textarea id="studyHypothesis" rows="2" placeholder="例: graph_state バックエンドで N=5 リピータの BellPair Rate が p_emit に依らない理由を確認"></textarea>
           </label>
+          <label title="観察ログ・補助メモ。Markdown 記述可。論文ノートに直接コピペ用。">
+            Notes (Markdown 可)
+            <textarea id="studyNotes" rows="4" placeholder="観察ログ・補助メモ。Markdown 記述可。論文ノートに直接コピペ用。"></textarea>
+          </label>
+          <div id="studyUpdatedAt" class="muted" style="font-size:11px;margin-top:-4px;"></div>
           <div id="experimentSchemaStatus" class="help">Structured experiment schema unavailable</div>
           <label>
             Template
@@ -1308,6 +1313,8 @@
       simRunName: document.getElementById('simRunName'),
       experimentProfile: document.getElementById('experimentProfile'),
       studyHypothesis: document.getElementById('studyHypothesis'),
+      studyNotes: document.getElementById('studyNotes'),
+      studyUpdatedAt: document.getElementById('studyUpdatedAt'),
       experimentSchemaStatus: document.getElementById('experimentSchemaStatus'),
       experimentCoreFields: document.getElementById('experimentCoreFields'),
       experimentAdvancedSection: document.getElementById('experimentAdvancedSection'),
@@ -1652,6 +1659,50 @@
           ok: true,
           request_id: requestId,
         });
+      }
+      return response.json();
+    }
+
+    async function apiPut(path, payload, options = {}) {
+      // Thin wrapper around fetch for idempotent upserts (e.g. /studies).
+      // Mirrors apiPost's shape so audit logging and error handling match.
+      const action = options.action || null;
+      const timeoutMs = Number(options.timeout_ms) > 0 ? Number(options.timeout_ms) : 15000;
+      if (action) {
+        logUiAction(`${action}:request`, { path });
+      }
+      const url = new URL(`${API_PREFIX}${path}`, window.location.origin);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(new Error(`timeout after ${timeoutMs}ms`)), timeoutMs);
+      let response;
+      try {
+        response = await fetch(url, {
+          method: 'PUT',
+          headers: action
+            ? { 'content-type': 'application/json', 'x-ui-action': action }
+            : { 'content-type': 'application/json' },
+          body: JSON.stringify(payload || {}),
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+      } catch (err) {
+        clearTimeout(timeoutId);
+        if (action) {
+          logUiAction(`${action}:response`, { path, ok: false, error: String(err && err.message ? err.message : err) });
+        }
+        throw err;
+      }
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        let detail = null;
+        try { detail = (await response.json()).detail; } catch (_e) { detail = await response.text(); }
+        if (action) {
+          logUiAction(`${action}:response`, { path, status: response.status, ok: false, error: detail });
+        }
+        throw new Error(`${response.status} ${detail || ''}`.trim());
+      }
+      if (action) {
+        logUiAction(`${action}:response`, { path, status: response.status, ok: true });
       }
       return response.json();
     }
@@ -6208,24 +6259,33 @@
           configName: ui.simConfig.value,
           profileId: ui.experimentProfile.value || null,
         });
-        syncHypothesisFromProfile();
+        syncStudyFromProfile();
       });
 
-      if (ui.studyHypothesis) {
-        let hypothesisSaveTimer = null;
-        ui.studyHypothesis.addEventListener('input', () => {
-          if (hypothesisSaveTimer) clearTimeout(hypothesisSaveTimer);
-          hypothesisSaveTimer = setTimeout(() => {
+      const wireStudyTextarea = (input, fieldName) => {
+        if (!input) return;
+        let saveTimer = null;
+        input.addEventListener('input', () => {
+          if (saveTimer) clearTimeout(saveTimer);
+          saveTimer = setTimeout(async () => {
             const profileId = ui.experimentProfile && ui.experimentProfile.value;
             if (!profileId) return;
-            saveHypothesisForProfile(profileId, ui.studyHypothesis.value);
-            logUiAction('ui.study_hypothesis_saved', {
+            const record = await persistStudyRecord(profileId, { [fieldName]: input.value });
+            if (record && ui.studyUpdatedAt) {
+              ui.studyUpdatedAt.textContent = record.updated_at
+                ? `保存済み: ${formatRunTimeLabel(record.updated_at) || record.updated_at}`
+                : '';
+            }
+            logUiAction('ui.study_field_saved', {
               profile_id: profileId,
-              length: (ui.studyHypothesis.value || '').length,
+              field: fieldName,
+              length: (input.value || '').length,
             });
-          }, 350);
+          }, 500);
         });
-      }
+      };
+      wireStudyTextarea(ui.studyHypothesis, 'hypothesis');
+      wireStudyTextarea(ui.studyNotes, 'notes');
 
       if (ui.campaignSweepAdd) {
         ui.campaignSweepAdd.addEventListener('click', () => {
@@ -6841,53 +6901,79 @@
     }
 
     const VALID_SECTIONS = ['studies', 'library', 'settings'];
-    const STUDY_HYPOTHESIS_KEY = 'quisp-dashboard-study-hypotheses';
 
-    function loadStudyHypothesisMap() {
+    // Studies annotations (hypothesis / notes) live on the backend, but we
+    // keep an in-memory cache so the textareas don't repeatedly re-fetch
+    // the same record while the user is typing.
+    const studyCache = new Map();
+
+    async function fetchStudyRecord(profileId) {
+      if (!profileId) return null;
+      if (studyCache.has(profileId)) {
+        return studyCache.get(profileId);
+      }
       try {
-        const raw = window.localStorage.getItem(STUDY_HYPOTHESIS_KEY);
-        if (!raw) return {};
-        const parsed = JSON.parse(raw);
-        return parsed && typeof parsed === 'object' ? parsed : {};
+        const record = await apiGet(`/studies/${encodeURIComponent(profileId)}`, {}, { action: 'ui.load_study' });
+        studyCache.set(profileId, record);
+        return record;
       } catch (_e) {
-        return {};
+        const fallback = { profile_id: profileId, hypothesis: '', notes: '', updated_at: null };
+        studyCache.set(profileId, fallback);
+        return fallback;
       }
     }
 
-    function saveStudyHypothesisMap(map) {
+    async function persistStudyRecord(profileId, payload) {
+      if (!profileId) return null;
       try {
-        window.localStorage.setItem(STUDY_HYPOTHESIS_KEY, JSON.stringify(map || {}));
-      } catch (_e) {
-        // localStorage may be disabled (private mode etc.); silently no-op.
+        const record = await apiPut(`/studies/${encodeURIComponent(profileId)}`, payload, { action: 'ui.save_study' });
+        studyCache.set(profileId, record);
+        return record;
+      } catch (err) {
+        logUiAction('ui.save_study:error', { profile_id: profileId, error: String(err && err.message || err) });
+        return null;
       }
     }
 
-    function loadHypothesisForProfile(profileId) {
-      if (!profileId) return '';
-      const map = loadStudyHypothesisMap();
-      return typeof map[profileId] === 'string' ? map[profileId] : '';
-    }
-
-    function saveHypothesisForProfile(profileId, text) {
-      if (!profileId) return;
-      const map = loadStudyHypothesisMap();
-      const trimmed = String(text || '').trim();
-      if (trimmed) {
-        map[profileId] = trimmed;
-      } else {
-        delete map[profileId];
+    function applyStudyRecordToInputs(record) {
+      if (!record) return;
+      if (ui.studyHypothesis) ui.studyHypothesis.value = record.hypothesis || '';
+      if (ui.studyNotes) ui.studyNotes.value = record.notes || '';
+      if (ui.studyUpdatedAt) {
+        ui.studyUpdatedAt.textContent = record.updated_at
+          ? `保存済み: ${formatRunTimeLabel(record.updated_at) || record.updated_at}`
+          : '';
       }
-      saveStudyHypothesisMap(map);
     }
 
-    function syncHypothesisFromProfile() {
-      if (!ui.studyHypothesis) return;
+    async function syncStudyFromProfile() {
       const profileId = ui.experimentProfile && ui.experimentProfile.value;
-      ui.studyHypothesis.value = loadHypothesisForProfile(profileId);
-      ui.studyHypothesis.disabled = !profileId;
-      ui.studyHypothesis.placeholder = profileId
-        ? '例: graph_state バックエンドで N=5 リピータの BellPair Rate が p_emit に依らない理由を確認'
-        : 'プロファイルを選択すると仮説を保存できます';
+      const setEnabled = (input, enabled) => {
+        if (!input) return;
+        input.disabled = !enabled;
+      };
+      setEnabled(ui.studyHypothesis, Boolean(profileId));
+      setEnabled(ui.studyNotes, Boolean(profileId));
+      if (ui.studyHypothesis) {
+        ui.studyHypothesis.placeholder = profileId
+          ? '例: graph_state バックエンドで N=5 リピータの BellPair Rate が p_emit に依らない理由を確認'
+          : 'プロファイルを選択すると仮説を保存できます';
+      }
+      if (ui.studyNotes) {
+        ui.studyNotes.placeholder = profileId
+          ? '観察ログ・補助メモ。Markdown 記述可。論文ノートに直接コピペ用。'
+          : 'プロファイルを選択するとノートを保存できます';
+      }
+      if (ui.studyUpdatedAt) {
+        ui.studyUpdatedAt.textContent = '';
+      }
+      if (!profileId) {
+        if (ui.studyHypothesis) ui.studyHypothesis.value = '';
+        if (ui.studyNotes) ui.studyNotes.value = '';
+        return;
+      }
+      const record = await fetchStudyRecord(profileId);
+      applyStudyRecordToInputs(record);
     }
 
     function setSection(name) {
@@ -6991,7 +7077,7 @@
         profileId: ui.experimentProfile.value || null,
       });
       renderExperimentCompareQueue();
-      syncHypothesisFromProfile();
+      syncStudyFromProfile();
       renderLibrary();
       setSection(readSectionFromHash());
       const initialNav = readShellViewFromHash();

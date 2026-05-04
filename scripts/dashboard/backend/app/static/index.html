@@ -164,6 +164,24 @@
     .compare-plot .data-point { stroke-width: 1; }
     .compare-plot .legend .legendItem { cursor: pointer; user-select: none; opacity: 1; transition: opacity 120ms ease; }
     .compare-plot .legend .legendItem[data-disabled="true"] { opacity: 0.35; text-decoration: line-through; }
+    .compare-plot .legend .legendItem[data-flat="true"] { border-color: rgba(255, 217, 110, 0.65); }
+    .compare-plot .legend .legendItem .flat-marker {
+      display: inline-block;
+      margin-left: 4px;
+      color: #ffd96e;
+      font-size: 10px;
+      letter-spacing: 0.05em;
+    }
+    .compare-plot .flat-banner {
+      margin-top: 4px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      border: 1px solid rgba(255, 217, 110, 0.45);
+      background: rgba(255, 217, 110, 0.08);
+      color: #ffd96e;
+      font-size: 11px;
+      line-height: 1.4;
+    }
     .table-lite tr.compare-param-row td { color: #c9d8ff; font-size: 11px; }
     .table-lite tr.compare-param-row td:first-child { color: #9bdfff; }
     .info-icon {
@@ -2611,6 +2629,25 @@
     }
 
     const COMPARE_PLOT_COLORS = ['#7dffad', '#ffd96e', '#ff9cab', '#9bdfff', '#c39bff'];
+    const COMPARE_FLAT_COV_THRESHOLD = 0.005;  // <0.5% relative variation = flat
+
+    function classifyMetricFlatness(aggregated) {
+      // Returns one of: 'varying' | 'flat' | 'insufficient'.
+      // 'flat' means the sweep parameter clearly has no effect on this
+      // metric — used to flag a possibly-misconfigured experiment in
+      // the legend and as a banner under the plot.
+      const means = aggregated.map((p) => p.mean).filter((v) => v != null && Number.isFinite(v));
+      if (means.length < 2) return 'insufficient';
+      const min = Math.min(...means);
+      const max = Math.max(...means);
+      if (max === min) return 'flat';
+      const avg = means.reduce((acc, v) => acc + v, 0) / means.length;
+      if (Math.abs(avg) < 1e-12) {
+        return Math.abs(max - min) < 1e-9 ? 'flat' : 'varying';
+      }
+      const cov = (max - min) / Math.abs(avg);
+      return cov < COMPARE_FLAT_COV_THRESHOLD ? 'flat' : 'varying';
+    }
 
     function renderComparePlot(response, differingKeys) {
       const el = ui.experimentComparePlot;
@@ -2672,6 +2709,7 @@
           color: COMPARE_PLOT_COLORS[mIndex % COMPARE_PLOT_COLORS.length],
           aggregated,
           hidden: state.compareHiddenMetrics.has(row.metric_id),
+          flatness: classifyMetricFlatness(aggregated),
         };
       });
       const plottedMetrics = colorAssignedMetrics.filter((m) => !m.hidden);
@@ -2755,9 +2793,22 @@
 
       // Legend lists every metric (even hidden ones) so the user can
       // toggle them back on. Click flips visibility and re-renders.
+      // Metrics whose values don't move along the sweep axis are flagged
+      // as 'flat' — surfaces the 'is the parameter even being applied?'
+      // moment after the run rather than guessing it ahead of time.
       const legend = colorAssignedMetrics
-        .map((m) => `<span class="legendItem" data-metric-id="${escapeHtml(m.metric_id)}" data-disabled="${m.hidden ? 'true' : 'false'}" role="button" tabindex="0" title="クリックで表示/非表示"><span class="legendSwatch" style="background:${m.color}"></span>${escapeHtml(m.metric_id)}</span>`)
+        .map((m) => {
+          const isFlat = m.flatness === 'flat';
+          const flatTip = isFlat ? `この sweep 軸 (${axis.key}) では ${m.metric_id} がほぼ変動していません。 sweep parameter が反映されていない可能性。` : 'クリックで表示/非表示';
+          const flatBadge = isFlat ? '<span class="flat-marker">flat</span>' : '';
+          return `<span class="legendItem" data-metric-id="${escapeHtml(m.metric_id)}" data-disabled="${m.hidden ? 'true' : 'false'}" data-flat="${isFlat ? 'true' : 'false'}" role="button" tabindex="0" title="${escapeHtml(flatTip)}"><span class="legendSwatch" style="background:${m.color}"></span>${escapeHtml(m.metric_id)}${flatBadge}</span>`;
+        })
         .join('');
+
+      const flatVisible = colorAssignedMetrics.filter((m) => !m.hidden && m.flatness === 'flat');
+      const flatBanner = flatVisible.length
+        ? `<div class="flat-banner">⚠ ${escapeHtml(flatVisible.map((m) => m.metric_id).join(', '))} が ${escapeHtml(axis.key)} の sweep 全体で変動していません。 parameter が物理モデルに反映されていない可能性 (例: graph_state バックエンドでの emission_success_probability)。</div>`
+        : '';
 
       el.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:#9fb3db;">
@@ -2771,6 +2822,7 @@
           <text class="axis-label" x="${margin.left + innerW / 2}" y="${height - 4}" text-anchor="middle">${escapeHtml(axis.key)}</text>
         </svg>
         <div class="legend" style="position:static;left:auto;right:auto;bottom:auto;flex-wrap:wrap;gap:6px;margin-top:4px;pointer-events:auto;">${legend}</div>
+        ${flatBanner}
       `;
       el.hidden = false;
       el.querySelectorAll('.legendItem[data-metric-id]').forEach((item) => {

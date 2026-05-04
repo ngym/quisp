@@ -2630,12 +2630,30 @@
       // Plot up to 4 metrics to keep the legend readable. Each metric
       // keeps a stable color regardless of whether the user has hidden
       // some of them via the legend chips.
+      // Same x value (e.g. multiple seeds at the same sweep parameter)
+      // gets aggregated as mean ± stddev so the line carries error bars
+      // instead of showing duplicate datapoints.
       const colorAssignedMetrics = metricRows.slice(0, 4).map((row, mIndex) => {
         const series = metricScalarSeries(row, runs);
+        const groups = new Map();
+        for (const entry of order) {
+          const y = series[entry.index];
+          if (y == null) continue;
+          if (!groups.has(entry.value)) groups.set(entry.value, []);
+          groups.get(entry.value).push(y);
+        }
+        const aggregated = Array.from(groups.entries())
+          .map(([x, ys]) => {
+            const n = ys.length;
+            const mean = ys.reduce((acc, v) => acc + v, 0) / n;
+            const variance = n > 1 ? ys.reduce((acc, v) => acc + (v - mean) ** 2, 0) / (n - 1) : 0;
+            return { x, mean, std: Math.sqrt(variance), count: n, samples: ys };
+          })
+          .sort((a, b) => a.x - b.x);
         return {
           metric_id: row.metric_id,
           color: COMPARE_PLOT_COLORS[mIndex % COMPARE_PLOT_COLORS.length],
-          points: order.map((entry) => ({ x: entry.value, y: series[entry.index] })),
+          aggregated,
           hidden: state.compareHiddenMetrics.has(row.metric_id),
         };
       });
@@ -2651,7 +2669,10 @@
       const xMax = Math.max(...xValues);
       const xRange = xMax - xMin || 1;
 
-      const allYs = plottedMetrics.flatMap((m) => m.points.map((p) => p.y).filter((y) => y != null));
+      // Y range covers mean ± stddev so error bars are not clipped.
+      const allYs = plottedMetrics.flatMap((m) =>
+        m.aggregated.flatMap((p) => [p.mean - p.std, p.mean + p.std])
+      );
       const yMin = allYs.length ? Math.min(...allYs) : 0;
       const yMax = allYs.length ? Math.max(...allYs) : 1;
       const yPad = (yMax - yMin) * 0.1 || Math.abs(yMax) * 0.1 || 1;
@@ -2683,22 +2704,34 @@
       const seriesPaths = plottedMetrics.map((metric) => {
         const segments = [];
         let path = '';
-        for (const pt of metric.points) {
-          if (pt.y == null) {
-            path = '';
-            continue;
-          }
+        for (const pt of metric.aggregated) {
+          if (pt.mean == null) continue;
           const cmd = path ? 'L' : 'M';
-          path += `${cmd}${xPos(pt.x).toFixed(2)},${yPos(pt.y).toFixed(2)} `;
+          path += `${cmd}${xPos(pt.x).toFixed(2)},${yPos(pt.mean).toFixed(2)} `;
         }
-        const points = metric.points
-          .filter((pt) => pt.y != null)
+        const errorBars = metric.aggregated
+          .filter((pt) => pt.count > 1 && pt.std > 0)
           .map((pt) => {
-            const tip = `${metric.metric_id} = ${formatCompactNumber(pt.y)} @ ${axis.key} = ${formatCompactNumber(pt.x)}`;
-            return `<circle class="data-point" cx="${xPos(pt.x).toFixed(2)}" cy="${yPos(pt.y).toFixed(2)}" r="3" fill="${metric.color}" stroke="${metric.color}"><title>${escapeHtml(tip)}</title></circle>`;
+            const x = xPos(pt.x);
+            const yLow = yPos(pt.mean - pt.std);
+            const yHigh = yPos(pt.mean + pt.std);
+            return [
+              `<line class="error-bar" stroke="${metric.color}" stroke-width="1.2" x1="${x.toFixed(2)}" y1="${yLow.toFixed(2)}" x2="${x.toFixed(2)}" y2="${yHigh.toFixed(2)}" />`,
+              `<line class="error-bar-cap" stroke="${metric.color}" stroke-width="1.2" x1="${(x - 3).toFixed(2)}" y1="${yLow.toFixed(2)}" x2="${(x + 3).toFixed(2)}" y2="${yLow.toFixed(2)}" />`,
+              `<line class="error-bar-cap" stroke="${metric.color}" stroke-width="1.2" x1="${(x - 3).toFixed(2)}" y1="${yHigh.toFixed(2)}" x2="${(x + 3).toFixed(2)}" y2="${yHigh.toFixed(2)}" />`,
+            ].join('');
+          })
+          .join('');
+        const points = metric.aggregated
+          .map((pt) => {
+            const tip = pt.count > 1
+              ? `${metric.metric_id} = ${formatCompactNumber(pt.mean)} ± ${formatCompactNumber(pt.std)} (n=${pt.count}) @ ${axis.key} = ${formatCompactNumber(pt.x)}`
+              : `${metric.metric_id} = ${formatCompactNumber(pt.mean)} @ ${axis.key} = ${formatCompactNumber(pt.x)}`;
+            return `<circle class="data-point" cx="${xPos(pt.x).toFixed(2)}" cy="${yPos(pt.mean).toFixed(2)}" r="3" fill="${metric.color}" stroke="${metric.color}"><title>${escapeHtml(tip)}</title></circle>`;
           })
           .join('');
         segments.push(`<path class="data-line" stroke="${metric.color}" d="${path.trim()}" />`);
+        segments.push(errorBars);
         segments.push(points);
         return segments.join('');
       }).join('');

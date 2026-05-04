@@ -94,7 +94,29 @@ async def lifespan(app: FastAPI):
     campaign_scheduler: CampaignScheduler = app.state.campaign_scheduler
     campaign_store.restore_from_disk(mark_orphaned_active_runs_failed=True)
     await campaign_scheduler.tick()
-    yield
+
+    # Background tick: simulation_runner doesn't notify the campaign
+    # scheduler when a run reaches a terminal state, so a multi-spec
+    # campaign would otherwise stall after max_concurrent_runs runs.
+    # A 1Hz loop calls tick() to discover finished specs and start
+    # the next queued ones.
+    async def _campaign_tick_loop():
+        while True:
+            try:
+                await campaign_scheduler.tick()
+            except Exception:  # noqa: BLE001
+                pass
+            await asyncio.sleep(1.0)
+
+    tick_task = asyncio.create_task(_campaign_tick_loop())
+    try:
+        yield
+    finally:
+        tick_task.cancel()
+        try:
+            await tick_task
+        except (asyncio.CancelledError, Exception):  # noqa: BLE001
+            pass
 
 
 async def _to_sim_info_list(sim_store: SimulationRunStore, run_store: RunStore, records) -> list[SimRunInfo]:

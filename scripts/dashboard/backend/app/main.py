@@ -173,6 +173,18 @@ def create_app(
     app.state.campaign_scheduler = campaign_scheduler
     # Studies-side annotations (hypothesis / notes per profile).
     app.state.study_store = StudyStore(root=workspace_root / "scripts" / "dashboard" / "studies")
+    # Read-only runtime info exposed to the Settings UI.
+    app.state.runtime_info = {
+        "quisp_binary": str(quisp_binary) if quisp_binary else None,
+        "log_dir": str(log_dir),
+        "workspace_root": str(workspace_root),
+        "audit_log": str(audit_log_path) if audit_log_path else None,
+        "max_concurrent_runs": int(max_concurrent_runs),
+        "run_timeout_seconds": float(run_timeout_seconds),
+        "stop_timeout_seconds": float(stop_timeout_seconds),
+        "qutip_python_executable": os.environ.get("QUTIP_PYTHON_EXECUTABLE"),
+        "dashboard_reload": os.environ.get("DASHBOARD_RELOAD", "").lower() in ("1", "true", "yes", "on"),
+    }
 
     @app.middleware("http")
     async def audit_api(request: Request, call_next):
@@ -719,6 +731,12 @@ def create_app(
         response = aggregator.compare(summaries, list(request.metric_ids or []))
         response.warnings.extend(warnings)
         return response.model_dump()
+
+    @router.get("/info")
+    async def get_runtime_info():
+        # Read-only snapshot of the dashboard process configuration. Surfaces
+        # everything Settings UI needs without exposing secrets.
+        return dict(app.state.runtime_info)
 
     @router.get("/studies/{profile_id}")
     async def get_study(profile_id: str):

@@ -794,10 +794,18 @@
       </div>
     </div>
 
-    <div data-section-only="settings" class="section-stub">
-      <h2>Settings</h2>
-      <p>QuISP バイナリのパス、出力先、表示モードなどダッシュボード全体の設定。</p>
-      <p class="muted">現状はプレースホルダー。<code>DASHBOARD_*</code> 環境変数経由で代替できます。</p>
+    <div data-section-only="settings">
+      <div class="panel" style="margin-top:12px;">
+        <div class="section-title">
+          <span>Settings</span>
+          <span class="status muted">読み取り専用 — 変更は環境変数で</span>
+        </div>
+        <p class="muted" style="margin:0 0 10px;">ダッシュボードプロセスが認識している実行時設定。<code>DASHBOARD_QUISP_BINARY</code> / <code>DASHBOARD_LOG_DIR</code> / <code>DASHBOARD_WORKSPACE_ROOT</code> / <code>DASHBOARD_RELOAD</code> 等で起動時に上書きできます。</p>
+        <table class="table-lite" style="width:100%;">
+          <thead><tr><th style="width:30%;">Key</th><th>Value</th></tr></thead>
+          <tbody id="settingsBody"><tr><td colspan="2" class="muted">loading…</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <div id="runAlert" class="panel failure-banner run-only" data-level="bad" hidden>
@@ -7000,6 +7008,47 @@
       return match ? match[1] : 'studies';
     }
 
+    async function renderSettings() {
+      const tbody = document.getElementById('settingsBody');
+      if (!tbody) return;
+      let info = null;
+      try {
+        info = await apiGet('/info', {}, { action: 'ui.load_runtime_info' });
+      } catch (_e) {
+        tbody.innerHTML = '<tr><td colspan="2" class="muted">runtime info を取得できませんでした</td></tr>';
+        return;
+      }
+      const order = [
+        'quisp_binary',
+        'log_dir',
+        'workspace_root',
+        'audit_log',
+        'qutip_python_executable',
+        'max_concurrent_runs',
+        'run_timeout_seconds',
+        'stop_timeout_seconds',
+        'dashboard_reload',
+      ];
+      const seen = new Set();
+      const rows = [];
+      const renderRow = (key, value) => {
+        const display = value == null
+          ? '<span class="muted">未設定</span>'
+          : typeof value === 'boolean'
+            ? `<span class="mono">${value ? 'true' : 'false'}</span>`
+            : `<span class="mono" style="word-break:break-all;">${escapeHtml(String(value))}</span>`;
+        rows.push(`<tr><td class="mono">${escapeHtml(key)}</td><td>${display}</td></tr>`);
+      };
+      for (const key of order) {
+        seen.add(key);
+        renderRow(key, Object.prototype.hasOwnProperty.call(info, key) ? info[key] : null);
+      }
+      for (const [key, value] of Object.entries(info || {})) {
+        if (!seen.has(key)) renderRow(key, value);
+      }
+      tbody.innerHTML = rows.join('');
+    }
+
     function renderLibrary() {
       const templatesBody = document.getElementById('libraryTemplatesBody');
       const profilesBody = document.getElementById('libraryProfilesBody');
@@ -7079,6 +7128,7 @@
       renderExperimentCompareQueue();
       syncStudyFromProfile();
       renderLibrary();
+      renderSettings();
       setSection(readSectionFromHash());
       const initialNav = readShellViewFromHash();
       if (initialNav.view === 'run' && initialNav.runId) {

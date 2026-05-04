@@ -6693,12 +6693,14 @@
         await loadFromCursor(state.cursor, { limit: 1, advanceCursor: false });
       });
 
-      ui.resultsReplayBtn.addEventListener('click', async () => {
-        logUiAction('ui.results_to_replay_click');
-        await setViewerMode('replay');
-        resetReplayTransientState();
-        await seekReplayToSimTime(Number.isFinite(Number(state.replayCurrentSimTime)) ? Number(state.replayCurrentSimTime) : 0, { autoplay: false });
-      });
+      if (ui.resultsReplayBtn) {
+        ui.resultsReplayBtn.addEventListener('click', async () => {
+          logUiAction('ui.results_to_replay_click');
+          await setViewerMode('replay');
+          resetReplayTransientState();
+          await seekReplayToSimTime(Number.isFinite(Number(state.replayCurrentSimTime)) ? Number(state.replayCurrentSimTime) : 0, { autoplay: false });
+        });
+      }
 
       ui.runSelect.addEventListener('change', async () => {
         logUiAction('ui.run_select_change', { run_id: ui.runSelect.value });

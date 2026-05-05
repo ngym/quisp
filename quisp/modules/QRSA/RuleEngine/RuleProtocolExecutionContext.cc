@@ -157,8 +157,7 @@ void RuleProtocolExecutionContext::handleSwappingResult(messages::SwappingResult
       auto *event_logger = engine_.getLogger();
       if (event_logger != nullptr) {
         std::ostringstream payload;
-        payload << "{"
-                << "\"self_addr\": " << engine_.parentAddress << ", \"partner_addr\": " << new_partner_addr << ", \"ruleset_id\": " << ruleset_id
+        payload << "{" << "\"self_addr\": " << engine_.parentAddress << ", \"partner_addr\": " << new_partner_addr << ", \"ruleset_id\": " << ruleset_id
                 << ", \"shared_rule_tag\": " << shared_rule_tag << ", \"sequence_number\": " << sequence_number << "}";
         event_logger->logEvent("bellpair_e2e_completed", payload.str());
       }

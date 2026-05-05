@@ -11,8 +11,8 @@ namespace quisp::rules {
 class Clause {
  public:
   Clause() {}
-  Clause(int partner_addr) : partner_address(partner_addr) {};
-  virtual ~Clause() {};
+  Clause(int partner_addr) : partner_address(partner_addr){};
+  virtual ~Clause(){};
   std::string name = "";
   int partner_address;
   virtual json serialize_json() = 0;

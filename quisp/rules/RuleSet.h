@@ -14,7 +14,7 @@ namespace quisp::rules {
  */
 class RuleSet {
  public:
-  RuleSet() {};
+  RuleSet(){};
   RuleSet(unsigned long ruleset_id, int owner_address);
 
   unsigned long ruleset_id;  ///< `ruleset_id` is used for identifying connection

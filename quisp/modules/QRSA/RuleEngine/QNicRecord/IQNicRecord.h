@@ -13,7 +13,7 @@ namespace quisp::modules::qnic_record {
  */
 class IQNicRecord {
  public:
-  virtual ~IQNicRecord() {};
+  virtual ~IQNicRecord(){};
   [[deprecated("Use countNumAvailableQubits instead")]] virtual int countNumFreeQubits() = 0;
   [[deprecated("Use acquireAvailableQubitIndex instead")]] virtual int takeFreeQubitIndex() = 0;
   virtual int countNumAvailableQubits() = 0;

@@ -19,8 +19,8 @@ namespace quisp::modules {
 
 class IStationaryQubit : public omnetpp::cSimpleModule {
  public:
-  IStationaryQubit() {};
-  virtual ~IStationaryQubit() {};
+  IStationaryQubit(){};
+  virtual ~IStationaryQubit(){};
 
   // RTC
   virtual void setFree(bool consumed) = 0;

@@ -13,7 +13,7 @@ namespace quisp::modules::qnic_store {
  */
 class IQNicStore {
  public:
-  virtual ~IQNicStore() {};
+  virtual ~IQNicStore(){};
   [[deprecated("Use countNumAvailableQubits instead")]] virtual int countNumFreeQubits(QNIC_type type, int qnic_index) = 0;
   [[deprecated("Use acquireAvailableQubitIndex instead")]] virtual int takeFreeQubitIndex(QNIC_type type, int qnic_index) = 0;
   virtual int countNumAvailableQubits(QNIC_type type, int qnic_index) = 0;

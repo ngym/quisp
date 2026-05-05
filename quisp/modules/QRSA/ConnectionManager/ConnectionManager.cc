@@ -264,16 +264,10 @@ void ConnectionManager::handleUnknownControlMessage(const DecodedConnectionManag
     }
 
     std::ostringstream payload;
-    payload << "\"simtime\": " << simtime << ","
-            << "\"event_number\": " << event_number << ","
-            << "\"module\": \"" << getName() << "\","
-            << "\"qnode_addr\": " << my_address << ", \"parentAddress\": " << my_address << ","
-            << "\"event_channel\": \"" << event_channel << "\","
-            << "\"is_self_message\": " << (self_msg ? "true" : "false") << ","
-            << "\"known_qnic_index\": " << known_qnic_index << ","
-            << "\"msg_full_name\": \"" << (msg ? msg->getFullName() : "null") << "\","
-            << "\"msg_class_name\": \"" << (msg ? msg->getClassName() : "null") << "\","
-            << "\"msg_kind\": " << kind;
+    payload << "\"simtime\": " << simtime << "," << "\"event_number\": " << event_number << "," << "\"module\": \"" << getName() << "\"," << "\"qnode_addr\": " << my_address
+            << ", \"parentAddress\": " << my_address << "," << "\"event_channel\": \"" << event_channel << "\"," << "\"is_self_message\": " << (self_msg ? "true" : "false") << ","
+            << "\"known_qnic_index\": " << known_qnic_index << "," << "\"msg_full_name\": \"" << (msg ? msg->getFullName() : "null") << "\"," << "\"msg_class_name\": \""
+            << (msg ? msg->getClassName() : "null") << "\"," << "\"msg_kind\": " << kind;
     logger->logEvent("connection_manager_unknown_control_message", payload.str());
     logger->logPacket("handleIncomingControlMessage", msg);
   }
@@ -601,8 +595,7 @@ void ConnectionManager::logExperimentSetupAccepted(ConnectionSetupResponse *pk) 
     return;
   }
   std::ostringstream payload;
-  payload << "{"
-          << "\"node_id\": " << my_address << ", \"src_addr\": " << pk->getActual_srcAddr() << ", \"dst_addr\": " << pk->getActual_destAddr()
+  payload << "{" << "\"node_id\": " << my_address << ", \"src_addr\": " << pk->getActual_srcAddr() << ", \"dst_addr\": " << pk->getActual_destAddr()
           << ", \"connection_session_id\": " << pk->getConnection_session_id() << ", \"connection_attempt\": " << pk->getConnection_attempt()
           << ", \"ruleset_id\": " << pk->getRuleSet_id() << "}";
   logger->logEvent("experiment_request_setup_accepted", payload.str());
@@ -613,11 +606,9 @@ void ConnectionManager::logExperimentSetupRejected(RejectConnectionSetupRequest 
     return;
   }
   std::ostringstream payload;
-  payload << "{"
-          << "\"node_id\": " << my_address << ", \"src_addr\": " << pk->getActual_srcAddr() << ", \"dst_addr\": " << pk->getActual_destAddr()
+  payload << "{" << "\"node_id\": " << my_address << ", \"src_addr\": " << pk->getActual_srcAddr() << ", \"dst_addr\": " << pk->getActual_destAddr()
           << ", \"connection_session_id\": " << pk->getConnection_session_id() << ", \"connection_attempt\": " << pk->getConnection_attempt() << ", \"reason\": \""
-          << (reason ? reason : "unknown") << "\""
-          << "}";
+          << (reason ? reason : "unknown") << "\"" << "}";
   logger->logEvent("experiment_request_setup_rejected", payload.str());
 }
 

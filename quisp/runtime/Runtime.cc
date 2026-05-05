@@ -519,8 +519,7 @@ const std::set<QNodeAddr>& Runtime::getPartners() const { return partners; }
 bool Runtime::hasPartner(const QNodeAddr& partner_addr) const { return partners.find(partner_addr) != partners.cend(); }
 void Runtime::debugRuntimeState() {
   std::ostringstream ss;
-  ss << "---------runtime-state---------"
-     << "\npc: " << pc << ", rule_id: " << rule_id << ", qubit_found: " << (qubit_found ? "true" : "false");
+  ss << "---------runtime-state---------" << "\npc: " << pc << ", rule_id: " << rule_id << ", qubit_found: " << (qubit_found ? "true" : "false");
   ss << "\nReg0: " << registers[0].value << ", Reg1: " << registers[1].value << ", Reg2: " << registers[2].value << ", Reg3: " << registers[3].value
      << ", Reg4: " << registers[4].value << "\n----------memory------------\n";
   for (auto it : memory) {
@@ -567,8 +566,8 @@ void Runtime::logRuntimeEvent(const std::string& event_type, const std::string& 
   toInt(qnode_addr_text, node_addr);
 
   std::ostringstream ss;
-  ss << "\"simtime\": " << simTime() << ", \"event_number\": " << omnetpp::getSimulation()->getEventNumber() << ", \"module\": \"Runtime\""
-     << ", \"qnode_addr\": " << node_addr << ", \"parentAddress\": " << node_addr << ", \"event_type\": \"" << event_type << "\"";
+  ss << "\"simtime\": " << simTime() << ", \"event_number\": " << omnetpp::getSimulation()->getEventNumber() << ", \"module\": \"Runtime\"" << ", \"qnode_addr\": " << node_addr
+     << ", \"parentAddress\": " << node_addr << ", \"event_type\": \"" << event_type << "\"";
 
   if (!event_payload_json.empty()) {
     ss << ", " << event_payload_json;

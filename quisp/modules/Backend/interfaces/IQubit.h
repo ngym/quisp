@@ -29,8 +29,8 @@ class IQubitId;
 
 class IQubit {
  public:
-  IQubit() {};
-  virtual ~IQubit() {};
+  IQubit(){};
+  virtual ~IQubit(){};
 
   virtual void setFree() = 0;
   virtual const IQubitId *const getId() const { throw std::runtime_error("getId is not implemented"); }

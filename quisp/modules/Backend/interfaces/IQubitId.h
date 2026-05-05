@@ -13,7 +13,7 @@ namespace quisp::backends::abstract {
  */
 class IQubitId {
  public:
-  virtual ~IQubitId() {};
+  virtual ~IQubitId(){};
 
   class Hash {
    public:

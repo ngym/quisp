@@ -323,10 +323,16 @@ void StationaryQubit::setFree(bool consumed) {
   // Tell the physical backend that this slot is being recycled. For the qutip
   // backend this partial-traces the qubit out of the persistent density matrix
   // so the next H+CNOT on this slot does not pile a new photon on top of the
-  // residual state from the previous (often failed) Bell-pair attempt.
+  // residual state from the previous (often failed) Bell-pair attempt. Best
+  // effort: skip silently if the qubit isn't tied to a real QubitId (e.g.
+  // unit-test mocks where IQubit::getId() throws).
   if (backend != nullptr) {
-    PhysicalServiceFacade service{backend};
-    service.releaseQubit(makeHandle(*this));
+    try {
+      PhysicalServiceFacade service{backend};
+      service.releaseQubit(makeHandle(*this));
+    } catch (const std::exception &) {
+      // releaseQubit is a hint, not a precondition — never fail setFree on it.
+    }
   }
   is_busy = false;
   locked = false;

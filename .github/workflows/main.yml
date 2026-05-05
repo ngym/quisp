@@ -19,6 +19,12 @@ jobs:
     steps:
       - name: work around permission issue
         run: git config --global --add safe.directory /__w/quisp/quisp
+      - name: Install clang profile runtime for coverage
+        # Coverage builds (-fprofile-instr-generate) link
+        # libclang_rt.profile-x86_64.a, which the base CI image is missing.
+        # Once docker/ci/Dockerfile is rebuilt with libclang-rt-18-dev this
+        # step can be removed.
+        run: apt-get update && apt-get install -y --no-install-recommends libclang-rt-18-dev
       - name: Check out repository
         uses: actions/checkout@v4
       - name: make eigen

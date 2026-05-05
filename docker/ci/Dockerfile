@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gdb \
     git \
     lcov \
+    libclang-rt-18-dev \
     libdw-dev \
     libxml2-dev \
     lld \
@@ -39,6 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-venv \
     ripgrep \
+    time \
     xz-utils \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*

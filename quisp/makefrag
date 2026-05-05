@@ -14,7 +14,7 @@ LDFLAGS := $(strip $(shell printf '%s' "$(LDFLAGS)" | sed \
 SRCS?=$(shell git ls-files . | grep "^.*.cc$$")
 HEADERS?=$(shell git ls-files . | grep "^.*.h$$")
 PROJ_ROOT=$(shell git rev-parse --show-toplevel)
-TEST_SRCS=$(filter %_test.cc,$(SRCS)) $(test_utils/%.cc) ./unit_test_main.cc
+TEST_SRCS=$(filter %_test.cc,$(SRCS)) $(filter test_utils/%.cc,$(SRCS)) ./unit_test_main.cc
 TEST_OBJS=$(foreach obj,$(TEST_SRCS:.cc=.o),$O/$(obj))
 TEST_INCLUDE=-I$(PROJ_ROOT)/googletest/googletest/include/ -I$(PROJ_ROOT)/googletest/googlemock/include/
 TEST_LIBS=-L$(PROJ_ROOT)/googletest/build/lib -lgtest -lgmock

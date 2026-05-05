@@ -86,7 +86,7 @@ class Worker:
             ned_path,
         ]
         proc = await asyncio.create_subprocess_shell(
-            "/usr/bin/time -p -- " + " ".join(commands),
+            " ".join(commands),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=self.working_dir,

@@ -18,7 +18,7 @@ using quisp::modules::IRealTimeController;
 using quisp::modules::IRoutingDaemon;
 using quisp::modules::IStationaryQubit;
 using quisp::modules::QNIC_type;
-using quisp::modules::common::IQuantumBackend;
+using quisp::modules::common::IGraphStateBackend;
 using quisp::modules::Logger::ILogger;
 using quisp::modules::SharedResource::SharedResource;
 using quisp::utils::IComponentProviderStrategy;
@@ -48,7 +48,7 @@ class TestComponentProviderStrategy : public IComponentProviderStrategy {
   virtual IRoutingDaemon *getRoutingDaemon() override { return nullptr; };
   virtual IHardwareMonitor *getHardwareMonitor() override { return nullptr; };
   virtual IRealTimeController *getRealTimeController() override { return nullptr; };
-  virtual IQuantumBackend *getQuantumBackend() override { return nullptr; };
+  virtual IGraphStateBackend *getQuantumBackend() override { return nullptr; };
   virtual ILogger *getLogger() override { return new TestLogger(); };
   virtual SharedResource *getSharedResource() override { return nullptr; };
   std::vector<QNicSpec> qnic_specs;

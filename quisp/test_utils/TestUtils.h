@@ -9,7 +9,7 @@
 #include "TestComponentProviderStrategy.h"
 #include "TestUtilFunctions.h"
 #include "mock_backends/MockBackendQubit.h"
-#include "mock_backends/MockQuantumBackend.h"
+#include "mock_backends/MockGraphStateBackend.h"
 #include "mock_modules/MockHardwareMonitor.h"
 #include "mock_modules/MockQNicStore.h"
 #include "mock_modules/MockQubit.h"
@@ -21,7 +21,7 @@ namespace quisp_test {
 // use these functions and classes in your unit test.
 using gate::TestGate;
 using mock_backends::MockBackendQubit;
-using mock_backends::MockQuantumBackend;
+using mock_backends::MockGraphStateBackend;
 using mock_modules::hardware_monitor::MockHardwareMonitor;
 using mock_modules::qnic_store::MockQNicStore;
 using mock_modules::realtime_controller::MockRealTimeController;
